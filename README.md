@@ -1,4 +1,4 @@
-# TeleRC 0.7.1 — rover joystick private test
+# TeleRC 0.7.2 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
 
@@ -11,7 +11,7 @@ Offline Android controller for an ArduRover using a bidirectional MAVLink UDP br
 
 ## Offline test drive
 
-The third, landscape **Test drive** page has Game and Test modes. Game is an endless retro obstacle course: drive forward and move directly left or right with the steering stick to pass gates. It saves the best gate count locally after each pass; a collision restarts the run. Optional generated tones are off by default and stop when leaving the scene. Test has no obstacles and previews CH1 steering and CH3 bidirectional drive with inertia and heading-dependent movement; steering alone cannot slide a stationary rover. This is an illustrative model, not a calibrated replica of any particular rover. Left and right turn its heading while moving; releasing drive brakes the preview quickly. Switching Game and Test preserves joystick input. Both modes remain offline and never send MAVLink. Switching pages disables live control.
+The third, landscape **Test drive** page has Game and Test modes selected with the compact bottom switch. The top mode tabs are removed to enlarge the course. Optional music is controlled by the small bottom music button in Game. Game is an endless retro obstacle course: drive forward and move directly left or right with the steering stick to pass gates. It saves the best gate count locally after each pass; a collision restarts the run. Optional generated tones are off by default and stop when leaving the scene. Test has no obstacles and previews CH1 steering and CH3 bidirectional drive with inertia and heading-dependent movement; steering alone cannot slide a stationary rover. This is an illustrative model, not a calibrated replica of any particular rover. Left and right turn its heading while moving; releasing drive brakes the preview quickly. Switching Game and Test preserves joystick input. Both modes remain offline and never send MAVLink. Switching pages disables live control.
 
 **Private bench/SITL tests only.** UDP endpoint and checksum checks do not authenticate a vehicle. No MAVLink signing, telemetry validation, arm/mode controls, vehicle configuration, or tested link failsafe is provided. Never use this prototype to control a moving vehicle or flight craft.
 

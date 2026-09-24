@@ -244,19 +244,31 @@ class MainActivity : Activity() {
         }
         row.addView(left, LinearLayout.LayoutParams(0, -1, 0.9f).apply { rightMargin = dp(8) })
         val middle = card().apply {
-            val tabs = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            val game = button("Game") { course.setMode(TestDriveView.Mode.GAME) }
-            val test = button("Test", false) { course.setMode(TestDriveView.Mode.TEST) }
-            tabs.addView(game, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
-            tabs.addView(test, LinearLayout.LayoutParams(0, dp(40), 1f))
-            game.setOnClickListener { course.setMode(TestDriveView.Mode.GAME); game.setTextColor(Color.WHITE); game.background = shape(accent); test.setTextColor(accent); test.background = shape(Color.rgb(237, 231, 249)) }
-            test.setOnClickListener { course.setMode(TestDriveView.Mode.TEST); test.setTextColor(Color.WHITE); test.background = shape(accent); game.setTextColor(accent); game.background = shape(Color.rgb(237, 231, 249)) }
-            addView(tabs)
             addView(course, LinearLayout.LayoutParams(-1, 0, 1f))
-            addView(Switch(this@MainActivity).apply {
-                text = "Game music (optional)"; textSize = 12f; isChecked = false
-                setOnCheckedChangeListener { _, checked -> course.setMusic(checked) }
-            }, LinearLayout.LayoutParams(-1, dp(40)))
+            val bottom = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            bottom.addView(text("GAME", 11f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
+            val music = button("♫", false) { }.apply {
+                contentDescription = "Turn game music on or off"
+                setOnClickListener {
+                    isSelected = !isSelected
+                    course.setMusic(isSelected)
+                    text = if (isSelected) "♫ ON" else "♫"
+                }
+            }
+            bottom.addView(Switch(this@MainActivity).apply {
+                text = "TEST"; textSize = 11f; isChecked = false
+                contentDescription = "Switch between Game and Test modes"
+                setOnCheckedChangeListener { _, checked ->
+                    course.setMode(if (checked) TestDriveView.Mode.TEST else TestDriveView.Mode.GAME)
+                    music.isEnabled = !checked
+                    if (checked) { music.isSelected = false; music.text = "♫" }
+                }
+            }, LinearLayout.LayoutParams(-2, dp(40)))
+            bottom.addView(music, LinearLayout.LayoutParams(dp(68), dp(40)).apply { leftMargin = dp(8) })
+            addView(bottom, LinearLayout.LayoutParams(-1, dp(40)))
         }
         row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
         val right = card().apply {
