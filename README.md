@@ -31,7 +31,7 @@ The first build uses local Wi-Fi UDP to an ESP32/Raspberry Pi MAVLink bridge. Di
 
 ## Build and status
 
-JDK 17, Android SDK platform 35, Gradle 8.11.1. Run `gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon`. APK path: `app/build/outputs/apk/debug/app-debug.apk`. The GitHub workflow builds and uploads this debug APK on push. This environment did not have Gradle or Android SDK, so no local APK or installation test was completed. Debug APK signing is only suitable for private testing; retain a stable signing key for future upgrades. Preserve application ID `io.github.denberg28.telerc` and version progression. Test with SITL and a bridge, then raised-wheel bench testing, before any further vehicle use.
+JDK 17 and Android SDK platform 35 are required. The checked-in Gradle wrapper pins 8.11.1 and verifies the distribution SHA-256. Run `./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon` (Windows: `gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon`). APK path: `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions uses the same wrapper for checks and signed releases. This environment has no Android SDK, so local Android tests and installation were not completed. Debug APK signing is only suitable for private testing; retain a stable signing key for future upgrades. Preserve application ID `io.github.denberg28.telerc` and version progression. Test with SITL and a bridge, then raised-wheel bench testing, before any further vehicle use.
 
 ## Direct updates
 
