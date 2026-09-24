@@ -1,6 +1,8 @@
-# TeleRC 0.7.5 — rover joystick private test
+# TeleRC 0.7.6 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
+
+Setup and Controls now share the compact navigation and card layout used in Test Drive. Setup uses rounded connection inputs; Controls shows each assigned channel value beside its joystick and keeps the Enable/Stop action in its own card.
 
 ## Rover setup
 

@@ -115,9 +115,9 @@ class MainActivity : Activity() {
         val setup = button("⌂  Setup", page == Page.SETUP) { switchTo(Page.SETUP) }
         val controls = button("▣  Controls", page == Page.CONTROLS) { switchTo(Page.CONTROLS) }
         val test = button("▤  Test drive", page == Page.TEST_DRIVE) { switchTo(Page.TEST_DRIVE) }
-        addView(setup, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(7) })
-        addView(controls, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(7) })
-        addView(test, LinearLayout.LayoutParams(0, dp(48), 1f))
+        addView(setup, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(7) })
+        addView(controls, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(7) })
+        addView(test, LinearLayout.LayoutParams(0, -1, 1f))
     }
     private fun render() {
         window.decorView.systemUiVisibility = 0
@@ -131,53 +131,55 @@ class MainActivity : Activity() {
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
-        root.addView(text("TeleRC", 32f, ink, true))
-        root.addView(text("Your craft, in your hands.", 14f, muted))
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
         val scroll = ScrollView(this).apply { isFillViewport = false }
-        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(14), 0, dp(8)) }
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
+        body.addView(text("TeleRC", 24f, ink, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         val craft = card().apply {
             addView(text("CRAFT PROFILE", 12f, accent, true))
-            addView(text("Rover", 24f, ink, true))
-            addView(text("ArduRover  •  steering CH1  •  drive CH3", 13f, muted))
-            addView(text("Multirotor, fixed wing, watercraft and rocket profiles are planned.", 12f, muted))
+            addView(text("Rover", 19f, ink, true))
+            addView(text("ArduRover  ·  CH1 steer  ·  CH3 drive", 12f, muted))
+            addView(text("Other craft profiles are not yet available.", 11f, muted))
         }
         body.addCard(craft)
         val connection = card().apply {
             addView(text("CONNECTION", 12f, accent, true))
-            addView(text("MAVLink over local Wi-Fi", 19f, ink, true))
-            addView(text("Enter your ESP32 or Raspberry Pi bridge address and UDP port.", 13f, muted))
+            addView(text("MAVLink over local Wi-Fi", 17f, ink, true))
+            addView(text("ESP32 or Raspberry Pi bridge address and UDP port", 12f, muted))
             host = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink)
                 inputType = InputType.TYPE_CLASS_TEXT
+                background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
                 setText(if (connected.get()) endpoint?.hostAddress else getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
                 isEnabled = !connected.get()
             }
             port = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "UDP port"; setTextColor(ink)
                 inputType = InputType.TYPE_CLASS_NUMBER
+                background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
                 setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
                 isEnabled = !connected.get()
             }
-            addView(host); addView(port)
+            addView(host, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
+            addView(port, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(6) })
             connect = button("Connect") { if (connected.get()) stop() else start() }
-            addView(connect, LinearLayout.LayoutParams(-1, dp(52)))
+            addView(connect, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
         }
         body.addCard(connection)
         val info = card().apply {
             addView(text("LINK STATUS", 12f, accent, true))
-            status = text("DISCONNECTED", 17f, ink, true); addView(status)
-            addView(text("Control requires a valid heartbeat and a separate Enable action.", 13f, muted))
+            status = text("DISCONNECTED", 15f, ink, true); addView(status)
+            addView(text("A valid heartbeat and Enable action are required.", 12f, muted))
         }
         body.addCard(info)
         val updates = card().apply {
             addView(text("APP UPDATE", 12f, accent, true))
-            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 19f, ink, true))
-            addView(text("Check official GitHub releases and install a newer signed APK.", 13f, muted))
+            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 17f, ink, true))
+            addView(text("Check GitHub for a newer signed APK.", 12f, muted))
             updateStatus = text("Updates are checked only when you tap the button.", 12f, muted)
             addView(updateStatus)
             addView(button("Check for updates", false) { updater.check() },
-                LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
+                LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
         }
         body.addCard(updates)
         body.addView(text("Private bench test  •  Raise wheels before enabling control.", 12f, muted))
@@ -187,30 +189,32 @@ class MainActivity : Activity() {
     private fun renderControls() {
         host = null; port = null; connect = null
         val root = shell()
-        val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        head.addView(text("TeleRC  /  ROVER", 24f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
-        status = text("DISCONNECTED", 15f, accent, true)
-        head.addView(status); root.addView(head)
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10); bottomMargin = dp(10) })
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
+        status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
+        root.addView(status, LinearLayout.LayoutParams(-1, dp(30)).apply { bottomMargin = dp(6) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): JoystickView {
+            lateinit var stick: JoystickView
             val panel = card().apply {
-                addView(text(title, 20f, ink, true))
-                addView(text(hint, 13f, muted))
-                val stick = JoystickView(this@MainActivity, vertical) { value ->
-                    if (controlEnabled.get() || value == 1500) changed(value)
+                addView(text(title, 16f, ink, true).apply { gravity = Gravity.CENTER })
+                val feedback = text("$hint  ·  1500", 11f, muted).apply { gravity = Gravity.CENTER }
+                addView(feedback)
+                stick = JoystickView(this@MainActivity, vertical) { value ->
+                    if (controlEnabled.get() || value == 1500) {
+                        changed(value)
+                        feedback.text = "$hint  ·  $value"
+                    }
                 }
                 addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
-                addView(text(if (vertical) "FORWARD  ↑    •    ↓  REVERSE" else "LEFT  ←    •    →  RIGHT", 12f, muted))
             }
-            row.addView(panel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(10) })
-            return panel.getChildAt(2) as JoystickView
+            row.addView(panel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+            return stick
         }
-        steeringStick = control("STEERING", "Left  /  right · CH1", false) { steering = it }
-        driveStick = control("DRIVE", "Reverse  /  forward · CH3", true) { drive = it }
+        steeringStick = control("STEER", "CH1 · left / right", false) { steering = it }
+        driveStick = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
         val actions = card().apply {
-            addView(text("CONTROL", 14f, accent, true))
-            addView(text("Rover", 20f, ink, true))
+            addView(text("CONTROL", 16f, ink, true).apply { gravity = Gravity.CENTER })
+            addView(text("Rover · CH1 / CH3", 11f, muted).apply { gravity = Gravity.CENTER })
             addView(Space(this@MainActivity), LinearLayout.LayoutParams(1, 0, 1f))
         }
         enable = button("Enable control") {
@@ -220,11 +224,11 @@ class MainActivity : Activity() {
                 refreshUi()
             }
         }
-        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(62)))
-        actions.addView(text("Release returns to neutral.", 12f, muted))
+        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)))
         row.addView(actions, LinearLayout.LayoutParams(0, -1, 0.72f))
-        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
-        root.addView(text("Joysticks center on release. Stop sends neutral then releases override.", 12f, muted))
+        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(text("Release centers sticks · Stop sends neutral and release", 11f, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
     }
     private fun renderTestDrive() {
@@ -296,7 +300,7 @@ class MainActivity : Activity() {
         }
         connect?.text = if (connected.get()) "Disconnect" else "Connect"
         enable?.isEnabled = linkFresh()
-        enable?.text = if (controlEnabled.get()) "STOP / Disable control" else "Enable control"
+        enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
     }
     private fun disableControl() {
         val wasEnabled = controlEnabled.getAndSet(false)
