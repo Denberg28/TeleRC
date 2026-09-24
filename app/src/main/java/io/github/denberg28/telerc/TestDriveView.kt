@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
+import kotlin.math.cos
 import kotlin.math.sin
 
 /** Offline arcade course. These inputs never reach the MAVLink transport. */
