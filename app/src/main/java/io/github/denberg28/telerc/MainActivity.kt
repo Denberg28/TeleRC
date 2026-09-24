@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.widget.*
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -85,7 +86,19 @@ class MainActivity : Activity() {
     }
     private fun shell(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setBackgroundColor(pale)
-        setPadding(dp(18), dp(14), dp(18), dp(10))
+        setPadding(dp(16), dp(12), dp(16), dp(12))
+        setOnApplyWindowInsetsListener { view, insets ->
+            val left: Int; val top: Int; val right: Int; val bottom: Int
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                val safe = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                left = safe.left; top = safe.top; right = safe.right; bottom = safe.bottom
+            } else {
+                left = insets.systemWindowInsetLeft; top = insets.systemWindowInsetTop
+                right = insets.systemWindowInsetRight; bottom = insets.systemWindowInsetBottom
+            }
+            view.setPadding(dp(16) + left, dp(12) + top, dp(16) + right, dp(12) + bottom)
+            insets
+        }
     }
     private fun nav(): LinearLayout = LinearLayout(this).apply {
         gravity = Gravity.CENTER; orientation = LinearLayout.HORIZONTAL
@@ -104,8 +117,9 @@ class MainActivity : Activity() {
         val root = shell()
         root.addView(text("TeleRC", 32f, ink, true))
         root.addView(text("Your craft, in your hands.", 14f, muted))
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
         val scroll = ScrollView(this).apply { isFillViewport = false }
-        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(20), 0, dp(8)) }
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(14), 0, dp(8)) }
         val craft = card().apply {
             addView(text("CRAFT PROFILE", 12f, accent, true))
             addView(text("Rover", 24f, ink, true))
@@ -142,7 +156,7 @@ class MainActivity : Activity() {
         body.addCard(info)
         body.addView(text("Private bench test  •  Raise wheels before enabling control.", 12f, muted))
         scroll.addView(body); root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(nav()); setContentView(root)
+        setContentView(root)
     }
     private fun renderControls() {
         host = null; port = null; connect = null
@@ -151,6 +165,7 @@ class MainActivity : Activity() {
         head.addView(text("TeleRC  /  ROVER", 24f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
         status = text("DISCONNECTED", 15f, accent, true)
         head.addView(status); root.addView(head)
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10); bottomMargin = dp(10) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         fun control(title: String, hint: String, changed: (Int) -> Unit): SeekBar {
             val panel = card().apply {
@@ -186,7 +201,7 @@ class MainActivity : Activity() {
         }
         root.addView(enable, LinearLayout.LayoutParams(-1, dp(52)))
         root.addView(text("Sliders center on release. Stop sends neutral then releases override.", 12f, muted))
-        root.addView(nav()); setContentView(root)
+        setContentView(root)
     }
     private fun linkFresh() = target != 0 && System.currentTimeMillis() - heartbeatAt < 1500
     private fun refreshUi() {
