@@ -1,3 +1,10 @@
+## 0.6.1
+- Removed the Test Drive page heading so the course fills more of the display.
+
+## 0.6.0
+- Endless offline obstacle gates with pass counter and collision reset.
+- Direct test drive steering and throttle response, instant joystick centering, centered control labels.
+
 # Changelog
 
 ## 0.5.0 — offline test drive
