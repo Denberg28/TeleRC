@@ -53,7 +53,7 @@ class TestDriveView(context: Context) : View(context) {
     init { contentDescription = "Offline rover game and steering test"; resetCourse() }
     fun setMode(value: Mode) {
         if (mode == value) return
-        mode = value; resetCourse()
+        mode = value; resetCourse(preserveInput = true)
         if (value == Mode.TEST) setMusic(false)
     }
     fun setMusic(enabled: Boolean) {
@@ -64,11 +64,12 @@ class TestDriveView(context: Context) : View(context) {
     fun setSteering(value: Int) { steer = ((value - 1500) / 500f).coerceIn(-1f, 1f) }
     fun setDrive(value: Int) { throttle = ((value - 1500) / 500f).coerceIn(-1f, 1f); if (abs(throttle) < .08f) waitForRelease = false }
 
-    fun resetCourse() {
+    fun resetCourse(preserveInput: Boolean = false) {
         x = .5f; y = .76f; heading = 0f; speed = 0f; distance = 0f; passed = 0
         gates.clear()
         gates.add(Gate(-.35f, .5f))
-        steer = 0f; throttle = 0f; waitForRelease = false
+        if (!preserveInput) { steer = 0f; throttle = 0f }
+        waitForRelease = false
         invalidate()
     }
 
@@ -86,8 +87,9 @@ class TestDriveView(context: Context) : View(context) {
             distance += abs(speed * dt) * 100f
             return
         }
-        speed += (demand * .65f - speed) * (dt * 5f).coerceAtMost(1f)
-        x = (x + steer * speed * dt * 1.3f).coerceIn(.245f, .755f)
+        speed += (demand * .75f - speed) * (dt * 14f).coerceAtMost(1f)
+        // Arcade lane control is independent of forward drive: left always moves left.
+        x = gameX(x, steer, dt)
         if (music && System.nanoTime() - beatAt > 360_000_000L) {
             beatAt = System.nanoTime()
             tone?.startTone(if ((passed and 1) == 0) ToneGenerator.TONE_PROP_BEEP else ToneGenerator.TONE_PROP_ACK, 55)
