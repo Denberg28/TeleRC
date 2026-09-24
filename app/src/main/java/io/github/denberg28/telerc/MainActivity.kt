@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -260,7 +261,7 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
     }
-    private fun linkFresh() = target != 0 && System.currentTimeMillis() - heartbeatAt < 1500
+    private fun linkFresh() = target != 0 && SystemClock.elapsedRealtime() - heartbeatAt < 1500
     private fun refreshUi() {
         status?.text = when {
             !connected.get() -> "DISCONNECTED"
@@ -312,11 +313,11 @@ class MainActivity : Activity() {
                     if (packet.address == remote && packet.port == number) {
                         val system = Mavlink.heartbeatSystem(packet.data.copyOfRange(packet.offset, packet.offset + packet.length))
                         if (system != null && (target == 0 || target == system)) {
-                            target = system; heartbeatAt = System.currentTimeMillis()
+                            target = system; heartbeatAt = SystemClock.elapsedRealtime()
                         }
                     }
                 } catch (_: SocketTimeoutException) {} catch (_: Exception) { break }
-                val now = System.currentTimeMillis()
+                val now = SystemClock.elapsedRealtime()
                 val fresh = target != 0 && now - heartbeatAt < 1500
                 if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
