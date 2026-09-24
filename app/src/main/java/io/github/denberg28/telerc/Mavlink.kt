@@ -1,7 +1,7 @@
 package io.github.denberg28.telerc
 
 object Mavlink {
-    data class GlobalPosition(val system: Int, val latitude: Double, val longitude: Double)
+    data class GlobalPosition(val system: Int, val latitude: Double, val longitude: Double, val headingDegrees: Double?)
     fun frames(datagram: ByteArray): List<ByteArray> {
         val result = mutableListOf<ByteArray>()
         var cursor = 0
@@ -89,7 +89,11 @@ object Mavlink {
         val lat = int32(offset + 4) / 1e7
         val lon = int32(offset + 8) / 1e7
         if (lat !in -90.0..90.0 || lon !in -180.0..180.0 || lat == 0.0 && lon == 0.0) return null
+        val bearing = if (length >= 28) {
+            val centidegrees = (packet[offset + 26].toInt() and 255) or ((packet[offset + 27].toInt() and 255) shl 8)
+            if (centidegrees < 36000) centidegrees / 100.0 else null
+        } else null
         val system = packet[if (v1) 3 else 5].toInt() and 255
-        return GlobalPosition(system, lat, lon).takeIf { system in 1..254 }
+        return GlobalPosition(system, lat, lon, bearing).takeIf { system in 1..254 }
     }
 }

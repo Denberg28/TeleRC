@@ -2,6 +2,10 @@ package io.github.denberg28.telerc
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.os.Bundle
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.Marker
@@ -12,6 +16,14 @@ import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.Point
 
 /** Phone branch and measured rover positions are separate layers. Camera moves only at Home/Locate. */
 class RouteMapView(context: Context, private val session: RouteSession) {
@@ -22,6 +34,8 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     private var roverMarker: Marker? = null
     private var phoneLine: Polyline? = null
     private var roverLine: Polyline? = null
+    private var roverSource: GeoJsonSource? = null
+    private var roverLayer: SymbolLayer? = null
     private var centered = false
 
     init {
@@ -34,8 +48,38 @@ class RouteMapView(context: Context, private val session: RouteSession) {
             ready.uiSettings.isZoomGesturesEnabled = true
             ready.uiSettings.isRotateGesturesEnabled = true
             ready.uiSettings.isScrollGesturesEnabled = true
-            ready.setStyle("https://demotiles.maplibre.org/style.json") { draw() }
+            ready.setStyle("https://demotiles.maplibre.org/style.json") { style ->
+                installRoverIcon(style)
+                draw()
+            }
         }
+    }
+
+    private fun installRoverIcon(style: Style) {
+        // Draw a top-down rover pointing north. MapLibre rotates it clockwise by telemetry heading.
+        val bitmap = Bitmap.createBitmap(56, 56, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(24, 28, 41) }
+        canvas.drawRoundRect(10f, 10f, 17f, 46f, 3f, 3f, paint)
+        canvas.drawRoundRect(39f, 10f, 46f, 46f, 3f, 3f, paint)
+        paint.color = Color.rgb(112, 88, 166)
+        canvas.drawRoundRect(18f, 11f, 38f, 45f, 5f, 5f, paint)
+        paint.color = Color.rgb(178, 232, 239)
+        canvas.drawRect(21f, 17f, 35f, 26f, paint)
+        paint.color = Color.rgb(255, 218, 109)
+        canvas.drawPath(Path().apply { moveTo(28f, 3f); lineTo(18f, 14f); lineTo(38f, 14f); close() }, paint)
+        style.addImage("telerc-rover-heading", bitmap)
+        roverSource = GeoJsonSource("telerc-rover-position", FeatureCollection.fromFeatures(arrayOf<Feature>()))
+        style.addSource(roverSource!!)
+        roverLayer = SymbolLayer("telerc-rover-heading-layer", "telerc-rover-position").apply {
+            setProperties(
+                PropertyFactory.iconImage("telerc-rover-heading"),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP)
+            )
+        }
+        style.addLayer(roverLayer!!)
     }
 
     fun draw() {
@@ -47,14 +91,24 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         fun coords(p: TrackPoint) = LatLng(p.latitude, p.longitude)
         session.home?.let {
             homeMarker = m.addMarker(MarkerOptions().position(coords(it)).title("HOME · fixed phone GPS"))
-            if (!centered) { locateHome(); centered = true }
+            if (!centered && view.visibility == android.view.View.VISIBLE && view.width > 0 && view.height > 0) {
+                locateHome(); centered = true
+            }
         }
         session.phone.lastOrNull()?.let {
             phoneMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Phone · current fix"))
         }
         session.rover.lastOrNull()?.let {
-            roverMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Rover · position telemetry"))
+            if (it.headingDegrees != null) {
+                roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf(
+                    Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)))))
+                roverLayer?.setProperties(PropertyFactory.iconRotate(it.headingDegrees.toFloat()))
+            } else {
+                roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
+                roverMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Rover · heading unavailable"))
+            }
         }
+        if (session.rover.isEmpty()) roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
         if (session.phone.size > 1) phoneLine = m.addPolyline(
             PolylineOptions().addAll(session.phone.map(::coords)).color(Color.rgb(42, 153, 191)).width(5f))
         if (session.rover.size > 1) roverLine = m.addPolyline(
@@ -71,7 +125,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     fun onResume() = view.onResume()
     fun onPause() = view.onPause()
     fun onStop() = view.onStop()
-    fun onDestroy() = view.onDestroy()
+    fun onDestroy() { view.onDestroy(); roverSource = null; roverLayer = null; map = null }
     fun onLowMemory() = view.onLowMemory()
     fun onSaveInstanceState(out: Bundle) = view.onSaveInstanceState(out)
 }

@@ -23,4 +23,16 @@ class RouteSessionTest {
         route.reset()
         assertNull(route.home)
     }
+    @Test fun stationaryTurnUpdatesHeadingWithoutAddingTravelAndPersists() {
+        val session = RouteSession()
+        val point = TrackPoint(14.5995, 120.9842, 1000, 0.0)
+        assertTrue(session.addRover(point))
+        assertTrue(session.addRover(point.copy(timeMs = 2000, headingDegrees = 90.0)))
+        assertEquals(1, session.rover.size)
+        assertEquals(90.0, session.rover.single().headingDegrees!!, 0.001)
+        assertFalse(session.addRover(point.copy(timeMs = 3000, headingDegrees = 90.0)))
+        assertEquals(90.0, RouteSession().apply { decode(session.encode()) }.rover.single().headingDegrees!!, 0.001)
+        val old = "kind,time_ms,latitude,longitude,steer_us,drive_us\nrover,1000,14.5995,120.9842,,\n"
+        assertNull(RouteSession().apply { decode(old) }.rover.single().headingDegrees)
+    }
 }

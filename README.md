@@ -1,8 +1,8 @@
-# TeleRC 0.8.0 — rover joystick private test
+# TeleRC 0.8.1 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
 
-Setup and Controls now share the compact navigation and card layout used in Test Drive. Setup uses rounded connection inputs; Controls shows each assigned channel value beside its joystick and keeps the Enable/Stop action in its own card.
+Setup and Controls share compact navigation and cards. Setup uses rounded connection inputs; Controls centers Enable/Stop between equal-width Steer and Drive panels.
 
 ## Rover setup
 
@@ -13,7 +13,7 @@ Setup and Controls now share the compact navigation and card layout used in Test
 
 ## Offline test drive
 
-The third, landscape **Test drive** page has Game and Test modes selected with the compact bottom switch. Game is an endless retro obstacle course with optional music. In Test, the MapLibre map shows actual rover `GLOBAL_POSITION_INT` telemetry as a purple line and phone GPS fixes as a separate blue line. The first precise phone GPS fix (50 m accuracy or better) becomes **Home** and never moves until Reset; later phone fixes extend only the blue branch. The Home button recenters the map. Pinch to zoom, drag to pan, rotate the map, or tap the MapLibre compass to return to north. Phone location is requested only while the Test map is visible and the app is foregrounded. Rover points are accepted only from the configured bridge endpoint and heartbeat system with valid MAVLink CRC and a fresh link. No rover GPS telemetry means no rover line. Map tiles use MapLibre demo tiles and require internet access; routes are stored locally and can be exported even when tiles cannot load.
+The third, landscape **Test drive** page has Game and Test modes selected with the compact bottom switch. Game is an endless retro obstacle course with optional music; its scrolling road continues smoothly when a run resets. In Test, the MapLibre map shows actual rover `GLOBAL_POSITION_INT` telemetry as a purple line and phone GPS fixes as a separate blue line. The top-down rover icon points in the direction reported by MAVLink heading, including while turning in place; when heading is unavailable, a regular marker is shown instead. The first precise phone GPS fix (50 m accuracy or better) becomes **Home** and never moves until Reset; later phone fixes extend only the blue branch. The Home button recenters the map. Pinch to zoom, drag to pan, rotate the map, or tap the MapLibre compass to return to north. Phone location is requested only while the Test map is visible and the app is foregrounded. Rover points are accepted only from the configured bridge endpoint and heartbeat system with valid MAVLink CRC and a fresh link. No rover GPS telemetry means no rover line or rover icon. Map tiles use MapLibre demo tiles and require internet access; routes are stored locally and can be exported even when tiles cannot load.
 
 The Controls page records CH1/CH3 **frames actually sent** while live control is enabled. Navigating to Test disables live control as before; Test joysticks never command the vehicle. The TEST SIM/MAP button restores the offline differential-drive preview; it remains an illustrative model, not measured rover motion. Test shows counts for phone positions, rover positions, and sent controls. **CSV** exports all three streams through Android's document picker. The route is retained in private app storage across restarts; **Reset** clears it and sets the next good phone fix as a new Home. The phone position is never used as a substitute for rover GPS.
 

@@ -1,3 +1,8 @@
+## 0.8.1
+- Center Enable/Stop between equal-width Steer and Drive panels.
+- Keep Game road stripes continuous across course resets.
+- Draw a heading-aware rover icon from MAVLink telemetry on the Test map, including rotation in place; persist bearing in CSV.
+
 ## 0.8.0
 - Record transmitted live rover controls and validated global position telemetry in the Test route session.
 - Set a fixed Home from the first precise phone GPS fix and draw later phone movement as a separate route.

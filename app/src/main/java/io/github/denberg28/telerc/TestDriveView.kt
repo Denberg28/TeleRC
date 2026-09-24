@@ -37,6 +37,8 @@ class TestDriveView(context: Context) : View(context) {
     private var leftTrack = 0f
     private var rightTrack = 0f
     private var distance = 0f
+    // Visual scroll is independent of the per-run distance, so crashes never snap the road.
+    private var roadScroll = 0f
     private var passed = 0
     private var waitForRelease = false
     private var lastFrame = 0L
@@ -104,6 +106,7 @@ class TestDriveView(context: Context) : View(context) {
         if (speed <= 0f) return
         val travel = speed * dt
         distance += travel * 100f
+        roadScroll = (roadScroll + travel) % .25f // two stripe periods; preserve color and avoid float drift
         for (gate in gates) {
             gate.y += travel
             if (gate.y < roverY + .04f && gate.y + gateHeight > roverY - .04f &&
@@ -142,7 +145,7 @@ class TestDriveView(context: Context) : View(context) {
         box(canvas, Color.rgb(52, 69, 62), w * .17f - cameraX, 0f, w * .83f - cameraX, h)
         box(canvas, Color.rgb(72, 76, 82), w * .22f - cameraX, 0f, w * .78f - cameraX, h)
         val period = h / 8f
-        val travel = if (mode == Mode.TEST) -cameraY else distance * h / 100f
+        val travel = if (mode == Mode.TEST) -cameraY else roadScroll * h
         val shift = ((travel % period) + period) % period
         val tile = floor(travel / period).toInt()
         for (i in -1..9) {

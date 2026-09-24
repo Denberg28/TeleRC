@@ -38,22 +38,29 @@ class MavlinkTest {
         val payload = ByteArray(28)
         fun put32(offset: Int, value: Int) { for (i in 0..3) payload[offset + i] = (value ushr (8 * i)).toByte() }
         put32(4, 145_995_000); put32(8, 1_209_842_000)
+        payload[26] = 0x28; payload[27] = 0x23 // 90 degrees in centidegrees
         val header = byteArrayOf(0xFE.toByte(), 28, 1, 1, 1, 33)
-        var crc = 0xffff
-        fun accumulate(value: Int) {
-            var tmp = (value xor (crc and 255)) and 255
-            tmp = (tmp xor (tmp shl 4)) and 255
-            crc = ((crc ushr 8) xor (tmp shl 8) xor (tmp shl 3) xor (tmp ushr 4)) and 65535
+        fun frame(): ByteArray {
+            var crc = 0xffff
+            fun accumulate(value: Int) {
+                var tmp = (value xor (crc and 255)) and 255
+                tmp = (tmp xor (tmp shl 4)) and 255
+                crc = ((crc ushr 8) xor (tmp shl 8) xor (tmp shl 3) xor (tmp ushr 4)) and 65535
+            }
+            (header.drop(1) + payload.toList()).forEach { accumulate(it.toInt() and 255) }
+            accumulate(104)
+            return header + payload + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
         }
-        (header.drop(1) + payload.toList()).forEach { accumulate(it.toInt() and 255) }
-        accumulate(104)
-        val packet = header + payload + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+        val packet = frame()
         val position = Mavlink.globalPosition(packet)
         assertEquals(1, position?.system)
         assertEquals(14.5995, position!!.latitude, 0.000001)
         assertEquals(120.9842, position.longitude, 0.000001)
+        assertEquals(90.0, position.headingDegrees!!, 0.000001)
         assertNull(Mavlink.globalPosition(packet.copyOf(packet.size - 1)))
         packet[10] = (packet[10].toInt() xor 1).toByte()
         assertNull(Mavlink.globalPosition(packet))
+        payload[26] = 0xff.toByte(); payload[27] = 0xff.toByte()
+        assertNull(Mavlink.globalPosition(frame())?.headingDegrees)
     }
 }

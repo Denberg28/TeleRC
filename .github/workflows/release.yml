@@ -33,7 +33,9 @@ jobs:
         run: |
           version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
           test -n "$version"
+          awk -v release="## $version" '$0 == release {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
           cp app/build/outputs/apk/release/app-release.apk "TeleRC-v${version}.apk"
-          gh release create "v${version}" "TeleRC-v${version}.apk" --title "TeleRC v${version}" --notes "Rover private test. Check raised-wheel behavior before vehicle use." --latest
+          gh release create "v${version}" "TeleRC-v${version}.apk" --title "TeleRC v${version}" --notes-file release-notes.md --latest
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

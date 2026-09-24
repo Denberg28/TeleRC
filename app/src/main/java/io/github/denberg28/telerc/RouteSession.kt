@@ -2,7 +2,7 @@ package io.github.denberg28.telerc
 
 import kotlin.math.*
 
-data class TrackPoint(val latitude: Double, val longitude: Double, val timeMs: Long)
+data class TrackPoint(val latitude: Double, val longitude: Double, val timeMs: Long, val headingDegrees: Double? = null)
 data class ControlSample(val timeMs: Long, val steering: Int, val drive: Int)
 
 /** The phone's first accepted fix is the immutable origin of its own track. */
@@ -24,10 +24,20 @@ class RouteSession {
     }
 
     fun addRover(point: TrackPoint): Boolean {
-        if (!valid(point)) return false
+        if (!valid(point) || point.headingDegrees != null &&
+            (!point.headingDegrees.isFinite() || point.headingDegrees !in 0.0..<360.0)) return false
         val previous = rover.lastOrNull()
-        if (previous != null && (point.timeMs <= previous.timeMs ||
-                    distance(previous, point) < 1.0 || distance(previous, point) > 35.0 * ((point.timeMs - previous.timeMs) / 1000.0).coerceAtLeast(1.0))) return false
+        if (previous != null) {
+            if (point.timeMs <= previous.timeMs) return false
+            val moved = distance(previous, point)
+            if (moved > 35.0 * ((point.timeMs - previous.timeMs) / 1000.0).coerceAtLeast(1.0)) return false
+            if (moved < 1.0) {
+                // Rotation in place changes the symbol without adding a false distance segment.
+                if (point.headingDegrees == previous.headingDegrees) return false
+                rover[rover.lastIndex] = point
+                return true
+            }
+        }
         rover.add(point)
         return true
     }
@@ -41,23 +51,24 @@ class RouteSession {
     fun reset() { home = null; phone.clear(); rover.clear(); commands.clear() }
 
     fun encode(): String = buildString {
-        append("kind,time_ms,latitude,longitude,steer_us,drive_us\n")
-        phone.forEach { append("phone,${it.timeMs},${it.latitude},${it.longitude},,\n") }
-        rover.forEach { append("rover,${it.timeMs},${it.latitude},${it.longitude},,\n") }
-        commands.forEach { append("command,${it.timeMs},,,${it.steering},${it.drive}\n") }
+        append("kind,time_ms,latitude,longitude,steer_us,drive_us,heading_deg\n")
+        phone.forEach { append("phone,${it.timeMs},${it.latitude},${it.longitude},,,\n") }
+        rover.forEach { append("rover,${it.timeMs},${it.latitude},${it.longitude},,,${it.headingDegrees ?: ""}\n") }
+        commands.forEach { append("command,${it.timeMs},,,${it.steering},${it.drive},\n") }
     }
 
     fun decode(csv: String) {
         reset()
         for (line in csv.lineSequence().drop(1)) {
             val cells = line.split(',')
-            if (cells.size != 6) continue
+            if (cells.size != 6 && cells.size != 7) continue // existing sessions had no bearing column
             val time = cells[1].toLongOrNull() ?: continue
             when (cells[0]) {
                 "phone", "rover" -> {
                     val lat = cells[2].toDoubleOrNull() ?: continue
                     val lon = cells[3].toDoubleOrNull() ?: continue
-                    val point = TrackPoint(lat, lon, time)
+                    val heading = cells.getOrNull(6)?.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..<360.0 }
+                    val point = TrackPoint(lat, lon, time, if (cells[0] == "rover") heading else null)
                     if (cells[0] == "phone") {
                         if (valid(point)) { if (home == null) home = point; phone.add(point) }
                     } else if (valid(point)) rover.add(point)

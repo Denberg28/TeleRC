@@ -214,7 +214,7 @@ class MainActivity : Activity() {
         status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
         root.addView(status, LinearLayout.LayoutParams(-1, dp(30)).apply { bottomMargin = dp(6) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): JoystickView {
+        fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
             val panel = card().apply {
                 addView(text(title, 16f, ink, true).apply { gravity = Gravity.CENTER })
@@ -228,15 +228,15 @@ class MainActivity : Activity() {
                 }
                 addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
             }
-            row.addView(panel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-            return stick
+            return panel to stick
         }
-        steeringStick = control("STEER", "CH1 · left / right", false) { steering = it }
-        driveStick = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
+        val (steerPanel, steerInput) = control("STEER", "CH1 · left / right", false) { steering = it }
+        val (drivePanel, driveInput) = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
+        steeringStick = steerInput; driveStick = driveInput
         val actions = card().apply {
+            gravity = Gravity.CENTER
             addView(text("CONTROL", 16f, ink, true).apply { gravity = Gravity.CENTER })
             addView(text("Rover · CH1 / CH3", 11f, muted).apply { gravity = Gravity.CENTER })
-            addView(Space(this@MainActivity), LinearLayout.LayoutParams(1, 0, 1f))
         }
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl() else if (linkFresh()) {
@@ -245,8 +245,10 @@ class MainActivity : Activity() {
                 refreshUi()
             }
         }
-        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)))
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 0.72f))
+        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(22) })
+        row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 0.72f).apply { rightMargin = dp(8) })
+        row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(text("Release centers sticks · Stop sends neutral and release", 11f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
@@ -292,7 +294,7 @@ class MainActivity : Activity() {
                 mapActive = showTestMap
                 course.visibility = if (showTestMap) View.GONE else View.VISIBLE
                 map.view.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                if (showTestMap) { startPhoneLocation(); map.draw() } else stopPhoneLocation()
+                if (showTestMap) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
                 locate.visibility = if (showTestMap) View.VISIBLE else View.GONE
                 viewMode.text = if (showTestMap) "SIM" else "MAP"
             }.apply { visibility = View.GONE }
@@ -335,7 +337,7 @@ class MainActivity : Activity() {
                     export.visibility = if (checked) View.VISIBLE else View.GONE
                     viewMode.visibility = if (checked) View.VISIBLE else View.GONE
                     routeStatus?.visibility = if (checked) View.VISIBLE else View.GONE
-                    if (mapActive) { startPhoneLocation(); map.draw() } else stopPhoneLocation()
+                    if (mapActive) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
                 }
             }, LinearLayout.LayoutParams(-2, dp(36)))
             bottom.addView(music, LinearLayout.LayoutParams(dp(60), dp(36)).apply { leftMargin = dp(6) })
@@ -361,7 +363,9 @@ class MainActivity : Activity() {
     private fun updateRoute() {
         routeMap?.draw()
         routeStatus?.text = "HOME ${if (route.home == null) "waiting for precise GPS" else "fixed"}  ·  " +
-            "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}  ·  SENT ${route.commands.size}"
+            "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}" +
+            (route.rover.lastOrNull()?.headingDegrees?.let { " H ${it.toInt()}°" } ?: "") +
+            "  ·  SENT ${route.commands.size}"
     }
 
     private fun startPhoneLocation() {
@@ -461,7 +465,7 @@ class MainActivity : Activity() {
                             val position = Mavlink.globalPosition(frame)
                             if (position != null && position.system == target && target != 0 && linkFresh()) {
                                 runOnUiThread {
-                                    if (socket === udp && route.addRover(TrackPoint(position.latitude, position.longitude, System.currentTimeMillis()))) updateRoute()
+                                    if (socket === udp && route.addRover(TrackPoint(position.latitude, position.longitude, System.currentTimeMillis(), position.headingDegrees))) updateRoute()
                                 }
                             }
                         }
