@@ -231,7 +231,7 @@ class MainActivity : Activity() {
         host = null; port = null; connect = null; enable = null
         steeringStick = null; driveStick = null
         val root = shell()
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val course = TestDriveView(this)
         testCourse = course
@@ -249,7 +249,8 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            bottom.addView(text("GAME", 11f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
+            val modeLabel = text("GAME", 12f, ink, true)
+            bottom.addView(modeLabel, LinearLayout.LayoutParams(0, -2, 1f))
             val music = button("♫", false) { }.apply {
                 contentDescription = "Turn game music on or off"
                 setOnClickListener {
@@ -259,16 +260,17 @@ class MainActivity : Activity() {
                 }
             }
             bottom.addView(Switch(this@MainActivity).apply {
-                text = "TEST"; textSize = 11f; isChecked = false
+                text = ""; isChecked = false
                 contentDescription = "Switch between Game and Test modes"
                 setOnCheckedChangeListener { _, checked ->
                     course.setMode(if (checked) TestDriveView.Mode.TEST else TestDriveView.Mode.GAME)
+                    modeLabel.text = if (checked) "TEST" else "GAME"
                     music.isEnabled = !checked
                     if (checked) { music.isSelected = false; music.text = "♫" }
                 }
-            }, LinearLayout.LayoutParams(-2, dp(40)))
-            bottom.addView(music, LinearLayout.LayoutParams(dp(68), dp(40)).apply { leftMargin = dp(8) })
-            addView(bottom, LinearLayout.LayoutParams(-1, dp(40)))
+            }, LinearLayout.LayoutParams(-2, dp(36)))
+            bottom.addView(music, LinearLayout.LayoutParams(dp(60), dp(36)).apply { leftMargin = dp(6) })
+            addView(bottom, LinearLayout.LayoutParams(-1, dp(36)))
         }
         row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
         val right = card().apply {

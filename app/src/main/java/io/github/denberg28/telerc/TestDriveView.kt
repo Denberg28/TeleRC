@@ -9,6 +9,8 @@ import android.media.ToneGenerator
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.floor
 import kotlin.random.Random
 
 /** Offline arcade course; input is never forwarded to the MAVLink transport. */
@@ -132,15 +134,24 @@ class TestDriveView(context: Context) : View(context) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
         val dp = resources.displayMetrics.density
+        // Test uses world positions measured in screen-height units. Keep the rover
+        // at the camera anchor while the infinite road moves in both axes.
+        val cameraX = if (mode == Mode.TEST) (x - .5f) * h else 0f
+        val cameraY = if (mode == Mode.TEST) (y - roverY) * h else 0f
         box(canvas, Color.rgb(30, 40, 48), 0f, 0f, w, h)
-        box(canvas, Color.rgb(52, 69, 62), w * .17f, 0f, w * .83f, h)
-        box(canvas, Color.rgb(72, 76, 82), w * .22f, 0f, w * .78f, h)
-        val shift = (distance * .015f % (h / 8f))
+        box(canvas, Color.rgb(52, 69, 62), w * .17f - cameraX, 0f, w * .83f - cameraX, h)
+        box(canvas, Color.rgb(72, 76, 82), w * .22f - cameraX, 0f, w * .78f - cameraX, h)
+        val period = h / 8f
+        val travel = if (mode == Mode.TEST) -cameraY else distance * h / 100f
+        val shift = ((travel % period) + period) % period
+        val tile = floor(travel / period).toInt()
         for (i in -1..9) {
-            val sy = i * h / 8f + shift
-            box(canvas, Color.rgb(225, 210, 151), w * .495f, sy, w * .505f, sy + h / 22f)
-            box(canvas, if (i % 2 == 0) Color.WHITE else Color.rgb(214, 100, 94), w * .19f, sy, w * .22f, sy + h / 8f)
-            box(canvas, if (i % 2 == 0) Color.rgb(214, 100, 94) else Color.WHITE, w * .78f, sy, w * .81f, sy + h / 8f)
+            val sy = i * period + shift
+            box(canvas, Color.rgb(225, 210, 151), w * .495f - cameraX, sy, w * .505f - cameraX, sy + h / 22f)
+            val stripe = if ((i - tile) % 2 == 0) Color.WHITE else Color.rgb(214, 100, 94)
+            box(canvas, stripe, w * .19f - cameraX, sy, w * .22f - cameraX, sy + period)
+            box(canvas, if ((i - tile) % 2 == 0) Color.rgb(214, 100, 94) else Color.WHITE,
+                w * .78f - cameraX, sy, w * .81f - cameraX, sy + period)
         }
         for (gate in if (mode == Mode.GAME) gates else emptyList()) {
             val left = (gate.center - gapWidth / 2f) * w
@@ -152,7 +163,8 @@ class TestDriveView(context: Context) : View(context) {
             box(canvas, Color.rgb(255, 225, 133), left - 3f * dp, top, left, bottom)
             box(canvas, Color.rgb(255, 225, 133), right, top, right + 3f * dp, bottom)
         }
-        val rx = x * w; val ry = (if (mode == Mode.GAME) roverY else y) * h
+        val rx = if (mode == Mode.GAME) x * w else w * .5f
+        val ry = roverY * h
         val rw = 13f * dp; val rh = 20f * dp
         canvas.save(); canvas.rotate(Math.toDegrees(heading.toDouble()).toFloat(), rx, ry)
         val idleTrack = Color.rgb(22, 25, 35)
@@ -172,18 +184,20 @@ class TestDriveView(context: Context) : View(context) {
         paint.color = Color.WHITE; paint.textSize = 12f * dp; paint.typeface = android.graphics.Typeface.MONOSPACE
         if (mode == Mode.GAME) {
             canvas.drawText("SCORE $passed   BEST $highScore", 12f * dp, 20f * dp, paint)
+            canvas.drawText("DIST ${distance.toInt()}", 12f * dp, h - 12f * dp, paint)
         } else {
-            box(canvas, Color.rgb(26, 32, 42), 0f, 0f, w, 61f * dp)
+            box(canvas, Color.rgb(26, 32, 42), 0f, 0f, w, 42f * dp)
             paint.color = Color.WHITE
-            paint.textSize = 11f * dp
             val ch1 = (1500 + steer * 500).toInt()
             val ch3 = (1500 + throttle * 500).toInt()
             val degrees = ((heading * 180f / PI.toFloat()).toInt() + 360) % 360
-            canvas.drawText("CH1 $ch1   CH3 $ch3", 10f * dp, 17f * dp, paint)
-            canvas.drawText("LEFT ${"%+d".format((leftTrack * 100).toInt())}%   RIGHT ${"%+d".format((rightTrack * 100).toInt())}%", 10f * dp, 36f * dp, paint)
-            canvas.drawText("HEADING ${degrees}°   SPEED ${"%+d".format((speed * 100).toInt())}", 10f * dp, 55f * dp, paint)
+            fun signed(value: Int) = if (value >= 0) "+$value" else "$value"
+            val first = "CH1 $ch1  CH3 $ch3  H ${degrees}°"
+            val second = "L ${signed((leftTrack * 100).toInt())}%  R ${signed((rightTrack * 100).toInt())}%  V ${signed((speed * 100).toInt())}"
+            paint.textSize = 10f * dp
+            paint.textSize *= minOf(1f, (w - 16f * dp) / max(paint.measureText(first), paint.measureText(second)))
+            canvas.drawText(first, 8f * dp, 17f * dp, paint)
+            canvas.drawText(second, 8f * dp, 34f * dp, paint)
         }
-        paint.color = Color.WHITE
-        canvas.drawText("DIST ${distance.toInt()} sim units", 12f * dp, h - 12f * dp, paint)
     }
 }

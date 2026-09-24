@@ -9,6 +9,12 @@ class RoverKinematicsTest {
         assertTrue(gameX(.5f, 1f, .05f) > .5f)
         assertEquals(.5f, gameX(.5f, 0f, .05f), 0f)
     }
+    @Test fun gameSteeringCrossesTheRoadAtControllableRate() {
+        var lateral = .5f
+        repeat(10) { lateral = gameX(lateral, 1f, .05f) }
+        assertTrue(lateral > .5f)
+        assertTrue(lateral < .72f)
+    }
     @Test fun steeringAtRestPivotsWithoutTranslation() {
         val right = roverStep(RoverPose(), 1f, 0f, .05f)
         val left = roverStep(RoverPose(), -1f, 0f, .05f)
@@ -58,5 +64,13 @@ class RoverKinematicsTest {
         val released = roverStep(turning, 0f, 0f, .05f)
         assertTrue(kotlin.math.abs(released.leftTrack) < kotlin.math.abs(turning.leftTrack))
         assertTrue(kotlin.math.abs(released.rightTrack) < kotlin.math.abs(turning.rightTrack))
+    }
+    @Test fun diagonalTravelFollowsHeadingAndIsNotClampedToScreen() {
+        val start = RoverPose(heading = (Math.PI / 4).toFloat())
+        val diagonal = roverStep(start, 0f, 1f, .05f)
+        assertEquals(diagonal.x - start.x, start.y - diagonal.y, .0001f)
+        var far = start
+        repeat(120) { far = roverStep(far, 0f, 1f, .05f) }
+        assertTrue(far.x > .76f && far.y < .15f)
     }
 }

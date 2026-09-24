@@ -14,7 +14,7 @@ internal data class RoverPose(
 
 /** Arcade movement is direct and works even before forward drive is pressed. */
 internal fun gameX(x: Float, steering: Float, dt: Float): Float =
-    (x + steering.coerceIn(-1f, 1f) * dt.coerceIn(0f, .05f) * 1.05f).coerceIn(.245f, .755f)
+    (x + steering.coerceIn(-1f, 1f) * dt.coerceIn(0f, .05f) * .38f).coerceIn(.245f, .755f)
 
 internal fun roverStep(pose: RoverPose, steering: Float, drive: Float, dt: Float): RoverPose {
     val step = dt.coerceIn(0f, .05f)
@@ -33,8 +33,8 @@ internal fun roverStep(pose: RoverPose, steering: Float, drive: Float, dt: Float
     val angle = pose.heading + yaw * step
     val heading = atan2(sin(angle), cos(angle))
     return RoverPose(
-        (pose.x + sin(midHeading) * speed * step).coerceIn(.24f, .76f),
-        (pose.y - cos(midHeading) * speed * step * .45f).coerceIn(.15f, .85f),
+        pose.x + sin(midHeading) * speed * step,
+        pose.y - cos(midHeading) * speed * step,
         heading, speed, left, right
     )
 }
