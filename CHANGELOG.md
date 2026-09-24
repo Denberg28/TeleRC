@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 — joystick controller
+- Replace rover sliders with visibly moving spring-return steering and drive joysticks.
+- Put Enable/Stop in a dedicated card to the right of Drive to avoid overlap.
+- Disable and neutralize controls on orientation changes.
+
 ## 0.3.1 — layout refinement
 - Move tab buttons beneath the header on both pages.
 - Respect status, navigation and display-cutout insets; tighten spacing.
