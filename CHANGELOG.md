@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — layout refinement
+- Move tab buttons beneath the header on both pages.
+- Respect status, navigation and display-cutout insets; tighten spacing.
+
 ## 0.3.0 — two-tab interface
 - Portrait Setup & Config with craft, bridge settings and link status cards.
 - Landscape Controls with separate steering and drive panels; page changes disable control.
