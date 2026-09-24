@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.abs
 import kotlin.math.min
 
 /** Spring-return rover input. Axis output is neutral immediately on release. */
@@ -14,7 +13,7 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val purple = Color.rgb(112, 88, 166)
     private val track = Color.rgb(233, 226, 245)
-    private var position = 0f
+    private var position = StickPosition(0f, 0f)
     private var pointer = -1
 
     init {
@@ -35,19 +34,16 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
         paint.style = Paint.Style.FILL
         paint.color = if (isEnabled) purple else Color.rgb(179, 167, 203)
         val travel = radius * 0.62f
-        val knobX = cx + if (vertical) 0f else position * travel
-        val knobY = cy + if (vertical) position * travel else 0f
+        val knobX = cx + position.x * travel
+        val knobY = cy + position.y * travel
         canvas.drawCircle(knobX, knobY, radius * 0.30f, paint)
         paint.color = Color.WHITE
         canvas.drawCircle(knobX, knobY, radius * 0.12f, paint)
     }
     private fun input(x: Float, y: Float) {
         val radius = min(width * 0.37f, height * 0.43f).coerceAtLeast(dp(24f)) * 0.62f
-        val raw = (if (vertical) (y - height / 2f) else (x - width / 2f)) / radius
-        position = raw.coerceIn(-1f, 1f)
-        val output = if (abs(position) < 0.08f) 1500 else
-            (1500 + (if (vertical) -position else position) * 500).toInt().coerceIn(1000, 2000)
-        changed(output); invalidate()
+        position = limitStick((x - width / 2f) / radius, (y - height / 2f) / radius)
+        changed(stickChannel(position, vertical)); invalidate()
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled) return false
@@ -71,10 +67,10 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     }
     private fun release() {
         pointer = -1; changed(1500)
-        position = 0f; invalidate()
+        position = StickPosition(0f, 0f); invalidate()
     }
     fun reset() {
-        pointer = -1; position = 0f; changed(1500); invalidate()
+        pointer = -1; position = StickPosition(0f, 0f); changed(1500); invalidate()
     }
     override fun setEnabled(enabled: Boolean) {
         super.setEnabled(enabled)

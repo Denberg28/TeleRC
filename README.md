@@ -1,4 +1,4 @@
-# TeleRC 0.7.4 — rover joystick private test
+# TeleRC 0.7.5 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
 
@@ -6,7 +6,7 @@ Offline Android controller for an ArduRover using a bidirectional MAVLink UDP br
 
 1. Configure the bridge to forward complete MAVLink packets in both directions on one configured UDP port, with HEARTBEAT at least once per second. The bridge must send from the same IP **and port** entered in TeleRC. Default is 192.168.4.1:14550. The phone binds the same UDP port locally.
 2. Configure ArduRover default RC input mapping, steering CH1 and bidirectional throttle CH3, with 1500 µs neutral for each. Verify the vehicle's motor directions, deadband, `RC_OVERRIDE_TIME`, GCS/RC failsafe, and independent emergency stop before connecting. TeleRC does not configure these parameters.
-3. Raise wheels off the floor for initial checks. Connect phone to bridge Wi-Fi. In portrait Setup & Config, enter the endpoint and tap Connect. Open landscape Controls, then tap **Enable control** after a checksum-valid heartbeat. Both joysticks return to 1500 when released.
+3. Raise wheels off the floor for initial checks. Connect phone to bridge Wi-Fi. In portrait Setup & Config, enter the endpoint and tap Connect. Open landscape Controls, then tap **Enable control** after a checksum-valid heartbeat. Both joystick knobs move freely in a circle. Only the horizontal axis of the STEER stick feeds CH1; only the vertical axis of the DRIVE stick feeds CH3. Off-axis movement stays neutral, and both assigned channels return to 1500 when released.
 4. Tap Stop / Disable Control or leave the app to send a best-effort neutral frame followed by MAVLink release override. A lost heartbeat disables control within 1.5 seconds; vehicle failsafe remains essential.
 
 ## Offline test drive
