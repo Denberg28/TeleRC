@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.view.View
 import kotlin.math.abs
+import kotlin.math.PI
 import kotlin.random.Random
 
 /** Offline arcade course; input is never forwarded to the MAVLink transport. */
@@ -31,6 +32,8 @@ class TestDriveView(context: Context) : View(context) {
     private var y = .76f
     private var heading = 0f
     private var speed = 0f
+    private var leftTrack = 0f
+    private var rightTrack = 0f
     private var distance = 0f
     private var passed = 0
     private var waitForRelease = false
@@ -65,7 +68,8 @@ class TestDriveView(context: Context) : View(context) {
     fun setDrive(value: Int) { throttle = ((value - 1500) / 500f).coerceIn(-1f, 1f); if (abs(throttle) < .08f) waitForRelease = false }
 
     fun resetCourse(preserveInput: Boolean = false) {
-        x = .5f; y = .76f; heading = 0f; speed = 0f; distance = 0f; passed = 0
+        x = .5f; y = .76f; heading = 0f; speed = 0f
+        leftTrack = 0f; rightTrack = 0f; distance = 0f; passed = 0
         gates.clear()
         gates.add(Gate(-.35f, .5f))
         if (!preserveInput) { steer = 0f; throttle = 0f }
@@ -79,11 +83,12 @@ class TestDriveView(context: Context) : View(context) {
     override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
 
     private fun advance(dt: Float) {
-        // CH1 steers; CH3 drives. A stationary rover cannot translate sideways.
+        // Game remains an arcade lane game; Test mixes CH1/CH3 into skid-steer tracks.
         val demand = if (waitForRelease || abs(throttle) < .08f) 0f else throttle
         if (mode == Mode.TEST) {
-            val next = roverStep(RoverPose(x, y, heading, speed), steer, demand, dt)
+            val next = roverStep(RoverPose(x, y, heading, speed, leftTrack, rightTrack), steer, demand, dt)
             x = next.x; y = next.y; heading = next.heading; speed = next.speed
+            leftTrack = next.leftTrack; rightTrack = next.rightTrack
             distance += abs(speed * dt) * 100f
             return
         }
@@ -150,13 +155,35 @@ class TestDriveView(context: Context) : View(context) {
         val rx = x * w; val ry = (if (mode == Mode.GAME) roverY else y) * h
         val rw = 13f * dp; val rh = 20f * dp
         canvas.save(); canvas.rotate(Math.toDegrees(heading.toDouble()).toFloat(), rx, ry)
-        box(canvas, Color.rgb(22, 25, 35), rx-rw*.8f, ry-rh*.7f, rx+rw*.8f, ry+rh*.7f)
+        val idleTrack = Color.rgb(22, 25, 35)
+        fun trackColor(output: Float) = when {
+            output > .08f -> Color.rgb(54, 207, 176)
+            output < -.08f -> Color.rgb(238, 147, 88)
+            else -> idleTrack
+        }
+        box(canvas, if (mode == Mode.TEST) trackColor(leftTrack) else idleTrack,
+            rx-rw*.88f, ry-rh*.7f, rx-rw*.58f, ry+rh*.7f)
+        box(canvas, if (mode == Mode.TEST) trackColor(rightTrack) else idleTrack,
+            rx+rw*.58f, ry-rh*.7f, rx+rw*.88f, ry+rh*.7f)
         box(canvas, purple, rx-rw*.6f, ry-rh*.8f, rx+rw*.6f, ry+rh*.8f)
         box(canvas, Color.rgb(178, 232, 239), rx-rw*.4f, ry-rh*.58f, rx+rw*.4f, ry-rh*.2f)
         box(canvas, Color.rgb(244, 208, 117), rx-rw*.4f, ry-rh*.84f, rx+rw*.4f, ry-rh*.72f)
         canvas.restore()
         paint.color = Color.WHITE; paint.textSize = 12f * dp; paint.typeface = android.graphics.Typeface.MONOSPACE
-        canvas.drawText(if (mode == Mode.GAME) "SCORE $passed   BEST $highScore" else "CH1 STEER  /  CH3 DRIVE", 12f * dp, 20f * dp, paint)
-        canvas.drawText("SPEED ${abs(speed * 100).toInt()}   DIST ${distance.toInt()}m", 12f * dp, h - 12f * dp, paint)
+        if (mode == Mode.GAME) {
+            canvas.drawText("SCORE $passed   BEST $highScore", 12f * dp, 20f * dp, paint)
+        } else {
+            box(canvas, Color.rgb(26, 32, 42), 0f, 0f, w, 61f * dp)
+            paint.color = Color.WHITE
+            paint.textSize = 11f * dp
+            val ch1 = (1500 + steer * 500).toInt()
+            val ch3 = (1500 + throttle * 500).toInt()
+            val degrees = ((heading * 180f / PI.toFloat()).toInt() + 360) % 360
+            canvas.drawText("CH1 $ch1   CH3 $ch3", 10f * dp, 17f * dp, paint)
+            canvas.drawText("LEFT ${"%+d".format((leftTrack * 100).toInt())}%   RIGHT ${"%+d".format((rightTrack * 100).toInt())}%", 10f * dp, 36f * dp, paint)
+            canvas.drawText("HEADING ${degrees}°   SPEED ${"%+d".format((speed * 100).toInt())}", 10f * dp, 55f * dp, paint)
+        }
+        paint.color = Color.WHITE
+        canvas.drawText("DIST ${distance.toInt()} sim units", 12f * dp, h - 12f * dp, paint)
     }
 }
