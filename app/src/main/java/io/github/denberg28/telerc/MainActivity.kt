@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS }
+    private enum class Page { SETUP, CONTROLS, TEST_DRIVE }
     private var page = Page.SETUP
     private var socket: DatagramSocket? = null
     private val connected = AtomicBoolean(false)
@@ -31,10 +31,13 @@ class MainActivity : Activity() {
     private var status: TextView? = null
     private var connect: Button? = null
     private var enable: Button? = null
-    private var steeringBar: SeekBar? = null
-    private var driveBar: SeekBar? = null
+    private var steeringStick: JoystickView? = null
+    private var driveStick: JoystickView? = null
+    private var testCourse: TestDriveView? = null
     private var host: EditText? = null
     private var port: EditText? = null
+    private var updateStatus: TextView? = null
+    private lateinit var updater: AppUpdater
     private var endpoint: InetAddress? = null
     private var endpointPort = 0
     private val ink = Color.rgb(35, 38, 53)
@@ -66,7 +69,12 @@ class MainActivity : Activity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        page = if (savedInstanceState?.getString("page") == "CONTROLS") Page.CONTROLS else Page.SETUP
+        updater = AppUpdater(this) { updateStatus?.text = it }
+        page = when (savedInstanceState?.getString("page")) {
+            "CONTROLS" -> Page.CONTROLS
+            "TEST_DRIVE" -> Page.TEST_DRIVE
+            else -> Page.SETUP
+        }
         requestedOrientation = if (page == Page.SETUP) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         render()
     }
@@ -74,11 +82,12 @@ class MainActivity : Activity() {
         outState.putString("page", page.name); super.onSaveInstanceState(outState)
     }
     override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig); render()
+        super.onConfigurationChanged(newConfig); disableControl(); testCourse?.stop(); render()
     }
     private fun switchTo(next: Page) {
         if (page == next) return
         disableControl()
+        testCourse?.stop(); testCourse = null
         page = next
         val orientation = if (next == Page.SETUP) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         requestedOrientation = orientation
@@ -102,18 +111,24 @@ class MainActivity : Activity() {
     }
     private fun nav(): LinearLayout = LinearLayout(this).apply {
         gravity = Gravity.CENTER; orientation = LinearLayout.HORIZONTAL
-        val setup = button("⌂  Setup & Config", page == Page.SETUP) { switchTo(Page.SETUP) }
+        val setup = button("⌂  Setup", page == Page.SETUP) { switchTo(Page.SETUP) }
         val controls = button("▣  Controls", page == Page.CONTROLS) { switchTo(Page.CONTROLS) }
-        addView(setup, LinearLayout.LayoutParams(0, dp(52), 1f).apply { rightMargin = dp(8) })
-        addView(controls, LinearLayout.LayoutParams(0, dp(52), 1f))
+        val test = button("▤  Test drive", page == Page.TEST_DRIVE) { switchTo(Page.TEST_DRIVE) }
+        addView(setup, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(7) })
+        addView(controls, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(7) })
+        addView(test, LinearLayout.LayoutParams(0, dp(48), 1f))
     }
     private fun render() {
         window.decorView.systemUiVisibility = 0
-        if (page == Page.SETUP) renderSetup() else renderControls()
+        when (page) {
+            Page.SETUP -> renderSetup()
+            Page.CONTROLS -> renderControls()
+            Page.TEST_DRIVE -> renderTestDrive()
+        }
         refreshUi()
     }
     private fun renderSetup() {
-        enable = null; steeringBar = null; driveBar = null
+        enable = null; steeringStick = null; driveStick = null
         val root = shell()
         root.addView(text("TeleRC", 32f, ink, true))
         root.addView(text("Your craft, in your hands.", 14f, muted))
@@ -154,6 +169,16 @@ class MainActivity : Activity() {
             addView(text("Control requires a valid heartbeat and a separate Enable action.", 13f, muted))
         }
         body.addCard(info)
+        val updates = card().apply {
+            addView(text("APP UPDATE", 12f, accent, true))
+            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 19f, ink, true))
+            addView(text("Check official GitHub releases and install a newer signed APK.", 13f, muted))
+            updateStatus = text("Updates are checked only when you tap the button.", 12f, muted)
+            addView(updateStatus)
+            addView(button("Check for updates", false) { updater.check() },
+                LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
+        }
+        body.addCard(updates)
         body.addView(text("Private bench test  •  Raise wheels before enabling control.", 12f, muted))
         scroll.addView(body); root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
@@ -166,41 +191,77 @@ class MainActivity : Activity() {
         status = text("DISCONNECTED", 15f, accent, true)
         head.addView(status); root.addView(head)
         root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10); bottomMargin = dp(10) })
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        fun control(title: String, hint: String, changed: (Int) -> Unit): SeekBar {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): JoystickView {
             val panel = card().apply {
                 addView(text(title, 20f, ink, true))
                 addView(text(hint, 13f, muted))
-                val bar = SeekBar(this@MainActivity).apply {
-                    max = 1000; progress = 500; isEnabled = false
-                    progressTintList = android.content.res.ColorStateList.valueOf(accent)
-                    thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+                val stick = JoystickView(this@MainActivity, vertical) { value ->
+                    if (controlEnabled.get() || value == 1500) changed(value)
                 }
-                bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seek: SeekBar?, value: Int, fromUser: Boolean) {
-                        if (fromUser && controlEnabled.get()) changed(1000 + value)
-                    }
-                    override fun onStartTrackingTouch(seek: SeekBar?) {}
-                    override fun onStopTrackingTouch(seek: SeekBar?) { bar.progress = 500; changed(1500) }
-                })
-                addView(bar, LinearLayout.LayoutParams(-1, dp(72)))
-                addView(text("◀                  NEUTRAL                  ▶", 12f, muted))
+                addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
+                addView(text(if (vertical) "FORWARD  ↑    •    ↓  REVERSE" else "LEFT  ←    •    →  RIGHT", 12f, muted))
             }
-            row.addView(panel, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(10) })
-            return panel.getChildAt(2) as SeekBar
+            row.addView(panel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(10) })
+            return panel.getChildAt(2) as JoystickView
         }
-        steeringBar = control("STEERING", "Left  /  right · CH1") { steering = it }
-        driveBar = control("DRIVE", "Reverse  /  forward · CH3") { drive = it }
-        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+        steeringStick = control("STEERING", "Left  /  right · CH1", false) { steering = it }
+        driveStick = control("DRIVE", "Reverse  /  forward · CH3", true) { drive = it }
+        val actions = card().apply {
+            addView(text("CONTROL", 14f, accent, true))
+            addView(text("Rover", 20f, ink, true))
+            addView(Space(this@MainActivity), LinearLayout.LayoutParams(1, 0, 1f))
+        }
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl() else if (linkFresh()) {
                 controlEnabled.set(true)
-                steeringBar?.isEnabled = true; driveBar?.isEnabled = true
+                steeringStick?.isEnabled = true; driveStick?.isEnabled = true
                 refreshUi()
             }
         }
-        root.addView(enable, LinearLayout.LayoutParams(-1, dp(52)))
-        root.addView(text("Sliders center on release. Stop sends neutral then releases override.", 12f, muted))
+        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(62)))
+        actions.addView(text("Release returns to neutral.", 12f, muted))
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 0.72f))
+        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
+        root.addView(text("Joysticks center on release. Stop sends neutral then releases override.", 12f, muted))
+        setContentView(root)
+    }
+    private fun renderTestDrive() {
+        host = null; port = null; connect = null; enable = null
+        steeringStick = null; driveStick = null
+        val root = shell()
+        val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        head.addView(text("TeleRC  /  TEST DRIVE", 22f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
+        head.addView(text("OFFLINE", 13f, accent, true))
+        root.addView(head)
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8); bottomMargin = dp(8) })
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val course = TestDriveView(this)
+        testCourse = course
+        val left = card().apply {
+            addView(text("STEER", 16f, ink, true))
+            addView(text("CH1  ·  left / right", 11f, muted))
+            val stick = JoystickView(this@MainActivity, false) { course.setSteering(it) }
+            stick.isEnabled = true
+            addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+        row.addView(left, LinearLayout.LayoutParams(0, -1, 0.9f).apply { rightMargin = dp(8) })
+        val middle = card().apply {
+            addView(course, LinearLayout.LayoutParams(-1, 0, 1f))
+            addView(button("Reset course", false) { course.resetCourse() }, LinearLayout.LayoutParams(-1, dp(40)))
+        }
+        row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
+        val right = card().apply {
+            addView(text("DRIVE", 16f, ink, true))
+            addView(text("CH3  ·  forward / reverse", 11f, muted))
+            val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
+            stick.isEnabled = true
+            addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+        row.addView(right, LinearLayout.LayoutParams(0, -1, 0.9f))
+        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(text("Practice only · Joysticks spring to neutral · No commands sent", 11f, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
     }
     private fun linkFresh() = target != 0 && System.currentTimeMillis() - heartbeatAt < 1500
@@ -227,8 +288,8 @@ class MainActivity : Activity() {
                 udp.send(DatagramPacket(release, release.size, remote, endpointPort))
             }
         } catch (_: Exception) {}
-        steeringBar?.isEnabled = false; driveBar?.isEnabled = false
-        steeringBar?.progress = 500; driveBar?.progress = 500
+        steeringStick?.isEnabled = false; driveStick?.isEnabled = false
+        steeringStick?.reset(); driveStick?.reset()
         refreshUi()
     }
     private fun start() {
@@ -283,6 +344,7 @@ class MainActivity : Activity() {
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
-    override fun onPause() { stop(); super.onPause() }
-    override fun onDestroy() { stop(); super.onDestroy() }
+    override fun onPause() { testCourse?.stop(); stop(); super.onPause() }
+    override fun onResume() { super.onResume(); testCourse?.resume(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onDestroy() { stop(); updater.close(); super.onDestroy() }
 }

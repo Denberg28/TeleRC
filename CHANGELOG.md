@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 — offline test drive
+- Add a third landscape tab with a retro top-down rover course, moving vehicle, speed and distance readouts, and reset.
+- Use independent steering and drive joysticks for offline practice without sending MAVLink.
+- Keep live control disabled when switching tabs or backgrounding the app.
+
+## 0.4.1 — manual direct updates
+- Add a Setup & Config update button for public GitHub release APKs.
+- Verify SHA-256 digest, package identity and version before Android installer handoff.
+- Prepare a manual signed release workflow using repository Actions signing secrets.
+
+## 0.4.0 — joystick controller
+- Replace rover sliders with visibly moving spring-return steering and drive joysticks.
+- Put Enable/Stop in a dedicated card to the right of Drive to avoid overlap.
+- Disable and neutralize controls on orientation changes.
+
 ## 0.3.1 — layout refinement
 - Move tab buttons beneath the header on both pages.
 - Respect status, navigation and display-cutout insets; tighten spacing.
