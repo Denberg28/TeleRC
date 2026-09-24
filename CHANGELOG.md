@@ -1,3 +1,7 @@
+## 0.6.2
+- Reject truncated MAVLink 2 heartbeats without disrupting the connection loop.
+- Use monotonic time for heartbeat age and refresh the debug artifact name.
+
 ## 0.6.1
 - Removed the Test Drive page heading so the course fills more of the display.
 
