@@ -26,5 +26,12 @@ class MavlinkTest {
         val packet = byteArrayOf(0xFE.toByte(), 9, 0, 1, 1, 0) + ByteArray(9) + byteArrayOf(0, 0)
         assertNull(Mavlink.heartbeatSystem(packet))
     }
+    @Test fun truncatedV2HeartbeatNeverCrashes() {
+        val truncated = byteArrayOf(0xFD.toByte(), 9, 0, 0, 0, 1, 1, 0, 0, 0) + ByteArray(9)
+        for (length in 0 until truncated.size) {
+            assertNull(Mavlink.heartbeatSystem(truncated.copyOf(length)))
+        }
+        assertNull(Mavlink.heartbeatSystem(truncated))
+    }
     @Test fun malformedHeartbeatIgnored() { assertNull(Mavlink.heartbeatSystem(byteArrayOf(0xFE.toByte(), 9))) }
 }
