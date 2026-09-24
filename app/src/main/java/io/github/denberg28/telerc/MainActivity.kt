@@ -104,7 +104,7 @@ class MainActivity : Activity() {
         val root = shell()
         root.addView(text("TeleRC", 32f, ink, true))
         root.addView(text("Your craft, in your hands.", 14f, muted))
-        val scroll = ScrollView(this).apply { fillViewport = false }
+        val scroll = ScrollView(this).apply { isFillViewport = false }
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(20), 0, dp(8)) }
         val craft = card().apply {
             addView(text("CRAFT PROFILE", 12f, accent, true))
