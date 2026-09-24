@@ -244,8 +244,19 @@ class MainActivity : Activity() {
         }
         row.addView(left, LinearLayout.LayoutParams(0, -1, 0.9f).apply { rightMargin = dp(8) })
         val middle = card().apply {
+            val tabs = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            val game = button("Game") { course.setMode(TestDriveView.Mode.GAME) }
+            val test = button("Test", false) { course.setMode(TestDriveView.Mode.TEST) }
+            tabs.addView(game, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
+            tabs.addView(test, LinearLayout.LayoutParams(0, dp(40), 1f))
+            game.setOnClickListener { course.setMode(TestDriveView.Mode.GAME); game.setTextColor(Color.WHITE); game.background = shape(accent); test.setTextColor(accent); test.background = shape(Color.rgb(237, 231, 249)) }
+            test.setOnClickListener { course.setMode(TestDriveView.Mode.TEST); test.setTextColor(Color.WHITE); test.background = shape(accent); game.setTextColor(accent); game.background = shape(Color.rgb(237, 231, 249)) }
+            addView(tabs)
             addView(course, LinearLayout.LayoutParams(-1, 0, 1f))
-            addView(button("Reset course", false) { course.resetCourse() }, LinearLayout.LayoutParams(-1, dp(40)))
+            addView(Switch(this@MainActivity).apply {
+                text = "Game music (optional)"; textSize = 12f; isChecked = false
+                setOnCheckedChangeListener { _, checked -> course.setMusic(checked) }
+            }, LinearLayout.LayoutParams(-1, dp(40)))
         }
         row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
         val right = card().apply {
