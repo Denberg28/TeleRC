@@ -1,6 +1,5 @@
 package io.github.denberg28.telerc
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -16,7 +15,6 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     private val purple = Color.rgb(112, 88, 166)
     private val track = Color.rgb(233, 226, 245)
     private var position = 0f
-    private var settling: ValueAnimator? = null
     private var pointer = -1
 
     init {
@@ -55,7 +53,7 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
         if (!isEnabled) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                settling?.cancel(); pointer = event.getPointerId(0)
+                pointer = event.getPointerId(0)
                 parent?.requestDisallowInterceptTouchEvent(true)
                 input(event.x, event.y); return true
             }
@@ -73,16 +71,10 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     }
     private fun release() {
         pointer = -1; changed(1500)
-        settling?.cancel()
-        val initialPosition = position
-        settling = ValueAnimator.ofFloat(initialPosition, 0f).apply {
-            duration = 140
-            addUpdateListener { position = it.animatedValue as Float; invalidate() }
-            start()
-        }
+        position = 0f; invalidate()
     }
     fun reset() {
-        pointer = -1; settling?.cancel(); position = 0f; changed(1500); invalidate()
+        pointer = -1; position = 0f; changed(1500); invalidate()
     }
     override fun setEnabled(enabled: Boolean) {
         super.setEnabled(enabled)
