@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private var routeStatus: TextView? = null
     private var mapActive = false
     private var showTestMap = true
+    private var locationPermissionRequested = false
     private var started = false
     private var resumed = false
     private val locationManager by lazy { getSystemService(LOCATION_SERVICE) as LocationManager }
@@ -366,7 +367,10 @@ class MainActivity : Activity() {
     private fun startPhoneLocation() {
         if (!resumed || !mapActive) return
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
+            if (!locationPermissionRequested) {
+                locationPermissionRequested = true
+                requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
+            }
             routeStatus?.text = "Precise phone location required for Home"
             return
         }
