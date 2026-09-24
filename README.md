@@ -1,4 +1,4 @@
-# TeleRC 0.7.6 — rover joystick private test
+# TeleRC 0.8.0 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
 
@@ -13,7 +13,9 @@ Setup and Controls now share the compact navigation and card layout used in Test
 
 ## Offline test drive
 
-The third, landscape **Test drive** page has Game and Test modes selected with the compact bottom switch, whose label changes between GAME and TEST. The top mode tabs are removed to enlarge the course. Optional music is controlled by the small bottom music button in Game. Game is an endless retro obstacle course: drive forward and move left or right at a controlled lane-change rate with the steering stick to pass gates. It saves the best gate count locally after each pass; a collision restarts the run. Optional generated tones are off by default and stop when leaving the scene. Test has no obstacles and previews a differential-drive rover: CH1 mixes opposite left/right track commands, so steering alone rotates it in place; CH3 drives both tracks forward or backward. A two-line overlay shows CH1/CH3 commands, modeled left/right track direction and percentage, heading, and speed. The camera follows the rover while the continuous road moves beneath it, so diagonal travel follows the indicated heading. Green tracks indicate forward, orange reverse. These are modeled outputs, not vehicle telemetry or measured motor speeds. The actual ArduRover mixing and motor directions depend on your vehicle configuration. This is an illustrative model, not a calibrated replica of your rover. Releasing the sticks brakes the preview quickly. Switching Game and Test preserves joystick input. Both modes remain offline and never send MAVLink. Switching pages disables live control.
+The third, landscape **Test drive** page has Game and Test modes selected with the compact bottom switch. Game is an endless retro obstacle course with optional music. In Test, the MapLibre map shows actual rover `GLOBAL_POSITION_INT` telemetry as a purple line and phone GPS fixes as a separate blue line. The first precise phone GPS fix (50 m accuracy or better) becomes **Home** and never moves until Reset; later phone fixes extend only the blue branch. The Home button recenters the map. Pinch to zoom, drag to pan, rotate the map, or tap the MapLibre compass to return to north. Phone location is requested only while the Test map is visible and the app is foregrounded. Rover points are accepted only from the configured bridge endpoint and heartbeat system with valid MAVLink CRC and a fresh link. No rover GPS telemetry means no rover line. Map tiles use MapLibre demo tiles and require internet access; routes are stored locally and can be exported even when tiles cannot load.
+
+The Controls page records CH1/CH3 **frames actually sent** while live control is enabled. Navigating to Test disables live control as before; Test joysticks never command the vehicle. The TEST SIM/MAP button restores the offline differential-drive preview; it remains an illustrative model, not measured rover motion. Test shows counts for phone positions, rover positions, and sent controls. **CSV** exports all three streams through Android's document picker. The route is retained in private app storage across restarts; **Reset** clears it and sets the next good phone fix as a new Home. The phone position is never used as a substitute for rover GPS.
 
 **Private bench/SITL tests only.** UDP endpoint and checksum checks do not authenticate a vehicle. No MAVLink signing, telemetry validation, arm/mode controls, vehicle configuration, or tested link failsafe is provided. Never use this prototype to control a moving vehicle or flight craft.
 
@@ -29,7 +31,7 @@ The first build uses local Wi-Fi UDP to an ESP32/Raspberry Pi MAVLink bridge. Di
 - No override is sent until a checksum-valid heartbeat arrives from the configured IP and source port **and** the user enables control.
 - Default rover mapping sends CH1 steering, CH3 bidirectional drive, CH2/CH4 neutral; CH5–8 ignored; at most 10 Hz.
 - Both joysticks center on touch release. Disable, disconnect, and app pause attempt a neutral frame and release override. Lost heartbeat stops periodic output and disables the controls.
-- Other craft profiles cannot be selected or operated. The offline test course cannot send vehicle commands.
+- Other craft profiles cannot be selected or operated. The Test map and offline test course cannot send vehicle commands; only actual transmitted controls enter the CSV command stream.
 
 ## Build and status
 

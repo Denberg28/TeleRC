@@ -1,10 +1,16 @@
 package io.github.denberg28.telerc
 
 import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
@@ -35,6 +41,19 @@ class MainActivity : Activity() {
     private var steeringStick: JoystickView? = null
     private var driveStick: JoystickView? = null
     private var testCourse: TestDriveView? = null
+    private val route = RouteSession()
+    private var routeMap: RouteMapView? = null
+    private var routeStatus: TextView? = null
+    private var mapActive = false
+    private var showTestMap = true
+    private var started = false
+    private var resumed = false
+    private val locationManager by lazy { getSystemService(LOCATION_SERVICE) as LocationManager }
+    private val phoneListener = LocationListener { location: Location ->
+        if (!mapActive || !location.hasAccuracy() ||
+            SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos > 10_000_000_000L) return@LocationListener
+        if (route.addPhone(TrackPoint(location.latitude, location.longitude, location.time), location.accuracy)) updateRoute()
+    }
     private var host: EditText? = null
     private var port: EditText? = null
     private var updateStatus: TextView? = null
@@ -70,6 +89,7 @@ class MainActivity : Activity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try { route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() }) } catch (_: Exception) {}
         updater = AppUpdater(this) { updateStatus?.text = it }
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
@@ -83,12 +103,12 @@ class MainActivity : Activity() {
         outState.putString("page", page.name); super.onSaveInstanceState(outState)
     }
     override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig); disableControl(); testCourse?.stop(); render()
+        super.onConfigurationChanged(newConfig); disableControl(); testCourse?.stop(); releaseMap(); render()
     }
     private fun switchTo(next: Page) {
         if (page == next) return
         disableControl()
-        testCourse?.stop(); testCourse = null
+        testCourse?.stop(); testCourse = null; releaseMap()
         page = next
         val orientation = if (next == Page.SETUP) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         requestedOrientation = orientation
@@ -248,13 +268,48 @@ class MainActivity : Activity() {
         }
         row.addView(left, LinearLayout.LayoutParams(0, -1, 0.9f).apply { rightMargin = dp(8) })
         val middle = card().apply {
-            addView(course, LinearLayout.LayoutParams(-1, 0, 1f))
+            val scene = FrameLayout(this@MainActivity)
+            scene.addView(course, FrameLayout.LayoutParams(-1, -1))
+            val map = RouteMapView(this@MainActivity, route)
+            routeMap = map
+            map.view.visibility = View.GONE
+            scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
+            if (started) map.onStart()
+            if (resumed) map.onResume()
+            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
             val bottom = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
             val modeLabel = text("GAME", 12f, ink, true)
             bottom.addView(modeLabel, LinearLayout.LayoutParams(0, -2, 1f))
+            routeStatus = text("", 11f, muted)
+            val locate = button("⌖", false) { map.locateHome() }.apply { contentDescription = "Center map on fixed Home"; visibility = View.GONE }
+            lateinit var viewMode: Button
+            viewMode = button("SIM", false) {
+                showTestMap = !showTestMap
+                mapActive = showTestMap
+                course.visibility = if (showTestMap) View.GONE else View.VISIBLE
+                map.view.visibility = if (showTestMap) View.VISIBLE else View.GONE
+                if (showTestMap) { startPhoneLocation(); map.draw() } else stopPhoneLocation()
+                locate.visibility = if (showTestMap) View.VISIBLE else View.GONE
+                viewMode.text = if (showTestMap) "SIM" else "MAP"
+            }.apply { visibility = View.GONE }
+            // The switch also exposes the offline simulator without sending commands.
+            bottom.addView(viewMode, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(5) })
+            val reset = button("Reset", false) {
+                route.reset(); map.reset(); updateRoute()
+            }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
+            bottom.addView(locate, LinearLayout.LayoutParams(dp(42), dp(36)))
+            bottom.addView(reset, LinearLayout.LayoutParams(dp(68), dp(36)).apply { leftMargin = dp(5) })
+            val export = button("CSV", false) {
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
+                    putExtra(Intent.EXTRA_TITLE, "telerc-route.csv")
+                }
+                startActivityForResult(intent, 43)
+            }.apply { contentDescription = "Export recorded route and transmitted control commands as CSV"; visibility = View.GONE }
+            bottom.addView(export, LinearLayout.LayoutParams(dp(58), dp(36)).apply { leftMargin = dp(5) })
             val music = button("♫", false) { }.apply {
                 contentDescription = "Turn game music on or off"
                 setOnClickListener {
@@ -271,10 +326,21 @@ class MainActivity : Activity() {
                     modeLabel.text = if (checked) "TEST" else "GAME"
                     music.isEnabled = !checked
                     if (checked) { music.isSelected = false; music.text = "♫" }
+                    mapActive = checked && showTestMap
+                    course.visibility = if (mapActive) View.GONE else View.VISIBLE
+                    map.view.visibility = if (mapActive) View.VISIBLE else View.GONE
+                    locate.visibility = if (mapActive) View.VISIBLE else View.GONE
+                    reset.visibility = if (checked) View.VISIBLE else View.GONE
+                    export.visibility = if (checked) View.VISIBLE else View.GONE
+                    viewMode.visibility = if (checked) View.VISIBLE else View.GONE
+                    routeStatus?.visibility = if (checked) View.VISIBLE else View.GONE
+                    if (mapActive) { startPhoneLocation(); map.draw() } else stopPhoneLocation()
                 }
             }, LinearLayout.LayoutParams(-2, dp(36)))
             bottom.addView(music, LinearLayout.LayoutParams(dp(60), dp(36)).apply { leftMargin = dp(6) })
             addView(bottom, LinearLayout.LayoutParams(-1, dp(36)))
+            routeStatus?.visibility = View.GONE
+            addView(routeStatus, LinearLayout.LayoutParams(-1, dp(24)))
         }
         row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
         val right = card().apply {
@@ -286,9 +352,52 @@ class MainActivity : Activity() {
         }
         row.addView(right, LinearLayout.LayoutParams(0, -1, 0.9f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("Practice only · Joysticks spring to neutral · No commands sent", 11f, muted),
+        root.addView(text("Test map: blue phone branch · purple rover telemetry · controls recorded only when enabled on Controls", 11f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
+        updateRoute()
+    }
+    private fun updateRoute() {
+        routeMap?.draw()
+        routeStatus?.text = "HOME ${if (route.home == null) "waiting for precise GPS" else "fixed"}  ·  " +
+            "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}  ·  SENT ${route.commands.size}"
+    }
+
+    private fun startPhoneLocation() {
+        if (!resumed || !mapActive) return
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
+            routeStatus?.text = "Precise phone location required for Home"
+            return
+        }
+        try { locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 2f, phoneListener) }
+        catch (_: Exception) { routeStatus?.text = "Enable phone GPS to set Home" }
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startPhoneLocation()
+        else if (requestCode == 42) routeStatus?.text = "Precise GPS permission required for phone track"
+    }
+    @Deprecated("Activity result used for the Android document picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 43 && resultCode == RESULT_OK) {
+            try {
+                val uri = data?.data ?: return
+                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(route.encode()) }
+                routeStatus?.text = "Route exported"
+            } catch (_: Exception) { routeStatus?.text = "Could not export route" }
+        }
+    }
+    private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
+    private fun releaseMap() {
+        stopPhoneLocation(); mapActive = false
+        routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
+        routeMap = null; routeStatus = null
+    }
+    private fun saveRoute() {
+        try { openFileOutput("route-session.csv", MODE_PRIVATE).bufferedWriter().use { it.write(route.encode()) } }
+        catch (_: Exception) { routeStatus?.text = "Could not save route locally" }
     }
     private fun linkFresh() = target != 0 && SystemClock.elapsedRealtime() - heartbeatAt < 1500
     private fun refreshUi() {
@@ -340,9 +449,17 @@ class MainActivity : Activity() {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
                     if (packet.address == remote && packet.port == number) {
-                        val system = Mavlink.heartbeatSystem(packet.data.copyOfRange(packet.offset, packet.offset + packet.length))
-                        if (system != null && (target == 0 || target == system)) {
-                            target = system; heartbeatAt = SystemClock.elapsedRealtime()
+                        for (frame in Mavlink.frames(packet.data.copyOfRange(packet.offset, packet.offset + packet.length))) {
+                            val system = Mavlink.heartbeatSystem(frame)
+                            if (system != null && (target == 0 || target == system)) {
+                                target = system; heartbeatAt = SystemClock.elapsedRealtime()
+                            }
+                            val position = Mavlink.globalPosition(frame)
+                            if (position != null && position.system == target && target != 0 && linkFresh()) {
+                                runOnUiThread {
+                                    if (socket === udp && route.addRover(TrackPoint(position.latitude, position.longitude, System.currentTimeMillis()))) updateRoute()
+                                }
+                            }
                         }
                     }
                 } catch (_: SocketTimeoutException) {} catch (_: Exception) { break }
@@ -353,6 +470,8 @@ class MainActivity : Activity() {
                         val rc = RoverControls.channels(steering, drive)
                         val bytes = Mavlink.override(sequence++, target, 1, rc.one, rc.two, rc.three, rc.four)
                         udp.send(DatagramPacket(bytes, bytes.size, remote, number)); lastSend = now
+                        val sent = ControlSample(System.currentTimeMillis(), rc.one, rc.three)
+                        runOnUiThread { if (socket === udp) { route.addCommand(sent); updateRoute() } }
                     } catch (_: Exception) { break }
                 }
                 runOnUiThread {
@@ -370,7 +489,10 @@ class MainActivity : Activity() {
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
-    override fun onPause() { testCourse?.stop(); stop(); super.onPause() }
-    override fun onResume() { super.onResume(); testCourse?.resume(); if (::updater.isInitialized) updater.resumePendingInstall() }
-    override fun onDestroy() { stop(); updater.close(); super.onDestroy() }
+    override fun onPause() { resumed = false; stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); stop(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
+    override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
+    override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
+    override fun onDestroy() { releaseMap(); stop(); saveRoute(); updater.close(); super.onDestroy() }
 }

@@ -1,3 +1,8 @@
+## 0.8.0
+- Record transmitted live rover controls and validated global position telemetry in the Test route session.
+- Set a fixed Home from the first precise phone GPS fix and draw later phone movement as a separate route.
+- Add MapLibre Test map with pinch, compass, route reset, CSV export, and access to the offline simulator.
+
 ## 0.6.2
 - Reject truncated MAVLink 2 heartbeats without disrupting the connection loop.
 - Use monotonic time for heartbeat age and refresh the debug artifact name.
@@ -42,3 +47,7 @@
 
 ## 0.1.0 — source prototype
 - Local Wi-Fi UDP MAVLink RC override with heartbeat gate, timeout, disconnect, and offline endpoint persistence.
+## 0.8.0
+- Record transmitted live rover controls and validated global position telemetry in the Test route session.
+- Set a fixed Home from the first precise phone GPS fix and draw later phone movement as a separate route.
+- Add MapLibre Test map with pinch, compass, route reset, CSV export, and access to the offline simulator.
