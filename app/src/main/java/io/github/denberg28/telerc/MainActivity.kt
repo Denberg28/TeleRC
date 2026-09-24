@@ -230,17 +230,13 @@ class MainActivity : Activity() {
         host = null; port = null; connect = null; enable = null
         steeringStick = null; driveStick = null
         val root = shell()
-        val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        head.addView(text("TeleRC  /  TEST DRIVE", 22f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(text("OFFLINE", 13f, accent, true))
-        root.addView(head)
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8); bottomMargin = dp(8) })
+        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val course = TestDriveView(this)
         testCourse = course
         val left = card().apply {
-            addView(text("STEER", 16f, ink, true))
-            addView(text("CH1  ·  left / right", 11f, muted))
+            addView(text("STEER", 16f, ink, true).apply { gravity = Gravity.CENTER })
+            addView(text("CH1  ·  left / right", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, false) { course.setSteering(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -252,8 +248,8 @@ class MainActivity : Activity() {
         }
         row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
         val right = card().apply {
-            addView(text("DRIVE", 16f, ink, true))
-            addView(text("CH3  ·  forward / reverse", 11f, muted))
+            addView(text("DRIVE", 16f, ink, true).apply { gravity = Gravity.CENTER })
+            addView(text("CH3  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
