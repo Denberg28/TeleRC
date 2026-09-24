@@ -11,7 +11,7 @@ Offline Android controller for an ArduRover using a bidirectional MAVLink UDP br
 
 ## Offline test drive
 
-The third, landscape **Test drive** tab is an offline retro rover course. Its steering (CH1) and drive (CH3) joysticks use the same direction, range, deadband, and spring return as the live controls. Steer while driving to turn, pull down to reverse, and tap Reset course to return to the start. The test scene has its own inputs and never sends MAVLink or requires a connection. Switching tabs disables live control.
+The third, landscape **Test drive** tab is an offline endless retro rover course. Hold drive forward to approach randomly placed obstacle gates, steer through the gap, and watch the OBSTACLES counter. A collision resets the run; release drive before starting again. Steering and drive respond directly and the stick display centers immediately on release. Its steering (CH1) and drive (CH3) joysticks use the same direction, range, deadband, and spring return as the live controls. Steer while driving to turn, pull down to reverse, and tap Reset course to return to the start. The test scene has its own inputs and never sends MAVLink or requires a connection. Switching tabs disables live control.
 
 **Private bench/SITL tests only.** UDP endpoint and checksum checks do not authenticate a vehicle. No MAVLink signing, telemetry validation, arm/mode controls, vehicle configuration, or tested link failsafe is provided. Never use this prototype to control a moving vehicle or flight craft.
 
