@@ -287,7 +287,7 @@ class MainActivity : Activity() {
             routeStatus = text("", 11f, muted)
             val locate = button("⌖", false) { map.locateHome() }.apply { contentDescription = "Center map on fixed Home"; visibility = View.GONE }
             lateinit var viewMode: Button
-            viewMode = button("SIM", false) {
+            viewMode = button(if (showTestMap) "SIM" else "MAP", false) {
                 showTestMap = !showTestMap
                 mapActive = showTestMap
                 course.visibility = if (showTestMap) View.GONE else View.VISIBLE
@@ -325,7 +325,7 @@ class MainActivity : Activity() {
                 setOnCheckedChangeListener { _, checked ->
                     course.setMode(if (checked) TestDriveView.Mode.TEST else TestDriveView.Mode.GAME)
                     modeLabel.text = if (checked) "TEST" else "GAME"
-                    music.isEnabled = !checked
+                    music.visibility = if (checked) View.GONE else View.VISIBLE
                     if (checked) { music.isSelected = false; music.text = "♫" }
                     mapActive = checked && showTestMap
                     course.visibility = if (mapActive) View.GONE else View.VISIBLE
