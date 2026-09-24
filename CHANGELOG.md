@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 — two-tab interface
+- Portrait Setup & Config with craft, bridge settings and link status cards.
+- Landscape Controls with separate steering and drive panels; page changes disable control.
+
 ## 0.2.0 — rover private test source
 - Rover steering CH1 and bidirectional throttle CH3; spring return to 1500 µs neutral.
 - Explicit control enable after checksum-valid heartbeat; control disables on link loss, pause, or disconnect.
