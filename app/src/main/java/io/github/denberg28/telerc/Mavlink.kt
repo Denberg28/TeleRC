@@ -35,10 +35,10 @@ object Mavlink {
         val v2 = (packet[0].toInt() and 255) == 0xFD
         if (!v1 && !v2) return null
         val offset = if (v1) 6 else 10
-        if (packet.size < offset + 11 || (packet[1].toInt() and 255) != 9) return null
+        val length = packet[1].toInt() and 255
+        if (length != 9 || packet.size < offset + length + 2) return null
         if (v1 && (packet[5].toInt() and 255) != 0) return null
         if (v2 && (packet[7].toInt() != 0 || packet[8].toInt() != 0 || packet[9].toInt() != 0)) return null
-        val length = packet[1].toInt() and 255
         var crc = 0xffff
         for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
         crc = accumulate(crc, 50) // HEARTBEAT CRC extra
