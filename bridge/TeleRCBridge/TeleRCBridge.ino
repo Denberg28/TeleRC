@@ -184,6 +184,16 @@ void loop() {
   }
   if (millis() - lastDiagnosticMs >= 3000) {
     lastDiagnosticMs = millis();
+    if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhonePacketMs < 5000) {
+      char report[80];
+      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu",
+                            static_cast<unsigned long>(serialBytesSeen),
+                            static_cast<unsigned long>(serialFramesSeen));
+      if (length > 0 && length < int(sizeof(report)) && udp.beginPacket(phone, UDP_PORT)) {
+        udp.write(reinterpret_cast<const uint8_t *>(report), size_t(length));
+        udp.endPacket();
+      }
+    }
     Serial.printf("FC UART bytes=%lu frames=%lu Wi-Fi clients=%d phone=%s\n",
                   static_cast<unsigned long>(serialBytesSeen),
                   static_cast<unsigned long>(serialFramesSeen),
