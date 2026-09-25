@@ -44,6 +44,9 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     private var previewPose: RoverPose? = null
     private var previewOrigin: RoverPose? = null
     private var previewAnchor: TrackPoint? = null
+    private var livePreviewAnchor: TrackPoint? = null
+    private var showLivePreview = false
+    private var liveAnchorHasRoverFix = false
     private var previewLine: Polyline? = null
     private val previewPath = mutableListOf<LatLng>()
     internal var maxSpeedMetersPerSecond = 2.8
@@ -117,11 +120,45 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         if (now - lastPreviewDraw >= 100L) { lastPreviewDraw = now; drawPreview() }
     }
 
+    internal fun beginLivePreview() {
+        val recentRover = session.rover.lastOrNull()?.takeIf {
+            kotlin.math.abs(System.currentTimeMillis() - it.timeMs) <= 5_000L
+        }
+        livePreviewAnchor = recentRover ?: session.home ?: sampleStart
+        liveAnchorHasRoverFix = recentRover != null
+        showLivePreview = true
+        previewPose = RoverPose()
+        resetPreview()
+    }
+
+    internal fun endLivePreview() {
+        showLivePreview = false; livePreviewAnchor = null; liveAnchorHasRoverFix = false; previewPose = null
+        resetPreview()
+    }
+
+    internal val sampleAnchorActive: Boolean get() = showLivePreview && livePreviewAnchor == sampleStart
+
+    /** Rebase once on the first measured rover fix; subsequent fixes expose accumulated drift. */
+    internal fun anchorToRoverIfWaiting(point: TrackPoint): Boolean {
+        if (!showLivePreview || liveAnchorHasRoverFix) return false
+        livePreviewAnchor = point; liveAnchorHasRoverFix = true; centered = false
+        previewPose = RoverPose(); resetPreview()
+        return true
+    }
+
+    internal fun anchorToHomeIfWaiting(): Boolean {
+        val home = session.home ?: return false
+        if (!sampleAnchorActive) return false
+        livePreviewAnchor = home; centered = false
+        previewPose = RoverPose(); resetPreview()
+        return true
+    }
+
     private fun drawPreview() {
         val source = previewSource ?: return
-        val home = session.home ?: sampleStart
+        val home = livePreviewAnchor ?: session.home ?: sampleStart
         val pose = previewPose
-        if (pose == null || session.rover.isNotEmpty()) {
+        if (pose == null || session.rover.isNotEmpty() && !showLivePreview) {
             source.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
             previewLine?.let { map?.removePolyline(it) }; previewLine = null
             return
@@ -151,21 +188,21 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     fun draw() {
         val m = map ?: return
         if (m.style?.isFullyLoaded != true) return
-        if (session.home != null && previewAnchor == sampleStart) centered = false
+        if (session.home != null && previewAnchor == sampleStart && !showLivePreview) centered = false
         homeMarker?.let(m::removeMarker); phoneMarker?.let(m::removeMarker)
         roverMarker?.let(m::removeMarker)
         phoneLine?.let(m::removePolyline); roverLine?.let(m::removePolyline)
         fun coords(p: TrackPoint) = LatLng(p.latitude, p.longitude)
         session.home?.let {
             // The cyan preview marks Home while offline; a pin at the same coordinate obscures its heading.
-            if (session.rover.isNotEmpty())
+            if (session.rover.isNotEmpty() || previewPose == null)
                 homeMarker = m.addMarker(MarkerOptions().position(coords(it)).title("HOME · fixed phone GPS"))
         }
         if (!centered && view.visibility == android.view.View.VISIBLE && view.width > 0 && view.height > 0) {
             locateHome(); centered = true
         }
         session.phone.lastOrNull()?.let {
-            if (session.rover.isNotEmpty() || session.home?.let { home ->
+            if (session.rover.isNotEmpty() || previewPose == null || session.home?.let { home ->
                     distanceMeters(coords(home), coords(it)) > 5.0 } == true)
                 phoneMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Phone · current fix"))
         }
@@ -188,7 +225,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     }
 
     fun locateHome() {
-        val origin = session.home ?: sampleStart
+        val origin = livePreviewAnchor ?: session.home ?: sampleStart
         map?.cameraPosition = CameraPosition.Builder().target(LatLng(origin.latitude, origin.longitude))
             .zoom(17.0).build()
     }

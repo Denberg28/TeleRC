@@ -47,6 +47,9 @@ class MainActivity : Activity() {
     private var routeStatus: TextView? = null
     private var mapBadge: TextView? = null
     private var musicButton: Button? = null
+    private var controlsPlaceholder: View? = null
+    private var controlsLocate: Button? = null
+    private val deadReckoning = DeadReckoning()
     private var mapActive = false
     private var showTestMap = true
     private var locationPermissionRequested = false
@@ -56,7 +59,10 @@ class MainActivity : Activity() {
     private val phoneListener = LocationListener { location: Location ->
         if (!mapActive || !location.hasAccuracy() ||
             SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos > 10_000_000_000L) return@LocationListener
-        if (route.addPhone(TrackPoint(location.latitude, location.longitude, location.time), location.accuracy)) updateRoute()
+        if (route.addPhone(TrackPoint(location.latitude, location.longitude, location.time), location.accuracy)) {
+            if (routeMap?.anchorToHomeIfWaiting() == true) deadReckoning.reset()
+            updateRoute()
+        }
     }
     private var host: EditText? = null
     private var port: EditText? = null
@@ -237,25 +243,78 @@ class MainActivity : Activity() {
         val (drivePanel, driveInput) = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
         steeringStick = steerInput; driveStick = driveInput
         val actions = card().apply {
-            gravity = Gravity.CENTER
             addView(text("CONTROL", 16f, ink, true).apply { gravity = Gravity.CENTER })
-            addView(text("Rover · CH1 / CH3", 11f, muted).apply { gravity = Gravity.CENTER })
+            val scene = FrameLayout(this@MainActivity)
+            controlsPlaceholder = text("Rover · CH1 / CH3\n\nEnable control to show live dead reckoning", 12f, muted).apply {
+                gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
+            }
+            scene.addView(controlsPlaceholder, FrameLayout.LayoutParams(-1, -1))
+            val map = RouteMapView(this@MainActivity, route)
+            map.maxSpeedMetersPerSecond = getSharedPreferences("test_vehicle", MODE_PRIVATE)
+                .getFloat("max_m_s", 2.8f).coerceIn(.1f, 30f).toDouble()
+            routeMap = map
+            map.view.visibility = View.GONE
+            scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
+            val badge = text("CYAN · ESTIMATE FROM SENT RC", 10f, ink, true).apply {
+                background = shape(Color.WHITE, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
+                visibility = View.GONE
+            }
+            mapBadge = badge
+            scene.addView(badge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT)
+                .apply { leftMargin = dp(4); topMargin = dp(4) })
+            controlsLocate = button("⌖", false) { map.locateHome() }.apply {
+                contentDescription = "Center the dead reckoning map"; visibility = View.GONE
+            }
+            scene.addView(controlsLocate, FrameLayout.LayoutParams(dp(36), dp(34), Gravity.TOP or Gravity.RIGHT)
+                .apply { rightMargin = dp(4); topMargin = dp(4) })
+            if (started) map.onStart()
+            if (resumed) map.onResume()
+            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(7) })
         }
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl() else if (linkFresh()) {
                 controlEnabled.set(true)
                 steeringStick?.isEnabled = true; driveStick?.isEnabled = true
+                setControlsMapVisible(true)
                 refreshUi()
             }
         }
-        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(22) })
+        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(7) })
         row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 0.72f).apply { rightMargin = dp(8) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 1.4f).apply { rightMargin = dp(8) })
         row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("Release centers sticks · Stop sends neutral and release", 11f, muted),
+        root.addView(text("Cyan: estimated path from sent CH1/CH3 · Purple: GPS telemetry · Stop clears estimate", 11f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
+        updateRoute()
+        // Ask while controls are still disabled; a permission dialog must never interrupt driving.
+        if (!locationPermissionRequested && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locationPermissionRequested = true
+            root.post {
+                if (page == Page.CONTROLS && !controlEnabled.get())
+                    requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
+            }
+        }
+    }
+    private fun setControlsMapVisible(visible: Boolean) {
+        if (page != Page.CONTROLS) return
+        mapActive = visible
+        routeMap?.view?.visibility = if (visible) View.VISIBLE else View.GONE
+        controlsPlaceholder?.visibility = if (visible) View.GONE else View.VISIBLE
+        controlsLocate?.visibility = if (visible) View.VISIBLE else View.GONE
+        mapBadge?.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) {
+            deadReckoning.reset()
+            deadReckoning.turnDegreesPerSecond = getSharedPreferences("test_vehicle", MODE_PRIVATE)
+                .getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
+            routeMap?.beginLivePreview()
+            startPhoneLocation()
+            routeMap?.view?.post { routeMap?.draw() }
+            updateRoute()
+        } else {
+            stopPhoneLocation(); deadReckoning.reset(); routeMap?.endLivePreview()
+        }
     }
     private fun renderTestDrive() {
         host = null; port = null; connect = null; enable = null
@@ -384,8 +443,11 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
         val vehicle = prefs.getString("name", "Rover") ?: "Rover"
         val maxSpeed = prefs.getFloat("max_m_s", 2.8f)
-        mapBadge?.text = if (route.rover.isEmpty()) "$vehicle · SIM ${"%.1f".format(maxSpeed)} m/s · TAP TO EDIT"
-            else "$vehicle · LIVE ROVER · TAP TO EDIT SIM"
+        mapBadge?.text = when {
+            page == Page.CONTROLS -> "CYAN RC ESTIMATE · ${if (routeMap?.sampleAnchorActive == true) "SAMPLE START" else "GPS ANCHOR"}"
+            route.rover.isEmpty() -> "$vehicle · SIM ${"%.1f".format(maxSpeed)} m/s · TAP TO EDIT"
+            else -> "$vehicle · LIVE ROVER · TAP TO EDIT SIM"
+        }
         routeStatus?.text = "HOME ${if (route.home == null) "GPS pending · SAMPLE MAP" else "GPS fixed"}  ·  " +
             "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}" +
             (route.rover.lastOrNull()?.headingDegrees?.let { " H ${it.toInt()}°" } ?: "") +
@@ -436,7 +498,7 @@ class MainActivity : Activity() {
     private fun startPhoneLocation() {
         if (!resumed || !mapActive) return
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            if (!locationPermissionRequested) {
+            if (!locationPermissionRequested && page != Page.CONTROLS) {
                 locationPermissionRequested = true
                 requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
             }
@@ -476,6 +538,7 @@ class MainActivity : Activity() {
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
         routeMap = null; routeStatus = null; mapBadge = null; musicButton = null
+        controlsPlaceholder = null; controlsLocate = null; deadReckoning.reset()
     }
     private fun saveRoute() {
         try { openFileOutput("route-session.csv", MODE_PRIVATE).bufferedWriter().use { it.write(route.encode()) } }
@@ -495,6 +558,7 @@ class MainActivity : Activity() {
     }
     private fun disableControl() {
         val wasEnabled = controlEnabled.getAndSet(false)
+        if (page == Page.CONTROLS && mapActive) setControlsMapVisible(false)
         steering = 1500; drive = 1500
         if (wasEnabled && target != 0) try {
             val udp = socket; val remote = endpoint
@@ -539,7 +603,14 @@ class MainActivity : Activity() {
                             val position = Mavlink.globalPosition(frame)
                             if (position != null && position.system == target && target != 0 && linkFresh()) {
                                 runOnUiThread {
-                                    if (socket === udp && route.addRover(TrackPoint(position.latitude, position.longitude, System.currentTimeMillis(), position.headingDegrees))) updateRoute()
+                                    if (socket === udp) {
+                                        val point = TrackPoint(position.latitude, position.longitude,
+                                            System.currentTimeMillis(), position.headingDegrees)
+                                        if (route.addRover(point)) {
+                                            if (routeMap?.anchorToRoverIfWaiting(point) == true) deadReckoning.reset()
+                                            updateRoute()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -553,7 +624,14 @@ class MainActivity : Activity() {
                         val bytes = Mavlink.override(sequence++, target, 1, rc.one, rc.two, rc.three, rc.four)
                         udp.send(DatagramPacket(bytes, bytes.size, remote, number)); lastSend = now
                         val sent = ControlSample(System.currentTimeMillis(), rc.one, rc.three)
-                        runOnUiThread { if (socket === udp) { route.addCommand(sent); updateRoute() } }
+                        runOnUiThread {
+                            if (socket === udp) {
+                                route.addCommand(sent)
+                                if (page == Page.CONTROLS && mapActive && controlEnabled.get())
+                                    routeMap?.updatePreview(deadReckoning.accept(now, rc.one, rc.three))
+                                // A sent frame changes only the cyan estimate; avoid redrawing GPS layers at 10 Hz.
+                            }
+                        }
                     } catch (_: Exception) { break }
                 }
                 runOnUiThread {

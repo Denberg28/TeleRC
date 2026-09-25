@@ -1,3 +1,8 @@
+## 0.8.4
+- Transform the Controls center card into a live dead reckoning map while control is enabled; Stop, link loss, and leaving Controls return the card.
+- Integrate only transmitted RC frames with the configured offline speed and pivot settings, label the cyan estimate, and display real rover GPS separately in purple.
+- Re-anchor the estimate once on the first valid GPS fix and keep accumulated drift visible afterward. Reset the estimate on each enable.
+
 ## 0.8.3
 - Replace MapLibre demo tiles with the OpenFreeMap Liberty street style used in HARU. Show a clearly labeled sample map position until precise phone GPS sets fixed Home.
 - Keep the cyan rover visible at Home, draw an estimated joystick route, and configure offline vehicle name, maximum speed, and pivot turn rate by tapping the map badge.
