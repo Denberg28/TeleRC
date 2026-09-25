@@ -34,6 +34,9 @@ class MainActivity : Activity() {
     private val controlEnabled = AtomicBoolean(false)
     private val commandLock = Any()
     @Volatile private var heartbeatAt = 0L
+    @Volatile private var bridgeStatusAt = 0L
+    @Volatile private var bridgeRxBytes = 0L
+    @Volatile private var bridgeFrames = 0L
     @Volatile private var target = 0
     @Volatile private var steering = 1500
     @Volatile private var drive = 1500
@@ -206,6 +209,10 @@ class MainActivity : Activity() {
             addView(text("LINK STATUS", 12f, accent, true))
             status = text("DISCONNECTED", 15f, ink, true); addView(status)
             addView(text("A valid heartbeat and Enable action are required.", 12f, muted))
+            addView(button("Diagnose link", false) {
+                AlertDialog.Builder(this@MainActivity).setTitle("Link diagnostics")
+                    .setMessage(linkDiagnosis()).setPositiveButton("OK", null).show()
+            }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
         }
         body.addCard(info)
         val updates = card().apply {
@@ -586,6 +593,23 @@ class MainActivity : Activity() {
         catch (_: Exception) { routeStatus?.text = "Could not save route locally" }
     }
     private fun linkFresh() = target != 0 && SystemClock.elapsedRealtime() - heartbeatAt < 1500
+    private fun linkDiagnosis(): String {
+        if (!connected.get()) return "Tap Connect first, then wait four seconds and diagnose again."
+        if (linkFresh()) return "Rover heartbeat received. Link active. Control still requires Enable Control."
+        if (bridgeStatusAt == 0L || SystemClock.elapsedRealtime() - bridgeStatusAt > 7000)
+            return "No recent reply from the ESP32 bridge. Check that the phone stays on TeleRC-Rover Wi-Fi, " +
+                "the address/UDP port are 192.168.4.1:14550, and the updated bridge sketch is running. " +
+                "Wait four seconds after Connect and try again."
+        if (bridgeRxBytes == 0L)
+            return "ESP32 responds, but receives zero bytes from the F405. Check T3 → ESP GPIO18, " +
+                "shared GND, SERIAL3_PROTOCOL=2 and SERIAL3_BAUD=115; reboot the F405 after setting them."
+        if (bridgeFrames == 0L)
+            return "ESP32 receives UART bytes ($bridgeRxBytes), but no complete MAVLink frames. " +
+                "Check baud 115200, the ESP GPIO18 RX pin and UART3 wiring."
+        return "ESP32 receives UART bytes ($bridgeRxBytes) and complete frames ($bridgeFrames), " +
+            "but TeleRC has no valid autopilot heartbeat. Check that the F405 is sending MAVLink " +
+            "heartbeats from SERIAL3. Frame count alone does not verify message contents."
+    }
     private fun refreshUi() {
         status?.text = when {
             !connected.get() -> "DISCONNECTED"
@@ -635,7 +659,8 @@ class MainActivity : Activity() {
         catch (e: Exception) { status?.text = "UDP PORT UNAVAILABLE"; return }
         getSharedPreferences("link", MODE_PRIVATE).edit().putString("host", address).putInt("port", number).apply()
         socket = udp; endpoint = remote; endpointPort = number
-        target = 0; heartbeatAt = 0; disableControl(); connected.set(true)
+        target = 0; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
+        disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L
@@ -652,7 +677,18 @@ class MainActivity : Activity() {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
                     if (packet.address == remote && packet.port == number) {
-                        for (frame in Mavlink.frames(packet.data.copyOfRange(packet.offset, packet.offset + packet.length))) {
+                        val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+                        if (payload.size in 20..80 && payload.take(17).toByteArray()
+                                .contentEquals("TELERC_STATUS_V1,".toByteArray(Charsets.US_ASCII))) {
+                            val fields = String(payload, Charsets.US_ASCII).split(',')
+                            val bytes = fields.getOrNull(1)?.toLongOrNull()
+                            val frames = fields.getOrNull(2)?.toLongOrNull()
+                            if (fields.size == 3 && bytes != null && frames != null &&
+                                bytes >= 0 && frames >= 0 && frames <= bytes) {
+                                bridgeRxBytes = bytes; bridgeFrames = frames
+                                bridgeStatusAt = SystemClock.elapsedRealtime()
+                            }
+                        } else for (frame in Mavlink.frames(payload)) {
                             val system = Mavlink.heartbeatSystem(frame)
                             if (system != null && (target == 0 || target == system)) {
                                 target = system; heartbeatAt = SystemClock.elapsedRealtime()
@@ -719,6 +755,7 @@ class MainActivity : Activity() {
     private fun stop() {
         disableControl(); connected.set(false)
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
+        bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
     override fun onPause() { resumed = false; stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; stop(); saveRoute(); super.onPause() }
