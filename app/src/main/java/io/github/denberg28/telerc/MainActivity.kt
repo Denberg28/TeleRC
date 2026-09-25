@@ -49,6 +49,7 @@ class MainActivity : Activity() {
     private var musicButton: Button? = null
     private var controlsPlaceholder: View? = null
     private var controlsLocate: Button? = null
+    private var controlsEstimate: TextView? = null
     private val deadReckoning = DeadReckoning()
     private var mapActive = false
     private var showTestMap = true
@@ -267,6 +268,12 @@ class MainActivity : Activity() {
             }
             scene.addView(controlsLocate, FrameLayout.LayoutParams(dp(36), dp(34), Gravity.TOP or Gravity.RIGHT)
                 .apply { rightMargin = dp(4); topMargin = dp(4) })
+            controlsEstimate = text("EST 0 m · H 0° · 0 m/s", 10f, ink, true).apply {
+                background = shape(Color.WHITE, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
+                visibility = View.GONE
+            }
+            scene.addView(controlsEstimate, FrameLayout.LayoutParams(-2, dp(25), Gravity.BOTTOM or Gravity.RIGHT)
+                .apply { rightMargin = dp(4); bottomMargin = dp(4) })
             if (started) map.onStart()
             if (resumed) map.onResume()
             addView(scene, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(7) })
@@ -303,9 +310,11 @@ class MainActivity : Activity() {
         routeMap?.view?.visibility = if (visible) View.VISIBLE else View.GONE
         controlsPlaceholder?.visibility = if (visible) View.GONE else View.VISIBLE
         controlsLocate?.visibility = if (visible) View.VISIBLE else View.GONE
+        controlsEstimate?.visibility = if (visible) View.VISIBLE else View.GONE
         mapBadge?.visibility = if (visible) View.VISIBLE else View.GONE
         if (visible) {
             deadReckoning.reset()
+            controlsEstimate?.text = "DISP 0 m · H 0° · 0 m/s"
             deadReckoning.turnDegreesPerSecond = getSharedPreferences("test_vehicle", MODE_PRIVATE)
                 .getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
             routeMap?.beginLivePreview()
@@ -538,7 +547,7 @@ class MainActivity : Activity() {
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
         routeMap = null; routeStatus = null; mapBadge = null; musicButton = null
-        controlsPlaceholder = null; controlsLocate = null; deadReckoning.reset()
+        controlsPlaceholder = null; controlsLocate = null; controlsEstimate = null; deadReckoning.reset()
     }
     private fun saveRoute() {
         try { openFileOutput("route-session.csv", MODE_PRIVATE).bufferedWriter().use { it.write(route.encode()) } }
@@ -627,8 +636,16 @@ class MainActivity : Activity() {
                         runOnUiThread {
                             if (socket === udp) {
                                 route.addCommand(sent)
-                                if (page == Page.CONTROLS && mapActive && controlEnabled.get())
-                                    routeMap?.updatePreview(deadReckoning.accept(now, rc.one, rc.three))
+                                if (page == Page.CONTROLS && mapActive && controlEnabled.get()) {
+                                    val pose = deadReckoning.accept(now, rc.one, rc.three)
+                                    routeMap?.updatePreview(pose)
+                                    val metersPerUnit = (routeMap?.maxSpeedMetersPerSecond ?: 2.8) / .7
+                                    val distance = kotlin.math.hypot((pose.x - .5f).toDouble(),
+                                        (pose.y - .76f).toDouble()) * metersPerUnit
+                                    val heading = (Math.toDegrees(pose.heading.toDouble()) + 360.0) % 360.0
+                                    controlsEstimate?.text = "DISP ${"%.1f".format(distance)} m · H ${heading.toInt()}° · " +
+                                        "${"%.1f".format(kotlin.math.abs(pose.speed) * metersPerUnit)} m/s"
+                                }
                                 // A sent frame changes only the cyan estimate; avoid redrawing GPS layers at 10 Hz.
                             }
                         }
