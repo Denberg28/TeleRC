@@ -80,7 +80,8 @@ class RouteSession {
                     val lat = cells[2].toDoubleOrNull() ?: continue
                     val lon = cells[3].toDoubleOrNull() ?: continue
                     val heading = cells.getOrNull(6)?.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..<360.0 }
-                    val point = TrackPoint(lat, lon, time, if (cells[0] == "rover") heading else null)
+                    val point = TrackPoint(lat, lon, time,
+                        if (cells[0] == "rover" || cells[0] == "estimate") heading else null)
                     if (cells[0] == "phone") {
                         if (valid(point) && phone.size < 20_000) { if (home == null) home = point; phone.add(point) }
                     } else if (cells[0] == "estimate") {
