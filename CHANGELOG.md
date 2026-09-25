@@ -1,3 +1,7 @@
+## 0.8.2
+- Show a labeled cyan heading-aware offline rover preview on the Test map after Home GPS is fixed; keep simulation separate from measured telemetry.
+- Replace the quiet frame-driven Game beeps with a looping melody that plays while the music button is on, including while stationary; use media volume.
+
 ## 0.8.1
 - Center Enable/Stop between equal-width Steer and Drive panels.
 - Keep Game road stripes continuous across course resets.

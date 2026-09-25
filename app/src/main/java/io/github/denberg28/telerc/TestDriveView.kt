@@ -4,8 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.media.AudioManager
-import android.media.ToneGenerator
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.PI
@@ -21,8 +19,8 @@ class TestDriveView(context: Context) : View(context) {
     private val scores = context.getSharedPreferences("game", Context.MODE_PRIVATE)
     private var highScore = scores.getInt("high_score", 0)
     private var music = false
-    private var tone: ToneGenerator? = null
-    private var beatAt = 0L
+    private val musicPlayer = GameMusic()
+    internal var onTestPose: ((RoverPose) -> Unit)? = null
     private data class Gate(var y: Float, val center: Float, var passed: Boolean = false)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val purple = Color.rgb(112, 88, 166)
@@ -63,10 +61,10 @@ class TestDriveView(context: Context) : View(context) {
         mode = value; resetCourse(preserveInput = true)
         if (value == Mode.TEST) setMusic(false)
     }
-    fun setMusic(enabled: Boolean) {
-        music = enabled && mode == Mode.GAME
-        if (!music) { tone?.release(); tone = null }
-        else if (tone == null) tone = runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 22) }.getOrNull()
+    fun setMusic(enabled: Boolean): Boolean {
+        music = enabled && mode == Mode.GAME && musicPlayer.start()
+        if (!music) musicPlayer.stop()
+        return music
     }
     fun setSteering(value: Int) { steer = ((value - 1500) / 500f).coerceIn(-1f, 1f) }
     fun setDrive(value: Int) { throttle = ((value - 1500) / 500f).coerceIn(-1f, 1f); if (abs(throttle) < .08f) waitForRelease = false }
@@ -94,15 +92,12 @@ class TestDriveView(context: Context) : View(context) {
             x = next.x; y = next.y; heading = next.heading; speed = next.speed
             leftTrack = next.leftTrack; rightTrack = next.rightTrack
             distance += abs(speed * dt) * 100f
+            onTestPose?.invoke(next)
             return
         }
         speed += (demand * .75f - speed) * (dt * 14f).coerceAtMost(1f)
         // Arcade lane control is independent of forward drive: left always moves left.
         x = gameX(x, steer, dt)
-        if (music && System.nanoTime() - beatAt > 360_000_000L) {
-            beatAt = System.nanoTime()
-            tone?.startTone(if ((passed and 1) == 0) ToneGenerator.TONE_PROP_BEEP else ToneGenerator.TONE_PROP_ACK, 55)
-        }
         if (speed <= 0f) return
         val travel = speed * dt
         distance += travel * 100f

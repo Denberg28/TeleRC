@@ -44,6 +44,8 @@ class MainActivity : Activity() {
     private val route = RouteSession()
     private var routeMap: RouteMapView? = null
     private var routeStatus: TextView? = null
+    private var mapBadge: TextView? = null
+    private var musicButton: Button? = null
     private var mapActive = false
     private var showTestMap = true
     private var locationPermissionRequested = false
@@ -275,8 +277,17 @@ class MainActivity : Activity() {
             scene.addView(course, FrameLayout.LayoutParams(-1, -1))
             val map = RouteMapView(this@MainActivity, route)
             routeMap = map
+            course.onTestPose = { pose -> if (mapActive) map.updatePreview(pose) }
             map.view.visibility = View.GONE
             scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
+            mapBadge = text("CYAN ROVER · OFFLINE PREVIEW", 10f, ink, true).apply {
+                background = shape(Color.WHITE, 8)
+                setPadding(dp(6), dp(2), dp(6), dp(2))
+                visibility = View.GONE
+            }
+            scene.addView(mapBadge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT).apply {
+                leftMargin = dp(6); topMargin = dp(6)
+            })
             if (started) map.onStart()
             if (resumed) map.onResume()
             addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -294,6 +305,7 @@ class MainActivity : Activity() {
                 mapActive = showTestMap
                 course.visibility = if (showTestMap) View.GONE else View.VISIBLE
                 map.view.visibility = if (showTestMap) View.VISIBLE else View.GONE
+                mapBadge?.visibility = if (showTestMap) View.VISIBLE else View.GONE
                 if (showTestMap) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
                 locate.visibility = if (showTestMap) View.VISIBLE else View.GONE
                 viewMode.text = if (showTestMap) "SIM" else "MAP"
@@ -314,13 +326,13 @@ class MainActivity : Activity() {
             }.apply { contentDescription = "Export recorded route and transmitted control commands as CSV"; visibility = View.GONE }
             bottom.addView(export, LinearLayout.LayoutParams(dp(58), dp(36)).apply { leftMargin = dp(5) })
             val music = button("♫", false) { }.apply {
-                contentDescription = "Turn game music on or off"
+                contentDescription = "Turn game music on or off; uses media volume"
                 setOnClickListener {
-                    isSelected = !isSelected
-                    course.setMusic(isSelected)
+                    isSelected = course.setMusic(!isSelected)
                     text = if (isSelected) "♫ ON" else "♫"
                 }
             }
+            musicButton = music
             bottom.addView(Switch(this@MainActivity).apply {
                 text = ""; isChecked = false
                 contentDescription = "Switch between Game and Test modes"
@@ -332,6 +344,7 @@ class MainActivity : Activity() {
                     mapActive = checked && showTestMap
                     course.visibility = if (mapActive) View.GONE else View.VISIBLE
                     map.view.visibility = if (mapActive) View.VISIBLE else View.GONE
+                    mapBadge?.visibility = if (mapActive) View.VISIBLE else View.GONE
                     locate.visibility = if (mapActive) View.VISIBLE else View.GONE
                     reset.visibility = if (checked) View.VISIBLE else View.GONE
                     export.visibility = if (checked) View.VISIBLE else View.GONE
@@ -355,13 +368,14 @@ class MainActivity : Activity() {
         }
         row.addView(right, LinearLayout.LayoutParams(0, -1, 0.9f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("Test map: blue phone branch · purple rover telemetry · controls recorded only when enabled on Controls", 11f, muted),
+        root.addView(text("Test map: cyan offline rover · blue phone branch · purple live rover · live controls recorded on Controls", 11f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
         updateRoute()
     }
     private fun updateRoute() {
         routeMap?.draw()
+        mapBadge?.text = if (route.rover.isEmpty()) "CYAN ROVER · OFFLINE PREVIEW" else "PURPLE ROVER · TELEMETRY"
         routeStatus?.text = "HOME ${if (route.home == null) "waiting for precise GPS" else "fixed"}  ·  " +
             "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}" +
             (route.rover.lastOrNull()?.headingDegrees?.let { " H ${it.toInt()}°" } ?: "") +
@@ -401,7 +415,7 @@ class MainActivity : Activity() {
     private fun releaseMap() {
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
-        routeMap = null; routeStatus = null
+        routeMap = null; routeStatus = null; mapBadge = null; musicButton = null
     }
     private fun saveRoute() {
         try { openFileOutput("route-session.csv", MODE_PRIVATE).bufferedWriter().use { it.write(route.encode()) } }
@@ -497,7 +511,7 @@ class MainActivity : Activity() {
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
-    override fun onPause() { resumed = false; stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); stop(); saveRoute(); super.onPause() }
+    override fun onPause() { resumed = false; stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; stop(); saveRoute(); super.onPause() }
     override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
