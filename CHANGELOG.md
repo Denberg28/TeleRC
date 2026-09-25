@@ -1,3 +1,8 @@
+## 0.8.7
+- Send a receive-only discovery packet so the ESP bridge can route MAVLink telemetry directly to the phone before control is enabled.
+- Explain missing heartbeat when Enable Control is tapped; continue blocking all motor commands until a valid heartbeat arrives.
+- Print ESP UART frame and Wi-Fi client counters to diagnose wiring, serial settings, and phone connectivity.
+
 ## 0.8.6
 - Keep the Controls recovery map visible after Stop, link loss, and app pause while command output remains disabled.
 - Show the age of the last rover GPS fix; recenter on that fix, falling back to the last RC estimate and then Home.
