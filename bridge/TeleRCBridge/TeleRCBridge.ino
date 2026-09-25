@@ -8,6 +8,7 @@ constexpr int FC_RX_GPIO = 18;
 constexpr int FC_TX_GPIO = 17;
 constexpr uint32_t FC_BAUD = 115200; // ArduRover SERIAL3_BAUD = 115
 constexpr uint16_t UDP_PORT = 14550;
+const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to the FC
 const char AP_SSID[] = "TeleRC-Rover";
 const char AP_PASSWORD[] = "CHANGE_TO_PRIVATE_PASSWORD";
 const IPAddress AP_IP(192, 168, 4, 1);
@@ -26,6 +27,9 @@ uint8_t serialFrame[280];
 uint16_t serialSize = 0;
 uint16_t serialExpected = 0;
 uint32_t serialByteMs = 0;
+uint32_t serialBytesSeen = 0;
+uint32_t serialFramesSeen = 0;
+uint32_t lastDiagnosticMs = 0;
 
 uint16_t crcByte(uint16_t crc, uint8_t byte) {
   uint8_t tmp = byte ^ (crc & 0xff);
@@ -95,6 +99,7 @@ void toPhone(const uint8_t *frame, size_t length) {
 }
 
 void consumeFcByte(uint8_t b) {
+  serialBytesSeen++;
   if (serialSize && millis() - serialByteMs > 100) {
     serialSize = 0;
     serialExpected = 0;
@@ -113,6 +118,7 @@ void consumeFcByte(uint8_t b) {
     }
   }
   if (serialExpected && serialSize == serialExpected) {
+    serialFramesSeen++;
     toPhone(serialFrame, serialSize);
     serialSize = 0;
     serialExpected = 0;
@@ -153,7 +159,12 @@ void loop() {
                  sender[3] > 1 && sender[3] < 255;
     bool paired = phone == IPAddress(0, 0, 0, 0) || phone == sender ||
                   millis() - lastPhonePacketMs >= 5000;
-    if (packetSize == 26 && count == 26 && senderPort == UDP_PORT && local &&
+    if (packetSize == sizeof(DISCOVERY) - 1 && count == packetSize &&
+        senderPort == UDP_PORT && local && paired &&
+        memcmp(p, DISCOVERY, sizeof(DISCOVERY) - 1) == 0) {
+      phone = sender;
+      lastPhonePacketMs = millis();
+    } else if (packetSize == 26 && count == 26 && senderPort == UDP_PORT && local &&
         paired && validTeleRcCommand(p, count)) {
       phone = sender;
       lastPhonePacketMs = millis();
@@ -170,6 +181,13 @@ void loop() {
     sendOverride(1500); // best effort neutral
     sendOverride(0);    // release to calibrated Flysky receiver
     controlActive = false;
+  }
+  if (millis() - lastDiagnosticMs >= 3000) {
+    lastDiagnosticMs = millis();
+    Serial.printf("FC UART bytes=%lu frames=%lu Wi-Fi clients=%d phone=%s\n",
+                  static_cast<unsigned long>(serialBytesSeen),
+                  static_cast<unsigned long>(serialFramesSeen),
+                  WiFi.softAPgetStationNum(), phone.toString().c_str());
   }
   delay(1);
 }
