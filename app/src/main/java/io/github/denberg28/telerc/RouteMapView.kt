@@ -37,6 +37,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     private var roverMarker: Marker? = null
     private var phoneLine: Polyline? = null
     private var roverLine: Polyline? = null
+    private var estimatedLine: Polyline? = null
     private var roverSource: GeoJsonSource? = null
     private var roverLayer: SymbolLayer? = null
     private var previewSource: GeoJsonSource? = null
@@ -46,6 +47,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     private var previewAnchor: TrackPoint? = null
     private var livePreviewAnchor: TrackPoint? = null
     private var showLivePreview = false
+    internal val livePreviewActive: Boolean get() = showLivePreview
     private var liveAnchorHasRoverFix = false
     private var previewLine: Polyline? = null
     private val previewPath = mutableListOf<LatLng>()
@@ -87,7 +89,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         return bitmap
         }
         style.addImage("telerc-rover-heading", icon(Color.rgb(112, 88, 166)))
-        style.addImage("telerc-preview-heading", icon(Color.rgb(42, 153, 191)))
+        style.addImage("telerc-preview-heading", icon(Color.rgb(0, 180, 186)))
         roverSource = GeoJsonSource("telerc-rover-position", FeatureCollection.fromFeatures(arrayOf<Feature>()))
         style.addSource(roverSource!!)
         roverLayer = SymbolLayer("telerc-rover-heading-layer", "telerc-rover-position").apply {
@@ -124,7 +126,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         val recentRover = session.rover.lastOrNull()?.takeIf {
             kotlin.math.abs(System.currentTimeMillis() - it.timeMs) <= 5_000L
         }
-        livePreviewAnchor = recentRover ?: session.home ?: sampleStart
+        livePreviewAnchor = recentRover ?: session.rover.lastOrNull() ?: session.home ?: sampleStart
         liveAnchorHasRoverFix = recentRover != null
         showLivePreview = true
         previewPose = RoverPose()
@@ -142,6 +144,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     internal fun anchorToRoverIfWaiting(point: TrackPoint): Boolean {
         if (!showLivePreview || liveAnchorHasRoverFix) return false
         livePreviewAnchor = point; liveAnchorHasRoverFix = true; centered = false
+        session.estimated.clear() // previous anchor was unconfirmed; do not connect it to measured GPS
         previewPose = RoverPose(); resetPreview()
         return true
     }
@@ -150,6 +153,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         val home = session.home ?: return false
         if (!sampleAnchorActive) return false
         livePreviewAnchor = home; centered = false
+        session.estimated.clear() // discard the illustrative sample-location path
         previewPose = RoverPose(); resetPreview()
         return true
     }
@@ -159,7 +163,11 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         val home = livePreviewAnchor ?: session.home ?: sampleStart
         val pose = previewPose
         if (pose == null || session.rover.isNotEmpty() && !showLivePreview) {
-            source.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
+            val last = session.estimated.lastOrNull()
+            source.setGeoJson(if (last == null) FeatureCollection.fromFeatures(arrayOf<Feature>())
+                else FeatureCollection.fromFeatures(arrayOf(Feature.fromGeometry(
+                    Point.fromLngLat(last.longitude, last.latitude)))))
+            last?.headingDegrees?.let { previewLayer?.setProperties(PropertyFactory.iconRotate(it.toFloat())) }
             previewLine?.let { map?.removePolyline(it) }; previewLine = null
             return
         }
@@ -179,9 +187,14 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         if (last != null && distanceMeters(last, current) >= 1.0) {
             previewPath.add(current)
             if (previewPath.size > 500) previewPath.removeAt(0)
+            if (showLivePreview) {
+                session.addEstimate(TrackPoint(current.latitude, current.longitude,
+                    System.currentTimeMillis(), location.headingDegrees))
+                drawEstimatedLine()
+            }
             previewLine?.let { map?.removePolyline(it) }
             previewLine = map?.addPolyline(PolylineOptions().addAll(previewPath)
-                .color(Color.rgb(42, 153, 191)).width(4f))
+                .color(Color.rgb(0, 180, 186)).width(4f))
         }
     }
 
@@ -192,6 +205,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         homeMarker?.let(m::removeMarker); phoneMarker?.let(m::removeMarker)
         roverMarker?.let(m::removeMarker)
         phoneLine?.let(m::removePolyline); roverLine?.let(m::removePolyline)
+        drawEstimatedLine()
         fun coords(p: TrackPoint) = LatLng(p.latitude, p.longitude)
         session.home?.let {
             // The cyan preview marks Home while offline; a pin at the same coordinate obscures its heading.
@@ -199,7 +213,9 @@ class RouteMapView(context: Context, private val session: RouteSession) {
                 homeMarker = m.addMarker(MarkerOptions().position(coords(it)).title("HOME · fixed phone GPS"))
         }
         if (!centered && view.visibility == android.view.View.VISIBLE && view.width > 0 && view.height > 0) {
-            locateHome(); centered = true
+            if (session.rover.isNotEmpty() || session.estimated.isNotEmpty()) locateRecovery()
+            else locateHome()
+            centered = true
         }
         session.phone.lastOrNull()?.let {
             if (session.rover.isNotEmpty() || previewPose == null || session.home?.let { home ->
@@ -219,7 +235,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         if (session.rover.isEmpty()) roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
         drawPreview()
         if (session.phone.size > 1) phoneLine = m.addPolyline(
-            PolylineOptions().addAll(session.phone.map(::coords)).color(Color.rgb(42, 153, 191)).width(5f))
+            PolylineOptions().addAll(session.phone.map(::coords)).color(Color.rgb(49, 113, 203)).width(5f))
         if (session.rover.size > 1) roverLine = m.addPolyline(
             PolylineOptions().addAll(session.rover.map(::coords)).color(Color.rgb(112, 88, 166)).width(6f))
     }
@@ -228,6 +244,21 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         val origin = livePreviewAnchor ?: session.home ?: sampleStart
         map?.cameraPosition = CameraPosition.Builder().target(LatLng(origin.latitude, origin.longitude))
             .zoom(17.0).build()
+    }
+
+    /** Recovery priority: measured rover GPS, then last RC estimate, then phone Home. */
+    fun locateRecovery() {
+        val last = session.rover.lastOrNull() ?: session.estimated.lastOrNull()
+            ?: livePreviewAnchor ?: session.home ?: sampleStart
+        map?.cameraPosition = CameraPosition.Builder().target(LatLng(last.latitude, last.longitude))
+            .zoom(17.0).build()
+    }
+
+    private fun drawEstimatedLine() {
+        estimatedLine?.let { map?.removePolyline(it) }; estimatedLine = null
+        if (session.estimated.size > 1) estimatedLine = map?.addPolyline(PolylineOptions()
+            .addAll(session.estimated.map { LatLng(it.latitude, it.longitude) })
+            .color(Color.rgb(0, 180, 186)).width(4f))
     }
 
     fun reset() {
@@ -250,7 +281,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     fun onResume() = view.onResume()
     fun onPause() = view.onPause()
     fun onStop() = view.onStop()
-    fun onDestroy() { view.onDestroy(); roverSource = null; roverLayer = null; previewSource = null; previewLayer = null; previewLine = null; map = null }
+    fun onDestroy() { view.onDestroy(); roverSource = null; roverLayer = null; previewSource = null; previewLayer = null; previewLine = null; estimatedLine = null; map = null }
     fun onLowMemory() = view.onLowMemory()
     fun onSaveInstanceState(out: Bundle) = view.onSaveInstanceState(out)
 }

@@ -1,3 +1,9 @@
+## 0.8.6
+- Keep the Controls recovery map visible after Stop, link loss, and app pause while command output remains disabled.
+- Show the age of the last rover GPS fix; recenter on that fix, falling back to the last RC estimate and then Home.
+- Freeze dead reckoning on link loss and resume only after new transmitted frames, without inventing movement during an outage.
+- Save the estimated path separately from rover GPS so the recovery view survives screen rebuilds.
+
 ## 0.8.5
 - Verify direct update APK signing certificate against installed TeleRC and require the exact release APK filename.
 - Ignore unverified signed MAVLink 2 heartbeats and heartbeats from non-autopilot components.

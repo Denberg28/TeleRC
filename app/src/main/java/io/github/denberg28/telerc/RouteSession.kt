@@ -11,6 +11,7 @@ class RouteSession {
         private set
     val phone = mutableListOf<TrackPoint>()
     val rover = mutableListOf<TrackPoint>()
+    val estimated = mutableListOf<TrackPoint>() // sent-RC inference, never measured GPS
     val commands = mutableListOf<ControlSample>()
 
     fun addPhone(point: TrackPoint, accuracyMeters: Float): Boolean {
@@ -50,12 +51,21 @@ class RouteSession {
         if (commands.size > 100_000) commands.removeAt(0)
     }
 
-    fun reset() { home = null; phone.clear(); rover.clear(); commands.clear() }
+    fun addEstimate(point: TrackPoint) {
+        if (!valid(point)) return
+        val prior = estimated.lastOrNull()
+        if (prior != null && (point.timeMs <= prior.timeMs || distance(prior, point) < 1.0)) return
+        estimated.add(point)
+        if (estimated.size > 2_000) estimated.removeAt(0)
+    }
+
+    fun reset() { home = null; phone.clear(); rover.clear(); estimated.clear(); commands.clear() }
 
     fun encode(): String = buildString {
         append("kind,time_ms,latitude,longitude,steer_us,drive_us,heading_deg\n")
         phone.forEach { append("phone,${it.timeMs},${it.latitude},${it.longitude},,,\n") }
         rover.forEach { append("rover,${it.timeMs},${it.latitude},${it.longitude},,,${it.headingDegrees ?: ""}\n") }
+        estimated.forEach { append("estimate,${it.timeMs},${it.latitude},${it.longitude},,,${it.headingDegrees ?: ""}\n") }
         commands.forEach { append("command,${it.timeMs},,,${it.steering},${it.drive},\n") }
     }
 
@@ -66,13 +76,15 @@ class RouteSession {
             if (cells.size != 6 && cells.size != 7) continue // existing sessions had no bearing column
             val time = cells[1].toLongOrNull() ?: continue
             when (cells[0]) {
-                "phone", "rover" -> {
+                "phone", "rover", "estimate" -> {
                     val lat = cells[2].toDoubleOrNull() ?: continue
                     val lon = cells[3].toDoubleOrNull() ?: continue
                     val heading = cells.getOrNull(6)?.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..<360.0 }
                     val point = TrackPoint(lat, lon, time, if (cells[0] == "rover") heading else null)
                     if (cells[0] == "phone") {
                         if (valid(point) && phone.size < 20_000) { if (home == null) home = point; phone.add(point) }
+                    } else if (cells[0] == "estimate") {
+                        if (valid(point) && estimated.size < 2_000) estimated.add(point)
                     } else if (valid(point) && rover.size < 20_000) rover.add(point)
                 }
                 "command" -> {

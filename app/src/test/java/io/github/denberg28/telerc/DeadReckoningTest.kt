@@ -25,4 +25,12 @@ class DeadReckoningTest {
         val delayed = estimate.accept(61_000L, 1500, 2000)
         assertTrue(.76f - delayed.y < .18f)
     }
+    @Test fun outageHoldsLastEstimateUntilNewFramesArrive() {
+        val estimate = DeadReckoning()
+        estimate.accept(1000L, 1500, 2000)
+        val beforeLoss = estimate.accept(1100L, 1500, 2000)
+        estimate.hold()
+        assertEquals(beforeLoss, estimate.accept(70_000L, 1500, 2000))
+        assertTrue(estimate.accept(70_100L, 1500, 2000).y < beforeLoss.y)
+    }
 }

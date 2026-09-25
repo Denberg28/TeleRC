@@ -27,4 +27,7 @@ internal class DeadReckoning(var turnDegreesPerSecond: Float = 220f) {
     fun reset() {
         pose = RoverPose(); lastMs = null; previousSteer = 0f; previousDrive = 0f
     }
+
+    /** Freeze at the last sent frame; a later reconnect cannot invent motion during the outage. */
+    fun hold() { lastMs = null; previousSteer = 0f; previousDrive = 0f }
 }

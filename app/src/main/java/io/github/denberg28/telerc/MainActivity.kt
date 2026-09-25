@@ -251,7 +251,7 @@ class MainActivity : Activity() {
         val actions = card().apply {
             addView(text("CONTROL", 16f, ink, true).apply { gravity = Gravity.CENTER })
             val scene = FrameLayout(this@MainActivity)
-            controlsPlaceholder = text("Rover · CH1 / CH3\n\nEnable control to show live dead reckoning", 12f, muted).apply {
+            controlsPlaceholder = text("Rover · CH1 / CH3\n\nEnable control to show recovery map", 12f, muted).apply {
                 gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
             }
             scene.addView(controlsPlaceholder, FrameLayout.LayoutParams(-1, -1))
@@ -268,8 +268,8 @@ class MainActivity : Activity() {
             mapBadge = badge
             scene.addView(badge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT)
                 .apply { leftMargin = dp(4); topMargin = dp(4) })
-            controlsLocate = button("⌖", false) { map.locateHome() }.apply {
-                contentDescription = "Center the dead reckoning map"; visibility = View.GONE
+            controlsLocate = button("⌖", false) { map.locateRecovery() }.apply {
+                contentDescription = "Center on last rover GPS, then estimate or Home"; visibility = View.GONE
             }
             scene.addView(controlsLocate, FrameLayout.LayoutParams(dp(36), dp(34), Gravity.TOP or Gravity.RIGHT)
                 .apply { rightMargin = dp(4); topMargin = dp(4) })
@@ -287,7 +287,11 @@ class MainActivity : Activity() {
             if (controlEnabled.get()) disableControl() else if (linkFresh()) {
                 controlEnabled.set(true)
                 steeringStick?.isEnabled = true; driveStick?.isEnabled = true
-                setControlsMapVisible(true)
+                if (!mapActive) setControlsMapVisible(true) else {
+                    deadReckoning.hold()
+                    if (routeMap?.livePreviewActive != true) routeMap?.beginLivePreview()
+                    controlsEstimate?.text = "RC ACTIVE · estimate resumes with sent frames"
+                }
                 refreshUi()
             }
         }
@@ -296,9 +300,10 @@ class MainActivity : Activity() {
         row.addView(actions, LinearLayout.LayoutParams(0, -1, 1.4f).apply { rightMargin = dp(8) })
         row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("Cyan: estimated path from sent CH1/CH3 · Purple: GPS telemetry · Stop clears estimate", 11f, muted),
+        root.addView(text("Purple: last rover GPS · Cyan: RC estimate · ⌖ locate · link loss stops commands", 11f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         setContentView(root)
+        if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
         updateRoute()
         // Ask while controls are still disabled; a permission dialog must never interrupt driving.
         if (!locationPermissionRequested && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -329,6 +334,18 @@ class MainActivity : Activity() {
         } else {
             stopPhoneLocation(); deadReckoning.reset(); routeMap?.endLivePreview()
         }
+    }
+
+    private fun showRecoveryMap() {
+        mapActive = true
+        routeMap?.view?.visibility = View.VISIBLE
+        controlsPlaceholder?.visibility = View.GONE
+        controlsLocate?.visibility = View.VISIBLE
+        controlsEstimate?.visibility = View.VISIBLE
+        controlsEstimate?.text = "RC STOPPED · last estimate frozen"
+        mapBadge?.visibility = View.VISIBLE
+        startPhoneLocation()
+        routeMap?.view?.post { routeMap?.draw() }
     }
     private fun renderTestDrive() {
         host = null; port = null; connect = null; enable = null
@@ -457,8 +474,14 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
         val vehicle = prefs.getString("name", "Rover") ?: "Rover"
         val maxSpeed = prefs.getFloat("max_m_s", 2.8f)
+        val lastGps = route.rover.lastOrNull()?.timeMs
+        val gpsAge = lastGps?.let {
+            val seconds = ((System.currentTimeMillis() - it).coerceAtLeast(0L) / 1000L)
+            if (seconds < 60) "${seconds}s" else "${seconds / 60}m"
+        }
         mapBadge?.text = when {
-            page == Page.CONTROLS -> "CYAN RC ESTIMATE · ${if (routeMap?.sampleAnchorActive == true) "SAMPLE START" else "GPS ANCHOR"}"
+            page == Page.CONTROLS -> "${if (gpsAge == null) "NO GPS · ${if (route.home == null) "SAMPLE" else "PHONE HOME"}" else "LAST GPS $gpsAge AGO"} · " +
+                if (controlEnabled.get()) "CYAN RC ESTIMATE" else "CYAN ESTIMATE FROZEN"
             route.rover.isEmpty() -> "$vehicle · SIM ${"%.1f".format(maxSpeed)} m/s · TAP TO EDIT"
             else -> "$vehicle · LIVE ROVER · TAP TO EDIT SIM"
         }
@@ -585,7 +608,12 @@ class MainActivity : Activity() {
                 }
             } catch (_: Exception) {}
         }
-        if (page == Page.CONTROLS && mapActive) setControlsMapVisible(false)
+        if (page == Page.CONTROLS && mapActive) {
+            // Preserve the recovery map and its last estimate after Stop or link loss.
+            deadReckoning.hold()
+            controlsEstimate?.text = "RC STOPPED · last estimate frozen"
+            updateRoute()
+        }
         steeringStick?.isEnabled = false; driveStick?.isEnabled = false
         steeringStick?.reset(); driveStick?.reset()
         refreshUi()

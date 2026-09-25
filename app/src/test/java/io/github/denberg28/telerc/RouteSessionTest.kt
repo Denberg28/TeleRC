@@ -15,13 +15,16 @@ class RouteSessionTest {
         assertEquals(2, route.phone.size)
         assertEquals(1, route.rover.size)
         route.addCommand(ControlSample(2000, 1300, 1700))
+        route.addEstimate(TrackPoint(14.5997, 120.9843, 2100, 90.0))
         val restored = RouteSession().apply { decode(route.encode()) }
         assertEquals(home, restored.home)
         assertEquals(route.phone, restored.phone)
         assertEquals(route.rover, restored.rover)
         assertEquals(route.commands, restored.commands)
+        assertEquals(route.estimated, restored.estimated)
         route.reset()
         assertNull(route.home)
+        assertTrue(route.estimated.isEmpty())
     }
     @Test fun stationaryTurnUpdatesHeadingWithoutAddingTravelAndPersists() {
         val session = RouteSession()
