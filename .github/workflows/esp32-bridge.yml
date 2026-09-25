@@ -1,0 +1,24 @@
+name: ESP32-S3 bridge compile
+on:
+  push:
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/esp32-bridge.yml'
+  pull_request:
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/esp32-bridge.yml'
+  workflow_dispatch:
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install Espressif board support
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: Compile ESP32-S3 sketch
+        run: arduino-cli compile --fqbn esp32:esp32:esp32s3 bridge/TeleRCBridge

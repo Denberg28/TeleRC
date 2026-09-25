@@ -1,0 +1,15 @@
+# ESP32-S3 Wi-Fi MAVLink bridge for TeleRC
+
+This example is for **Arduino-ESP32** on an ESP32-S3 DevKitC-1-style board. It has not been bench-tested on your specific rover. TeleRC itself has no arming, disarming, mode selection, MAVLink signing, or authentication. The Flysky receiver and an independent physical stop remain essential.
+
+## Before uploading
+
+1. Open `TeleRCBridge/TeleRCBridge.ino` in Arduino IDE with Espressif's ESP32 boards package, select your **actual** ESP32-S3 board, and change `AP_PASSWORD` to a private password of 12 or more characters. The unchanged placeholder deliberately prevents the bridge from starting.
+2. Verify GPIO18 and GPIO17 are available on your board. F405 V4 **T3 to ESP GPIO18 (RX)**, F405 **R3 to ESP GPIO17 (TX)**, **GND to GND**. Use the board's specified regulated 5 V input only; never put 5 V on a GPIO. Do not feed a motor supply directly into the ESP. If another device uses UART3, choose a genuinely free UART and change `SERIALx` below accordingly.
+3. In ArduRover, set `SERIAL3_PROTOCOL=2` (MAVLink2) and `SERIAL3_BAUD=115` (115200 baud), then restart the FC. Keep the Flysky receiver on its current RC input.
+4. Join the phone to `TeleRC-Rover` Wi-Fi. Android may report **No Internet**; choose to stay connected. In TeleRC Setup enter bridge `192.168.4.1`, UDP port `14550`; tap Connect. The ESP broadcasts complete UART MAVLink frames before pairing, because TeleRC sends no commands until it sees an autopilot heartbeat. After a valid TeleRC command the ESP sends telemetry to that phone. Both directions use UDP source/destination port `14550`.
+5. Keep wheels raised. Confirm TeleRC shows **LINK ACTIVE** before Enable; verify CH1/CH3 changes through a GCS receiver view and M5–M8 output direction/neutral without motor power first. TeleRC sends only RC overrides, not ARM or mode commands. Calibrate the receiver's reversible CH3 center at 1500 µs. Check hardware kill, Flysky neutral/failsafe, `RC_OVERRIDE_TIME`, and motor-driver behavior before powering motors.
+
+The bridge filters phone-side traffic to TeleRC's checksum-valid MAVLink 1 `RC_CHANNELS_OVERRIDE` frames. It forwards whole ArduRover MAVLink frames without modifying them. If commands stop for 500 ms after active control, it sends neutral and release once. A network loss or FC power failure may prevent delivery; ArduRover's own override timeout, receiver failsafe, and independent motor cutoff must cover that case. The Wi-Fi password restricts who joins the AP but does not authenticate MAVLink or prevent a connected device from impersonating TeleRC. Do not use this as a security boundary.
+
+For TeleRC's purple measured rover track, the FC also needs a valid GPS and to emit `GLOBAL_POSITION_INT`. The phone GPS alone defines Home and the phone branch; a lost vehicle link cannot supply live rover positions.
