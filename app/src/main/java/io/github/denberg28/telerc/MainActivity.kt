@@ -32,6 +32,7 @@ class MainActivity : Activity() {
     private var socket: DatagramSocket? = null
     private val connected = AtomicBoolean(false)
     private val controlEnabled = AtomicBoolean(false)
+    private val commandLock = Any()
     @Volatile private var heartbeatAt = 0L
     @Volatile private var target = 0
     @Volatile private var steering = 1500
@@ -100,7 +101,11 @@ class MainActivity : Activity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        try { route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() }) } catch (_: Exception) {}
+        try {
+            val session = getFileStreamPath("route-session.csv")
+            if (session.length() <= 16_000_000L)
+                route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() })
+        } catch (_: Exception) {}
         updater = AppUpdater(this) { updateStatus?.text = it }
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
@@ -566,18 +571,21 @@ class MainActivity : Activity() {
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
     }
     private fun disableControl() {
-        val wasEnabled = controlEnabled.getAndSet(false)
+        // Serialize release with periodic sends so a queued override cannot follow Stop.
+        synchronized(commandLock) {
+            val active = controlEnabled.getAndSet(false)
+            steering = 1500; drive = 1500
+            if (active && target != 0) try {
+                val udp = socket; val remote = endpoint
+                if (udp != null && remote != null) {
+                    val neutral = Mavlink.override(0, target, 1, 1500, 1500, 1500, 1500)
+                    udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
+                    val release = Mavlink.release(1, target, 1)
+                    udp.send(DatagramPacket(release, release.size, remote, endpointPort))
+                }
+            } catch (_: Exception) {}
+        }
         if (page == Page.CONTROLS && mapActive) setControlsMapVisible(false)
-        steering = 1500; drive = 1500
-        if (wasEnabled && target != 0) try {
-            val udp = socket; val remote = endpoint
-            if (udp != null && remote != null) {
-                val neutral = Mavlink.override(0, target, 1, 1500, 1500, 1500, 1500)
-                udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
-                val release = Mavlink.release(1, target, 1)
-                udp.send(DatagramPacket(release, release.size, remote, endpointPort))
-            }
-        } catch (_: Exception) {}
         steeringStick?.isEnabled = false; driveStick?.isEnabled = false
         steeringStick?.reset(); driveStick?.reset()
         refreshUi()
@@ -629,9 +637,16 @@ class MainActivity : Activity() {
                 val fresh = target != 0 && now - heartbeatAt < 1500
                 if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
-                        val rc = RoverControls.channels(steering, drive)
-                        val bytes = Mavlink.override(sequence++, target, 1, rc.one, rc.two, rc.three, rc.four)
-                        udp.send(DatagramPacket(bytes, bytes.size, remote, number)); lastSend = now
+                        val rc = synchronized(commandLock) {
+                            if (!controlEnabled.get() || !linkFresh()) null else {
+                                val channels = RoverControls.channels(steering, drive)
+                                val bytes = Mavlink.override(sequence++, target, 1,
+                                    channels.one, channels.two, channels.three, channels.four)
+                                udp.send(DatagramPacket(bytes, bytes.size, remote, number))
+                                lastSend = now
+                                channels
+                            }
+                        } ?: continue
                         val sent = ControlSample(System.currentTimeMillis(), rc.one, rc.three)
                         runOnUiThread {
                             if (socket === udp) {

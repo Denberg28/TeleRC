@@ -34,6 +34,23 @@ class MavlinkTest {
         assertNull(Mavlink.heartbeatSystem(truncated))
     }
     @Test fun malformedHeartbeatIgnored() { assertNull(Mavlink.heartbeatSystem(byteArrayOf(0xFE.toByte(), 9))) }
+    @Test fun heartbeatOnlyFromUnsignedAutopilotComponent() {
+        fun heartbeat(component: Int, signed: Boolean): ByteArray {
+            val header = byteArrayOf(0xFD.toByte(), 9, if (signed) 1 else 0, 0, 1, 1,
+                component.toByte(), 0, 0, 0)
+            val content = header + ByteArray(9)
+            var crc = 0xffff
+            for (value in content.drop(1).map { it.toInt() and 255 } + 50) {
+                var tmp = (value xor (crc and 255)) and 255
+                tmp = (tmp xor (tmp shl 4)) and 255
+                crc = ((crc ushr 8) xor (tmp shl 8) xor (tmp shl 3) xor (tmp ushr 4)) and 65535
+            }
+            return content + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+        }
+        assertEquals(1, Mavlink.heartbeatSystem(heartbeat(1, false)))
+        assertNull(Mavlink.heartbeatSystem(heartbeat(190, false)))
+        assertNull(Mavlink.heartbeatSystem(heartbeat(1, true)))
+    }
     @Test fun globalPositionRequiresValidFrame() {
         val payload = ByteArray(28)
         fun put32(offset: Int, value: Int) { for (i in 0..3) payload[offset + i] = (value ushr (8 * i)).toByte() }

@@ -1,6 +1,6 @@
 # TeleRC direct updates
 
-The Setup & Config page has a manual Check for updates button. It checks the latest **public** GitHub release for `Denberg28/TeleRC`, compares numeric version tags, selects a `TeleRC-v*.apk` asset with a SHA-256 digest, downloads it with Android DownloadManager, checks the digest and package/version, then opens Android's installer. Installation requires the user's confirmation and may require granting TeleRC permission to install unknown apps. No token or secret is packaged in the app.
+The Setup & Config page has a manual Check for updates button. It checks the latest **public** GitHub release for `Denberg28/TeleRC`, compares numeric version tags, selects only the `TeleRC-v<version>.apk` asset with a SHA-256 digest, downloads it with Android DownloadManager, checks the digest, package, increasing version and installed signing certificate, then opens Android's installer. Installation requires the user's confirmation and may require granting TeleRC permission to install unknown apps. No token or secret is packaged in the app.
 
 ## One-time signing setup
 

@@ -1,3 +1,9 @@
+## 0.8.5
+- Verify direct update APK signing certificate against installed TeleRC and require the exact release APK filename.
+- Ignore unverified signed MAVLink 2 heartbeats and heartbeats from non-autopilot components.
+- Serialize RC sends with Stop so a queued override cannot follow neutral and release.
+- Bound route restoration and live route history to protect storage and memory.
+
 ## 0.8.4
 - Transform the Controls center card into a live dead reckoning map while control is enabled; Stop, link loss, and leaving Controls return the card.
 - Integrate only transmitted RC frames with the configured offline speed and pivot settings, label the cyan estimate, and display real rover GPS separately in purple.

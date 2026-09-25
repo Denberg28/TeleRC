@@ -1,4 +1,4 @@
-# TeleRC 0.8.4 — rover joystick private test
+# TeleRC 0.8.5 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
 
@@ -41,4 +41,4 @@ The wrapper needs access to `services.gradle.org` and its GitHub release redirec
 
 ## Direct updates
 
-Setup & Config has a manual Check for updates button. It reads public GitHub release metadata without a credential, verifies the downloaded APK and opens the system installer. See [UPDATES.md](UPDATES.md) for signing secrets and first-install constraints. Signed releases are published by the repository workflow using existing signing secrets.
+Setup & Config has a manual Check for updates button. It reads public GitHub release metadata without a credential, verifies the downloaded APK digest, package, increasing version and installed signing certificate, then opens the system installer. Play Protect may recommend scanning an APK distributed outside Google Play; accept the scan and review its verdict. The map tile provider receives tile requests for the displayed area when internet is available, even though routes remain local. See [UPDATES.md](UPDATES.md) for signing secrets and first-install constraints. Signed releases are published by the repository workflow using existing signing secrets.

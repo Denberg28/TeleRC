@@ -20,6 +20,7 @@ class RouteSession {
                     distance(previous, point) < 3.0 || distance(previous, point) > 50.0 * ((point.timeMs - previous.timeMs) / 1000.0).coerceAtLeast(1.0))) return false
         if (home == null) home = point
         phone.add(point)
+        if (phone.size > 20_000) phone.removeAt(1) // retain fixed Home and recent positions
         return true
     }
 
@@ -39,6 +40,7 @@ class RouteSession {
             }
         }
         rover.add(point)
+        if (rover.size > 20_000) rover.removeAt(0)
         return true
     }
 
@@ -59,7 +61,7 @@ class RouteSession {
 
     fun decode(csv: String) {
         reset()
-        for (line in csv.lineSequence().drop(1)) {
+        for (line in csv.lineSequence().drop(1).take(140_000)) {
             val cells = line.split(',')
             if (cells.size != 6 && cells.size != 7) continue // existing sessions had no bearing column
             val time = cells[1].toLongOrNull() ?: continue
@@ -70,13 +72,14 @@ class RouteSession {
                     val heading = cells.getOrNull(6)?.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..<360.0 }
                     val point = TrackPoint(lat, lon, time, if (cells[0] == "rover") heading else null)
                     if (cells[0] == "phone") {
-                        if (valid(point)) { if (home == null) home = point; phone.add(point) }
-                    } else if (valid(point)) rover.add(point)
+                        if (valid(point) && phone.size < 20_000) { if (home == null) home = point; phone.add(point) }
+                    } else if (valid(point) && rover.size < 20_000) rover.add(point)
                 }
                 "command" -> {
                     val steer = cells[4].toIntOrNull() ?: continue
                     val drive = cells[5].toIntOrNull() ?: continue
-                    if (steer in 1000..2000 && drive in 1000..2000) commands.add(ControlSample(time, steer, drive))
+                    if (steer in 1000..2000 && drive in 1000..2000 && commands.size < 100_000)
+                        commands.add(ControlSample(time, steer, drive))
                 }
             }
         }

@@ -54,7 +54,9 @@ object Mavlink {
         val length = packet[1].toInt() and 255
         if (length != 9 || packet.size < offset + length + 2) return null
         if (v1 && (packet[5].toInt() and 255) != 0) return null
+        if (v2 && (packet[2].toInt() and 1) != 0) return null // no MAVLink signature verification
         if (v2 && (packet[7].toInt() != 0 || packet[8].toInt() != 0 || packet[9].toInt() != 0)) return null
+        if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null // autopilot component
         var crc = 0xffff
         for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
         crc = accumulate(crc, 50) // HEARTBEAT CRC extra

@@ -8,6 +8,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -71,7 +72,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
                         val asset = assets.getJSONObject(i)
                         val name = asset.getString("name")
                         val hash = asset.optString("digest")
-                        if (name.startsWith("TeleRC-v") && name.endsWith(".apk") &&
+                        if (name == "TeleRC-v$tag.apk" &&
                             hash.startsWith("sha256:") && hash.length == 71) {
                             url = asset.getString("browser_download_url")
                             digest = hash.removePrefix("sha256:").lowercase()
@@ -125,6 +126,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
             report("Downloading TeleRC update…")
         } catch (e: Exception) { report("Could not start the update download.") }
     }
+    @Suppress("DEPRECATION")
     private fun verifyApk(): Boolean {
         val expected = expectedHash ?: return false
         if (!apk.isFile || apk.length() !in 100_000L..100_000_000L) return false
@@ -135,9 +137,22 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
         }
         val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
         if (actual != expected) { apk.delete(); return false }
-        val info = activity.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) ?: return false
+        val manager = activity.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+            else PackageManager.GET_SIGNATURES
+        val info = manager.getPackageArchiveInfo(apk.absolutePath, flags) ?: return false
+        val installed = manager.getPackageInfo(activity.packageName, flags)
         val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-        return info.packageName == activity.packageName && code > BuildConfig.VERSION_CODE
+        val sameSigner = if (Build.VERSION.SDK_INT >= 28) {
+            val candidate = info.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet()
+            val current = installed.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet()
+            !candidate.isNullOrEmpty() && candidate == current
+        } else {
+            val candidate = info.signatures?.map { it.toCharsString() }?.toSet()
+            val current = installed.signatures?.map { it.toCharsString() }?.toSet()
+            !candidate.isNullOrEmpty() && candidate == current
+        }
+        return info.packageName == activity.packageName && code > BuildConfig.VERSION_CODE && sameSigner
     }
     fun resumePendingInstall() {
         if (pendingInstall != null && activity.packageManager.canRequestPackageInstalls()) offerInstall()
