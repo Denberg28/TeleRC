@@ -293,6 +293,10 @@ class MainActivity : Activity() {
                     controlsEstimate?.text = "RC ACTIVE · estimate resumes with sent frames"
                 }
                 refreshUi()
+            } else {
+                android.widget.Toast.makeText(this,
+                    "Waiting for rover heartbeat. Check bridge Wi-Fi, UART RX/TX and SERIAL3 settings.",
+                    android.widget.Toast.LENGTH_LONG).show()
             }
         }
         actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(7) })
@@ -590,7 +594,7 @@ class MainActivity : Activity() {
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
         connect?.text = if (connected.get()) "Disconnect" else "Connect"
-        enable?.isEnabled = linkFresh()
+        enable?.isEnabled = connected.get()
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
     }
     private fun disableControl() {
@@ -634,8 +638,16 @@ class MainActivity : Activity() {
         target = 0; heartbeatAt = 0; disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
-            val input = ByteArray(512); var sequence = 0; var lastSend = 0L
+            val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L
+            val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
+                val discoveryNow = SystemClock.elapsedRealtime()
+                if (discoveryNow - lastDiscovery >= 1000) {
+                    try {
+                        udp.send(DatagramPacket(discovery, discovery.size, remote, number))
+                        lastDiscovery = discoveryNow
+                    } catch (_: Exception) { break }
+                }
                 try {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
