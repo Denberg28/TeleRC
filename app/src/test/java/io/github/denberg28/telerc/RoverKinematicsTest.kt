@@ -59,6 +59,13 @@ class RoverKinematicsTest {
         assertTrue(kotlin.math.abs(pose.heading) > 1.3f)
         assertEquals(.5f, pose.x, .0001f)
     }
+    @Test fun turnRateChangesHeadingWithoutMovingPivot() {
+        val slow = roverStep(RoverPose(), 1f, 0f, .05f, 30f)
+        val fast = roverStep(RoverPose(), 1f, 0f, .05f, 240f)
+        assertTrue(fast.heading > slow.heading)
+        assertEquals(slow.x, fast.x, .0001f)
+        assertEquals(slow.y, fast.y, .0001f)
+    }
     @Test fun releasingPivotBrakesBothTracks() {
         val turning = roverStep(RoverPose(), 1f, 0f, .05f)
         val released = roverStep(turning, 0f, 0f, .05f)

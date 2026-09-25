@@ -1,3 +1,8 @@
+## 0.8.3
+- Replace MapLibre demo tiles with the OpenFreeMap Liberty street style used in HARU. Show a clearly labeled sample map position until precise phone GPS sets fixed Home.
+- Keep the cyan rover visible at Home, draw an estimated joystick route, and configure offline vehicle name, maximum speed, and pivot turn rate by tapping the map badge.
+- Add a Game motor loop while driving or steering and a collision sound when hitting a gate.
+
 ## 0.8.2
 - Show a labeled cyan heading-aware offline rover preview on the Test map after Home GPS is fixed; keep simulation separate from measured telemetry.
 - Replace the quiet frame-driven Game beeps with a looping melody that plays while the music button is on, including while stationary; use media volume.

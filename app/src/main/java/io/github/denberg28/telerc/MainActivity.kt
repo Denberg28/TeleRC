@@ -1,6 +1,7 @@
 package io.github.denberg28.telerc
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -264,6 +265,8 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val course = TestDriveView(this)
         testCourse = course
+        val vehiclePrefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
+        course.maxYawRateDegrees = vehiclePrefs.getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
         val left = card().apply {
             addView(text("STEER", 16f, ink, true).apply { gravity = Gravity.CENTER })
             addView(text("CH1  ·  left / right", 11f, muted).apply { gravity = Gravity.CENTER })
@@ -276,6 +279,7 @@ class MainActivity : Activity() {
             val scene = FrameLayout(this@MainActivity)
             scene.addView(course, FrameLayout.LayoutParams(-1, -1))
             val map = RouteMapView(this@MainActivity, route)
+            map.maxSpeedMetersPerSecond = vehiclePrefs.getFloat("max_m_s", 2.8f).coerceIn(.1f, 30f).toDouble()
             routeMap = map
             course.onTestPose = { pose -> if (mapActive) map.updatePreview(pose) }
             map.view.visibility = View.GONE
@@ -284,6 +288,8 @@ class MainActivity : Activity() {
                 background = shape(Color.WHITE, 8)
                 setPadding(dp(6), dp(2), dp(6), dp(2))
                 visibility = View.GONE
+                contentDescription = "Vehicle settings: name, estimated maximum speed and turn rate"
+                setOnClickListener { editTestVehicle(course, map) }
             }
             scene.addView(mapBadge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT).apply {
                 leftMargin = dp(6); topMargin = dp(6)
@@ -375,11 +381,56 @@ class MainActivity : Activity() {
     }
     private fun updateRoute() {
         routeMap?.draw()
-        mapBadge?.text = if (route.rover.isEmpty()) "CYAN ROVER · OFFLINE PREVIEW" else "PURPLE ROVER · TELEMETRY"
-        routeStatus?.text = "HOME ${if (route.home == null) "waiting for precise GPS" else "fixed"}  ·  " +
+        val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
+        val vehicle = prefs.getString("name", "Rover") ?: "Rover"
+        val maxSpeed = prefs.getFloat("max_m_s", 2.8f)
+        mapBadge?.text = if (route.rover.isEmpty()) "$vehicle · SIM ${"%.1f".format(maxSpeed)} m/s · TAP TO EDIT"
+            else "$vehicle · LIVE ROVER · TAP TO EDIT SIM"
+        routeStatus?.text = "HOME ${if (route.home == null) "GPS pending · SAMPLE MAP" else "GPS fixed"}  ·  " +
             "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}" +
             (route.rover.lastOrNull()?.headingDegrees?.let { " H ${it.toInt()}°" } ?: "") +
             "  ·  SENT ${route.commands.size}"
+    }
+
+    private fun editTestVehicle(course: TestDriveView, map: RouteMapView) {
+        val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
+        fun field(label: String, value: String, decimal: Boolean): EditText = EditText(this).apply {
+            hint = label; setSingleLine(); setText(value); textSize = 15f
+            inputType = if (decimal) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        val name = field("Vehicle name", prefs.getString("name", "Rover") ?: "Rover", false)
+        val speed = field("Maximum speed (m/s)", prefs.getFloat("max_m_s", 2.8f).toString(), true)
+        val turn = field("Pivot turn rate (°/s)", prefs.getFloat("turn_deg_s", 220f).toString(), true)
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(4), dp(22), 0)
+            addView(name); addView(speed); addView(turn)
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("Offline vehicle estimate")
+            .setMessage("Simulated map movement only. No values are sent to the rover.")
+            .setView(form).setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val label = name.text.toString().trim()
+                val metersPerSecond = speed.text.toString().toFloatOrNull()
+                val degreesPerSecond = turn.text.toString().toFloatOrNull()
+                when {
+                    label.isBlank() || label.length > 24 -> name.error = "Enter a name up to 24 characters"
+                    metersPerSecond == null || !metersPerSecond.isFinite() || metersPerSecond !in .1f..30f ->
+                        speed.error = "Enter 0.1–30 m/s"
+                    degreesPerSecond == null || !degreesPerSecond.isFinite() || degreesPerSecond !in 10f..360f ->
+                        turn.error = "Enter 10–360 °/s"
+                    else -> {
+                        prefs.edit().putString("name", label).putFloat("max_m_s", metersPerSecond)
+                            .putFloat("turn_deg_s", degreesPerSecond).apply()
+                        map.maxSpeedMetersPerSecond = metersPerSecond.toDouble()
+                        course.maxYawRateDegrees = degreesPerSecond
+                        map.resetPreview(); updateRoute(); dialog.dismiss()
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun startPhoneLocation() {
@@ -392,8 +443,17 @@ class MainActivity : Activity() {
             routeStatus?.text = "Precise phone location required for Home"
             return
         }
-        try { locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 2f, phoneListener) }
-        catch (_: Exception) { routeStatus?.text = "Enable phone GPS to set Home" }
+        var subscribed = false
+        for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            try {
+                if (locationManager.isProviderEnabled(provider)) {
+                    locationManager.requestLocationUpdates(provider, 1000L, 2f, phoneListener)
+                    locationManager.getLastKnownLocation(provider)?.let(phoneListener::onLocationChanged)
+                    subscribed = true
+                }
+            } catch (_: Exception) { /* Keep the other location provider available. */ }
+        }
+        if (!subscribed) routeStatus?.text = "Enable phone location; map uses a sample start until GPS Home is set"
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)

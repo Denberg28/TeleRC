@@ -16,7 +16,8 @@ internal data class RoverPose(
 internal fun gameX(x: Float, steering: Float, dt: Float): Float =
     (x + steering.coerceIn(-1f, 1f) * dt.coerceIn(0f, .05f) * .38f).coerceIn(.245f, .755f)
 
-internal fun roverStep(pose: RoverPose, steering: Float, drive: Float, dt: Float): RoverPose {
+internal fun roverStep(pose: RoverPose, steering: Float, drive: Float, dt: Float,
+                       maxYawRateDegrees: Float = 220f): RoverPose {
     val step = dt.coerceIn(0f, .05f)
     val steer = steering.takeIf { abs(it) >= .08f }?.coerceIn(-1f, 1f) ?: 0f
     val throttle = drive.takeIf { abs(it) >= .08f }?.coerceIn(-1f, 1f) ?: 0f
@@ -28,7 +29,7 @@ internal fun roverStep(pose: RoverPose, steering: Float, drive: Float, dt: Float
     val left = pose.leftTrack + (leftDemand / scale - pose.leftTrack) * blend
     val right = pose.rightTrack + (rightDemand / scale - pose.rightTrack) * blend
     val speed = (left + right) * .35f
-    val yaw = (left - right) * 1.9f
+    val yaw = (left - right) * Math.toRadians(maxYawRateDegrees.toDouble()).toFloat() / 2f
     val midHeading = pose.heading + yaw * step * .5f
     val angle = pose.heading + yaw * step
     val heading = atan2(sin(angle), cos(angle))

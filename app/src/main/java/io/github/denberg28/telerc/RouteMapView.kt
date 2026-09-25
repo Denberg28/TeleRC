@@ -28,6 +28,8 @@ import org.maplibre.geojson.Point
 
 /** Phone branch and measured rover positions are separate layers. Camera moves only at Home/Locate. */
 class RouteMapView(context: Context, private val session: RouteSession) {
+    // Display-only map origin before the phone has an accepted GPS fix; never written to a route.
+    private val sampleStart = TrackPoint(13.6218, 123.1948, 0L)
     val view: MapView
     private var map: MapLibreMap? = null
     private var homeMarker: Marker? = null
@@ -41,6 +43,10 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     private var previewLayer: SymbolLayer? = null
     private var previewPose: RoverPose? = null
     private var previewOrigin: RoverPose? = null
+    private var previewAnchor: TrackPoint? = null
+    private var previewLine: Polyline? = null
+    private val previewPath = mutableListOf<LatLng>()
+    internal var maxSpeedMetersPerSecond = 2.8
     private var lastPreviewDraw = 0L
     private var centered = false
 
@@ -54,7 +60,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
             ready.uiSettings.isZoomGesturesEnabled = true
             ready.uiSettings.isRotateGesturesEnabled = true
             ready.uiSettings.isScrollGesturesEnabled = true
-            ready.setStyle("https://demotiles.maplibre.org/style.json") { style ->
+            ready.setStyle("https://tiles.openfreemap.org/styles/liberty") { style ->
                 installRoverIcon(style)
                 draw()
             }
@@ -104,7 +110,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         style.addLayer(previewLayer!!)
     }
 
-    /** Display a cyan simulation at Home only when there is no measured rover position. */
+    /** Cyan joystick simulation starts at Home, or at a labeled sample point while GPS is pending. */
     internal fun updatePreview(pose: RoverPose) {
         previewPose = pose
         val now = SystemClock.uptimeMillis()
@@ -113,34 +119,55 @@ class RouteMapView(context: Context, private val session: RouteSession) {
 
     private fun drawPreview() {
         val source = previewSource ?: return
-        val home = session.home
+        val home = session.home ?: sampleStart
         val pose = previewPose
-        if (home == null || pose == null || session.rover.isNotEmpty()) {
+        if (pose == null || session.rover.isNotEmpty()) {
             source.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
+            previewLine?.let { map?.removePolyline(it) }; previewLine = null
             return
         }
+        if (previewAnchor != home) {
+            previewAnchor = home; previewOrigin = null; previewPath.clear()
+            previewLine?.let { map?.removePolyline(it) }; previewLine = null
+            previewPath.add(LatLng(home.latitude, home.longitude))
+        }
         val origin = previewOrigin ?: pose.also { previewOrigin = it }
-        val location = previewLocation(home, origin, pose)
+        val location = previewLocation(home, origin, pose, maxSpeedMetersPerSecond)
         source.setGeoJson(FeatureCollection.fromFeatures(arrayOf(Feature.fromGeometry(
             Point.fromLngLat(location.longitude, location.latitude)))))
         previewLayer?.setProperties(PropertyFactory.iconRotate(location.headingDegrees.toFloat()))
+        val current = LatLng(location.latitude, location.longitude)
+        val last = previewPath.lastOrNull()
+        // Record estimated movement at one-meter intervals; rotation alone makes no new segment.
+        if (last != null && distanceMeters(last, current) >= 1.0) {
+            previewPath.add(current)
+            if (previewPath.size > 500) previewPath.removeAt(0)
+            previewLine?.let { map?.removePolyline(it) }
+            previewLine = map?.addPolyline(PolylineOptions().addAll(previewPath)
+                .color(Color.rgb(42, 153, 191)).width(4f))
+        }
     }
 
     fun draw() {
         val m = map ?: return
         if (m.style?.isFullyLoaded != true) return
+        if (session.home != null && previewAnchor == sampleStart) centered = false
         homeMarker?.let(m::removeMarker); phoneMarker?.let(m::removeMarker)
         roverMarker?.let(m::removeMarker)
         phoneLine?.let(m::removePolyline); roverLine?.let(m::removePolyline)
         fun coords(p: TrackPoint) = LatLng(p.latitude, p.longitude)
         session.home?.let {
-            homeMarker = m.addMarker(MarkerOptions().position(coords(it)).title("HOME · fixed phone GPS"))
-            if (!centered && view.visibility == android.view.View.VISIBLE && view.width > 0 && view.height > 0) {
-                locateHome(); centered = true
-            }
+            // The cyan preview marks Home while offline; a pin at the same coordinate obscures its heading.
+            if (session.rover.isNotEmpty())
+                homeMarker = m.addMarker(MarkerOptions().position(coords(it)).title("HOME · fixed phone GPS"))
+        }
+        if (!centered && view.visibility == android.view.View.VISIBLE && view.width > 0 && view.height > 0) {
+            locateHome(); centered = true
         }
         session.phone.lastOrNull()?.let {
-            phoneMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Phone · current fix"))
+            if (session.rover.isNotEmpty() || session.home?.let { home ->
+                    distanceMeters(coords(home), coords(it)) > 5.0 } == true)
+                phoneMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Phone · current fix"))
         }
         session.rover.lastOrNull()?.let {
             if (it.headingDegrees != null) {
@@ -161,16 +188,32 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     }
 
     fun locateHome() {
-        val home = session.home ?: return
-        map?.cameraPosition = CameraPosition.Builder().target(LatLng(home.latitude, home.longitude)).zoom(17.0).build()
+        val origin = session.home ?: sampleStart
+        map?.cameraPosition = CameraPosition.Builder().target(LatLng(origin.latitude, origin.longitude))
+            .zoom(17.0).build()
     }
 
-    fun reset() { centered = false; previewOrigin = null; draw() }
+    fun reset() {
+        centered = false; previewOrigin = null; previewAnchor = null; previewPath.clear()
+        previewLine?.let { map?.removePolyline(it) }; previewLine = null
+        draw()
+    }
+    internal fun resetPreview() {
+        previewOrigin = null; previewAnchor = null; previewPath.clear()
+        previewLine?.let { map?.removePolyline(it) }; previewLine = null
+        drawPreview()
+    }
+    private fun distanceMeters(a: LatLng, b: LatLng): Double {
+        val lat = Math.toRadians((a.latitude + b.latitude) / 2)
+        val north = (b.latitude - a.latitude) * 111_320.0
+        val east = (b.longitude - a.longitude) * 111_320.0 * kotlin.math.cos(lat)
+        return kotlin.math.hypot(north, east)
+    }
     fun onStart() = view.onStart()
     fun onResume() = view.onResume()
     fun onPause() = view.onPause()
     fun onStop() = view.onStop()
-    fun onDestroy() { view.onDestroy(); roverSource = null; roverLayer = null; previewSource = null; previewLayer = null; map = null }
+    fun onDestroy() { view.onDestroy(); roverSource = null; roverLayer = null; previewSource = null; previewLayer = null; previewLine = null; map = null }
     fun onLowMemory() = view.onLowMemory()
     fun onSaveInstanceState(out: Bundle) = view.onSaveInstanceState(out)
 }

@@ -20,6 +20,8 @@ class TestDriveView(context: Context) : View(context) {
     private var highScore = scores.getInt("high_score", 0)
     private var music = false
     private val musicPlayer = GameMusic()
+    private val gameEffects = GameEffects()
+    internal var maxYawRateDegrees = 220f
     internal var onTestPose: ((RoverPose) -> Unit)? = null
     private data class Gate(var y: Float, val center: Float, var passed: Boolean = false)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -59,7 +61,7 @@ class TestDriveView(context: Context) : View(context) {
     fun setMode(value: Mode) {
         if (mode == value) return
         mode = value; resetCourse(preserveInput = true)
-        if (value == Mode.TEST) setMusic(false)
+        if (value == Mode.TEST) { setMusic(false); gameEffects.stop() }
     }
     fun setMusic(enabled: Boolean): Boolean {
         music = enabled && mode == Mode.GAME && musicPlayer.start()
@@ -79,7 +81,7 @@ class TestDriveView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun stop() { running = false; removeCallbacks(frame); lastFrame = 0L; steer = 0f; throttle = 0f; setMusic(false) }
+    fun stop() { running = false; removeCallbacks(frame); lastFrame = 0L; steer = 0f; throttle = 0f; setMusic(false); gameEffects.stop() }
     fun resume() { if (!running && isAttachedToWindow) { running = true; lastFrame = 0L; post(frame) } }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); running = false; resume() }
     override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
@@ -88,13 +90,14 @@ class TestDriveView(context: Context) : View(context) {
         // Game remains an arcade lane game; Test mixes CH1/CH3 into skid-steer tracks.
         val demand = if (waitForRelease || abs(throttle) < .08f) 0f else throttle
         if (mode == Mode.TEST) {
-            val next = roverStep(RoverPose(x, y, heading, speed, leftTrack, rightTrack), steer, demand, dt)
+            val next = roverStep(RoverPose(x, y, heading, speed, leftTrack, rightTrack), steer, demand, dt, maxYawRateDegrees)
             x = next.x; y = next.y; heading = next.heading; speed = next.speed
             leftTrack = next.leftTrack; rightTrack = next.rightTrack
             distance += abs(speed * dt) * 100f
             onTestPose?.invoke(next)
             return
         }
+        gameEffects.update(demand, steer)
         speed += (demand * .75f - speed) * (dt * 14f).coerceAtMost(1f)
         // Arcade lane control is independent of forward drive: left always moves left.
         x = gameX(x, steer, dt)
@@ -107,6 +110,7 @@ class TestDriveView(context: Context) : View(context) {
             if (gate.y < roverY + .04f && gate.y + gateHeight > roverY - .04f &&
                 abs(x - gate.center) > (gapWidth - .055f) / 2f) {
                 if (passed > highScore) { highScore = passed; scores.edit().putInt("high_score", highScore).apply() }
+                gameEffects.hit()
                 resetCourse()
                 waitForRelease = true
                 return
