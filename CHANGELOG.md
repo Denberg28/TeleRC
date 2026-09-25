@@ -1,3 +1,8 @@
+## 0.8.8
+- Add a Diagnose link action in Setup that explains whether the ESP32 bridge is reachable, whether it sees FC UART bytes and complete frames, and whether TeleRC receives a valid rover heartbeat.
+- Send receive-only bridge diagnostics to the paired phone every three seconds; diagnostics cannot enable control or issue rover commands.
+- Continue to block control until a valid autopilot heartbeat is received.
+
 ## 0.8.7
 - Send a receive-only discovery packet so the ESP bridge can route MAVLink telemetry directly to the phone before control is enabled.
 - Explain missing heartbeat when Enable Control is tapped; continue blocking all motor commands until a valid heartbeat arrives.
