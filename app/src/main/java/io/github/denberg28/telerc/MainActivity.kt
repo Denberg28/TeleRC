@@ -12,6 +12,8 @@ import android.graphics.drawable.GradientDrawable
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
@@ -597,8 +599,9 @@ class MainActivity : Activity() {
         if (!connected.get()) return "Tap Connect first, then wait four seconds and diagnose again."
         if (linkFresh()) return "Rover heartbeat received. Link active. Control still requires Enable Control."
         if (bridgeStatusAt == 0L || SystemClock.elapsedRealtime() - bridgeStatusAt > 7000)
-            return "No recent reply from the ESP32 bridge. Check that the phone stays on TeleRC-Rover Wi-Fi, " +
-                "the address/UDP port are 192.168.4.1:14550, and the updated bridge sketch is running. " +
+            return "No recent reply from the ESP32 bridge over Wi-Fi. Verify that the updated bridge sketch " +
+                "is running (older firmware cannot send diagnostics), and check its USB Serial Monitor. " +
+                "Confirm the bridge address/UDP port and phone Wi-Fi address are on the same network. " +
                 "Wait four seconds after Connect and try again."
         if (bridgeRxBytes == 0L)
             return "ESP32 responds, but receives zero bytes from the F405. Check T3 → ESP GPIO18, " +
@@ -655,8 +658,19 @@ class MainActivity : Activity() {
             status?.text = "INVALID ADDRESS OR PORT"; return
         }
         val remote = InetAddress.getByName(address)
-        val udp = try { DatagramSocket(number).apply { soTimeout = 50 } }
-        catch (e: Exception) { status?.text = "UDP PORT UNAVAILABLE"; return }
+        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val wifi = connectivity.allNetworks.firstOrNull {
+            connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+        if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
+        val udp = try {
+            DatagramSocket(number).also { socket ->
+                try {
+                    wifi.bindSocket(socket) // keep UDP on the rover AP even if mobile data is the default
+                    socket.soTimeout = 50
+                } catch (e: Exception) { socket.close(); throw e }
+            }
+        } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         getSharedPreferences("link", MODE_PRIVATE).edit().putString("host", address).putInt("port", number).apply()
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
