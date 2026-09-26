@@ -1,3 +1,7 @@
+## 0.8.9
+- Bind the rover UDP socket explicitly to Wi-Fi so a phone using mobile data alongside an offline ESP32 access point cannot route TeleRC discovery or control traffic over cellular.
+- Explain that a missing bridge diagnostic reply may mean an older ESP32 sketch is installed; keep live control blocked without a valid heartbeat.
+
 ## 0.8.8
 - Add a Diagnose link action in Setup that explains whether the ESP32 bridge is reachable, whether it sees FC UART bytes and complete frames, and whether TeleRC receives a valid rover heartbeat.
 - Send receive-only bridge diagnostics to the paired phone every three seconds; diagnostics cannot enable control or issue rover commands.
