@@ -14,6 +14,8 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
@@ -33,6 +35,15 @@ class MainActivity : Activity() {
     private var page = Page.SETUP
     private var socket: DatagramSocket? = null
     private val connected = AtomicBoolean(false)
+    private val reconnectHandler = Handler(Looper.getMainLooper())
+    private var wantsLink = false
+    private val reconnect = object : Runnable {
+        override fun run() {
+            if (!resumed || !wantsLink) return
+            if (!connected.get()) start()
+            reconnectHandler.postDelayed(this, 2000)
+        }
+    }
     private val controlEnabled = AtomicBoolean(false)
     private val commandLock = Any()
     @Volatile private var heartbeatAt = 0L
@@ -112,6 +123,7 @@ class MainActivity : Activity() {
                 route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() })
         } catch (_: Exception) {}
         updater = AppUpdater(this) { updateStatus?.text = it }
+        wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
             "TEST_DRIVE" -> Page.TEST_DRIVE
@@ -203,7 +215,17 @@ class MainActivity : Activity() {
             }
             addView(host, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
             addView(port, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(6) })
-            connect = button("Connect") { if (connected.get()) stop() else start() }
+            connect = button("Connect") {
+                if (wantsLink) {
+                    wantsLink = false
+                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                    reconnectHandler.removeCallbacks(reconnect); stop()
+                } else {
+                    wantsLink = true
+                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
+                    start(); scheduleReconnect()
+                }
+            }
             addView(connect, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
         }
         body.addCard(connection)
@@ -615,12 +637,13 @@ class MainActivity : Activity() {
     }
     private fun refreshUi() {
         status?.text = when {
+            !connected.get() && wantsLink -> "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
             !linkFresh() -> "WAITING FOR HEARTBEAT"
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
-        connect?.text = if (connected.get()) "Disconnect" else "Connect"
+        connect?.text = if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get()
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
     }
@@ -650,14 +673,19 @@ class MainActivity : Activity() {
         refreshUi()
     }
     private fun start() {
-        val address = host?.text?.toString()?.trim().orEmpty()
+        if (connected.get()) return
+        val saved = getSharedPreferences("link", MODE_PRIVATE)
+        val address = (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
         val valid = Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$").matches(address) &&
             address.split('.').all { it.toInt() in 0..255 }
-        val number = port?.text?.toString()?.toIntOrNull()
+        val number = (port?.text?.toString() ?: saved.getInt("port", 14550).toString()).toIntOrNull()
         if (!valid || number == null || number !in 1..65535) {
-            status?.text = "INVALID ADDRESS OR PORT"; return
+            wantsLink = false
+            saved.edit().putBoolean("auto_connect", false).apply()
+            refreshUi(); status?.text = "INVALID ADDRESS OR PORT"; return
         }
         val remote = InetAddress.getByName(address)
+        saved.edit().putString("host", address).putInt("port", number).apply()
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         val wifi = connectivity.allNetworks.firstOrNull {
             connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
@@ -671,7 +699,6 @@ class MainActivity : Activity() {
                 } catch (e: Exception) { socket.close(); throw e }
             }
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
-        getSharedPreferences("link", MODE_PRIVATE).edit().putString("host", address).putInt("port", number).apply()
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         disableControl(); connected.set(true)
@@ -680,6 +707,8 @@ class MainActivity : Activity() {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
+                if (connectivity.getNetworkCapabilities(wifi)
+                        ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) break
                 val discoveryNow = SystemClock.elapsedRealtime()
                 if (discoveryNow - lastDiscovery >= 1000) {
                     try {
@@ -764,8 +793,12 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            runOnUiThread { if (socket === udp) stop() }
+            runOnUiThread { if (socket === udp) { stop(); scheduleReconnect() } }
         }
+    }
+    private fun scheduleReconnect() {
+        reconnectHandler.removeCallbacks(reconnect)
+        if (resumed && wantsLink) reconnectHandler.postDelayed(reconnect, 2000)
     }
     private fun stop() {
         disableControl(); connected.set(false)
@@ -773,10 +806,10 @@ class MainActivity : Activity() {
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
-    override fun onPause() { resumed = false; stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; stop(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onPause() { resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { releaseMap(); stop(); saveRoute(); updater.close(); super.onDestroy() }
+    override fun onDestroy() { wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(); saveRoute(); updater.close(); super.onDestroy() }
 }
