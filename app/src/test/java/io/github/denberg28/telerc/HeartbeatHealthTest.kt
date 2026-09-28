@@ -10,6 +10,13 @@ class HeartbeatHealthTest {
         assertFalse(HeartbeatHealth.isFresh(1, 1000L, 3500L))
     }
 
+    @Test fun displayGraceDoesNotExtendControlAuthority() {
+        assertFalse(HeartbeatHealth.isFresh(1, 1000L, 3600L))
+        assertTrue(HeartbeatHealth.isRecentlySeen(1, 1000L, 3600L))
+        assertFalse(HeartbeatHealth.isRecentlySeen(1, 1000L, 7000L))
+        assertFalse(HeartbeatHealth.isRecentlySeen(0, 1000L, 3600L))
+    }
+
     @Test fun requiresVerifiedHeartbeatAndNonzeroTarget() {
         assertFalse(HeartbeatHealth.isFresh(0, 1000L, 1001L))
         assertFalse(HeartbeatHealth.isFresh(1, 0L, 1001L))
