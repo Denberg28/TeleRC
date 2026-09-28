@@ -17,7 +17,7 @@ object Mavlink {
         }
         return result
     }
-    private const val EXTRA = 50 // RC_CHANNELS_OVERRIDE CRC extra
+    private const val EXTRA = 124 // RC_CHANNELS_OVERRIDE CRC extra (HEARTBEAT uses 50)
     fun override(sequence: Int, targetSystem: Int, targetComponent: Int, roll: Int, pitch: Int, throttle: Int, yaw: Int): ByteArray {
         require(targetSystem in 1..255 && targetComponent in 1..255)
         val channels = intArrayOf(roll, pitch, throttle, yaw)
