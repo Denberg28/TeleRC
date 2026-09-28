@@ -246,6 +246,12 @@ class RouteMapView(context: Context, private val session: RouteSession) {
             .zoom(17.0).build()
     }
 
+    /** Center on a newly verified phone GPS fix, independent of the fixed route Home. */
+    fun locatePhoneFix(latitude: Double, longitude: Double) {
+        map?.cameraPosition = CameraPosition.Builder().target(LatLng(latitude, longitude))
+            .zoom(17.0).build()
+    }
+
     /** Recovery priority: measured rover GPS, then last RC estimate, then phone Home. */
     fun locateRecovery() {
         val last = session.rover.lastOrNull() ?: session.estimated.lastOrNull()
