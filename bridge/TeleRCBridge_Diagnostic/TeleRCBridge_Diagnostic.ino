@@ -15,7 +15,7 @@ const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to th
 const char AP_SSID[] = "TeleRC-Rover";
 // Optional: enter your own 12-63 character Wi-Fi password here on your PC.
 // Leave empty to generate a private password. Never commit your filled-in value.
-const char PERSONAL_AP_PASSWORD[] = "";
+const char PERSONAL_AP_PASSWORD[] = "REPLACE_WITH_YOUR_PRIVATE_PASSWORD";
 // Generated once on first boot and retained in the ESP32's nonvolatile storage.
 // Open USB Serial Monitor at 115200 to read the board's unique Wi-Fi password.
 char apPassword[64] = {};
@@ -182,10 +182,13 @@ void setup() {
     Serial.println("ERROR: Wi-Fi AP IP configuration failed.");
     while (true) delay(1000);
   }
+  Serial.println("Starting TeleRC-Rover access point...");
   if (!WiFi.softAP(AP_SSID, apPassword)) {
     Serial.println("ERROR: Wi-Fi AP failed to start.");
     while (true) delay(1000);
   }
+  Serial.printf("AP started: mode=%d IP=%s MAC=%s\n", int(WiFi.getMode()),
+                WiFi.softAPIP().toString().c_str(), WiFi.softAPmacAddress().c_str());
   Serial.printf("Wi-Fi name: %s\nWi-Fi password: %s\n", AP_SSID, apPassword);
   if (!udp.begin(UDP_PORT)) {
     Serial.println("UDP port unavailable.");
