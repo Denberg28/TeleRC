@@ -61,8 +61,11 @@ bool validTeleRcCommand(const uint8_t *p, size_t n) {
     return false;
   uint16_t crc = 0xffff;
   for (size_t i = 1; i < 24; ++i) crc = crcByte(crc, p[i]);
-  crc = crcByte(crc, 50); // RC_CHANNELS_OVERRIDE CRC extra
-  if (p[24] != uint8_t(crc) || p[25] != uint8_t(crc >> 8)) return false;
+  // Accept legacy TeleRC 0.8.9 frames, then send valid CRC 124 to ArduRover.
+  const uint16_t standardCrc = crcByte(crc, 124);
+  const uint16_t legacyCrc = crcByte(crc, 50);
+  const uint16_t receivedCrc = uint16_t(p[24]) | (uint16_t(p[25]) << 8);
+  if (receivedCrc != standardCrc && receivedCrc != legacyCrc) return false;
   bool release = true;
   for (int channel = 0; channel < 4; ++channel) {
     uint16_t value = uint16_t(p[6 + channel * 2]) |
@@ -82,6 +85,16 @@ bool validTeleRcCommand(const uint8_t *p, size_t n) {
   return true;
 }
 
+// Recompute the outgoing CRC so ArduRover decodes legacy app packets.
+size_t writeFcCommand(uint8_t *p, size_t n) {
+  uint16_t crc = 0xffff;
+  for (size_t i = 1; i < 24; ++i) crc = crcByte(crc, p[i]);
+  crc = crcByte(crc, 124);
+  p[24] = uint8_t(crc);
+  p[25] = uint8_t(crc >> 8);
+  return fc.write(p, n);
+}
+
 void sendOverride(uint16_t value) {
   uint8_t p[26] = {0xfe, 18, bridgeSequence++, 255, 190, 70};
   for (int i = 0; i < 4; ++i) {
@@ -96,7 +109,7 @@ void sendOverride(uint16_t value) {
   p[23] = 1;
   uint16_t crc = 0xffff;
   for (size_t i = 1; i < 24; ++i) crc = crcByte(crc, p[i]);
-  crc = crcByte(crc, 50);
+  crc = crcByte(crc, 124);
   p[24] = uint8_t(crc);
   p[25] = uint8_t(crc >> 8);
   fc.write(p, sizeof(p));
@@ -225,7 +238,7 @@ void loop() {
       bool release = p[6] == 0 && p[7] == 0;
       lastSteer = uint16_t(p[6]) | (uint16_t(p[7]) << 8);
       lastDrive = uint16_t(p[10]) | (uint16_t(p[11]) << 8);
-      uartTxBytes += fc.write(p, count);
+      uartTxBytes += writeFcCommand(p, count);
       acceptedOverrides++;
       controlActive = !release;
       lastControlMs = millis();
