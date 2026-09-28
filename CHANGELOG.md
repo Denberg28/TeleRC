@@ -1,3 +1,8 @@
+## 0.8.13
+- Distinguish a delayed heartbeat from a lost link in Setup while preserving the 2.5-second control cutoff.
+- Limit queued link status UI refreshes to four per second, avoiding redundant main-thread work during telemetry bursts.
+- Add a test proving display grace never extends control authority.
+
 ## 0.8.12
 - Keep telemetry connected when switching pages or briefly leaving the app; stop and release joystick control immediately when the app loses focus.
 - Remember a requested connection and retry every two seconds on return or after Wi-Fi socket failure. Never resume control automatically.
