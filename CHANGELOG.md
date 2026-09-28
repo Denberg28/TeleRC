@@ -1,3 +1,7 @@
+## 0.8.11
+- Allow 2.5 seconds between verified rover heartbeats before marking the link stale, accommodating a missed 1 Hz packet while retaining neutral and release on loss.
+- Recheck heartbeat freshness when a queued UI update runs, avoiding a false control stop after a newer heartbeat arrives.
+
 ## 0.8.10
 - Correct RC_CHANNELS_OVERRIDE CRC extra to 124; prior Android and ESP32 bridge used heartbeat CRC 50, so the FC discarded joystick frames.
 - The updated bridge accepts legacy app packets and rewrites their checksum before UART. Flash it before installing the updated APK.
