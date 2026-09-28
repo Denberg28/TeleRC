@@ -3,6 +3,7 @@
 #include <WiFiUdp.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include <cstring>
 
 // ESP32-S3 DevKitC-1 example. Change GPIOs if your S3 board exposes different pins.
 // FC T3 -> GPIO18 (RX); FC R3 <- GPIO17 (TX); FC GND <-> ESP GND.
@@ -12,9 +13,12 @@ constexpr uint32_t FC_BAUD = 115200; // ArduRover SERIAL3_BAUD = 115
 constexpr uint16_t UDP_PORT = 14550;
 const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to the FC
 const char AP_SSID[] = "TeleRC-Rover";
+// Optional: enter your own 12-63 character Wi-Fi password here on your PC.
+// Leave empty to generate a private password. Never commit your filled-in value.
+const char PERSONAL_AP_PASSWORD[] = "";
 // Generated once on first boot and retained in the ESP32's nonvolatile storage.
 // Open USB Serial Monitor at 115200 to read the board's unique Wi-Fi password.
-char apPassword[17] = {};
+char apPassword[64] = {};
 const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_BROADCAST(192, 168, 4, 255);
 
@@ -139,8 +143,19 @@ void setup() {
     Serial.println("ERROR: Wi-Fi password storage unavailable. AP disabled.");
     while (true) delay(1000);
   }
-  String saved = settings.getString("password", "");
-  if (saved.length() != 16) {
+  String saved;
+  const size_t personalLength = strlen(PERSONAL_AP_PASSWORD);
+  if (personalLength != 0) {
+    if (personalLength < 12 || personalLength > 63) {
+      Serial.println("ERROR: Personal Wi-Fi password must be 12-63 characters. AP disabled.");
+      settings.end();
+      while (true) delay(1000);
+    }
+    saved = PERSONAL_AP_PASSWORD;
+  } else {
+    saved = settings.getString("password", "");
+  }
+  if (personalLength == 0 && saved.length() != 16) {
     char generated[17];
     snprintf(generated, sizeof(generated), "%08lX%08lX",
              static_cast<unsigned long>(esp_random()),
