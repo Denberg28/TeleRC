@@ -1,3 +1,7 @@
+## 0.8.12
+- Keep telemetry connected when switching pages or briefly leaving the app; stop and release joystick control immediately when the app loses focus.
+- Remember a requested connection and retry every two seconds on return or after Wi-Fi socket failure. Never resume control automatically.
+
 ## 0.8.11
 - Allow 2.5 seconds between verified rover heartbeats before marking the link stale, accommodating a missed 1 Hz packet while retaining neutral and release on loss.
 - Recheck heartbeat freshness when a queued UI update runs, avoiding a false control stop after a newer heartbeat arrives.
