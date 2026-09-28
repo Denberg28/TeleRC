@@ -594,7 +594,7 @@ class MainActivity : Activity() {
         try { openFileOutput("route-session.csv", MODE_PRIVATE).bufferedWriter().use { it.write(route.encode()) } }
         catch (_: Exception) { routeStatus?.text = "Could not save route locally" }
     }
-    private fun linkFresh() = target != 0 && SystemClock.elapsedRealtime() - heartbeatAt < 1500
+    private fun linkFresh() = HeartbeatHealth.isFresh(target, heartbeatAt, SystemClock.elapsedRealtime())
     private fun linkDiagnosis(): String {
         if (!connected.get()) return "Tap Connect first, then wait four seconds and diagnose again."
         if (linkFresh()) return "Rover heartbeat received. Link active. Control still requires Enable Control."
@@ -724,7 +724,7 @@ class MainActivity : Activity() {
                     }
                 } catch (_: SocketTimeoutException) {} catch (_: Exception) { break }
                 val now = SystemClock.elapsedRealtime()
-                val fresh = target != 0 && now - heartbeatAt < 1500
+                val fresh = HeartbeatHealth.isFresh(target, heartbeatAt, now)
                 if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
                         val rc = synchronized(commandLock) {
@@ -758,7 +758,8 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     if (socket === udp && connected.get()) {
-                        if (!fresh && controlEnabled.get()) disableControl()
+                        // A heartbeat may arrive before this queued UI update executes.
+                        if (!linkFresh() && controlEnabled.get()) disableControl()
                         refreshUi()
                     }
                 }
