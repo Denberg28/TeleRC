@@ -591,9 +591,15 @@ class MainActivity : Activity() {
         }
         if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
             !locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            if (controlEnabled.get()) {
+                pendingPhoneLocate = false
+                Toast.makeText(this, "Stop control before opening location settings", Toast.LENGTH_LONG).show()
+                return
+            }
             AlertDialog.Builder(this).setTitle("Phone location is off")
                 .setMessage("Enable location services to center the map on your phone. Return to TeleRC after enabling it.")
                 .setNegativeButton("Cancel") { _, _ -> pendingPhoneLocate = false }
+                .setOnCancelListener { pendingPhoneLocate = false }
                 .setPositiveButton("Open location settings") { _, _ ->
                     startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                 }.show()
