@@ -636,10 +636,13 @@ class MainActivity : Activity() {
             "heartbeats from SERIAL3. Frame count alone does not verify message contents."
     }
     private fun refreshUi() {
+        val now = SystemClock.elapsedRealtime()
         status?.text = when {
             !connected.get() && wantsLink -> "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
-            !linkFresh() -> "WAITING FOR HEARTBEAT"
+            target == 0 -> "WAITING FOR HEARTBEAT"
+            !HeartbeatHealth.isRecentlySeen(target, heartbeatAt, now) -> "SYSTEM $target  •  HEARTBEAT LOST"
+            !HeartbeatHealth.isFresh(target, heartbeatAt, now) -> "SYSTEM $target  •  HEARTBEAT DELAYED"
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
@@ -704,7 +707,7 @@ class MainActivity : Activity() {
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
-            val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L
+            val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
                 if (connectivity.getNetworkCapabilities(wifi)
@@ -785,11 +788,14 @@ class MainActivity : Activity() {
                         }
                     } catch (_: Exception) { break }
                 }
-                runOnUiThread {
-                    if (socket === udp && connected.get()) {
-                        // A heartbeat may arrive before this queued UI update executes.
-                        if (!linkFresh() && controlEnabled.get()) disableControl()
-                        refreshUi()
+                if (now - lastUiRefresh >= 250) {
+                    lastUiRefresh = now
+                    runOnUiThread {
+                        if (socket === udp && connected.get()) {
+                            // Recheck at execution time: another heartbeat may have arrived.
+                            if (!linkFresh() && controlEnabled.get()) disableControl()
+                            refreshUi()
+                        }
                     }
                 }
             }
