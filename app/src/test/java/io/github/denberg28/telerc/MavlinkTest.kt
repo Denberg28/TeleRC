@@ -16,6 +16,9 @@ class MavlinkTest {
         assertEquals(70, frame[5].toInt())
         assertEquals(0xDC, frame[6].toInt() and 255)
         assertEquals(0x05, frame[7].toInt() and 255)
+        // Independent MAVLink v1 reference vector: RC_CHANNELS_OVERRIDE CRC extra 124.
+        assertEquals(0x65, frame[24].toInt() and 255)
+        assertEquals(0x28, frame[25].toInt() and 255)
         assertThrows(IllegalArgumentException::class.java) { Mavlink.override(0, 1, 1, 999, 1500, 1000, 1500) }
     }
     @Test fun releaseClearsOverrides() {
