@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -71,6 +72,7 @@ class MainActivity : Activity() {
     private var mapActive = false
     private var showTestMap = true
     private var locationPermissionRequested = false
+    private var pendingPhoneLocate = false
     private var started = false
     private var resumed = false
     private val locationManager by lazy { getSystemService(LOCATION_SERVICE) as LocationManager }
@@ -80,6 +82,12 @@ class MainActivity : Activity() {
         if (route.addPhone(TrackPoint(location.latitude, location.longitude, location.time), location.accuracy)) {
             if (routeMap?.anchorToHomeIfWaiting() == true) deadReckoning.reset()
             updateRoute()
+        }
+        if (pendingPhoneLocate && location.accuracy <= 50f &&
+            location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0 &&
+            (location.latitude != 0.0 || location.longitude != 0.0)) {
+            pendingPhoneLocate = false
+            routeMap?.locatePhoneFix(location.latitude, location.longitude)
         }
     }
     private var host: EditText? = null
@@ -299,8 +307,8 @@ class MainActivity : Activity() {
             mapBadge = badge
             scene.addView(badge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT)
                 .apply { leftMargin = dp(4); topMargin = dp(4) })
-            controlsLocate = button("⌖", false) { map.locateRecovery() }.apply {
-                contentDescription = "Center on last rover GPS, then estimate or Home"; visibility = View.GONE
+            controlsLocate = button("⌖", false) { locatePhone() }.apply {
+                contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
             }
             scene.addView(controlsLocate, FrameLayout.LayoutParams(dp(36), dp(34), Gravity.TOP or Gravity.RIGHT)
                 .apply { rightMargin = dp(4); topMargin = dp(4) })
@@ -429,7 +437,9 @@ class MainActivity : Activity() {
             val modeLabel = text("GAME", 12f, ink, true)
             bottom.addView(modeLabel, LinearLayout.LayoutParams(0, -2, 1f))
             routeStatus = text("", 11f, muted)
-            val locate = button("⌖", false) { map.locateHome() }.apply { contentDescription = "Center map on fixed Home"; visibility = View.GONE }
+            val locate = button("⌖", false) { locatePhone() }.apply {
+                contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
+            }
             lateinit var viewMode: Button
             viewMode = button(if (showTestMap) "SIM" else "MAP", false) {
                 showTestMap = !showTestMap
@@ -567,6 +577,32 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
+    private fun locatePhone() {
+        if (!mapActive || !resumed) return
+        if (controlEnabled.get() && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Stop control before requesting location permission", Toast.LENGTH_LONG).show()
+            return
+        }
+        pendingPhoneLocate = true
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locationPermissionRequested = true
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
+            return
+        }
+        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
+            !locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            AlertDialog.Builder(this).setTitle("Phone location is off")
+                .setMessage("Enable location services to center the map on your phone. Return to TeleRC after enabling it.")
+                .setNegativeButton("Cancel") { _, _ -> pendingPhoneLocate = false }
+                .setPositiveButton("Open location settings") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                }.show()
+            return
+        }
+        routeStatus?.text = "Acquiring current phone GPS fix…"
+        Toast.makeText(this, "Acquiring current phone GPS fix", Toast.LENGTH_SHORT).show()
+        startPhoneLocation()
+    }
     private fun startPhoneLocation() {
         if (!resumed || !mapActive) return
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -591,8 +627,13 @@ class MainActivity : Activity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startPhoneLocation()
-        else if (requestCode == 42) routeStatus?.text = "Precise GPS permission required for phone track"
+        if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            if (pendingPhoneLocate) locatePhone() else startPhoneLocation()
+        } else if (requestCode == 42) {
+            pendingPhoneLocate = false
+            routeStatus?.text = "Precise GPS permission required for phone track"
+            Toast.makeText(this, "Precise location permission is required", Toast.LENGTH_LONG).show()
+        }
     }
     @Deprecated("Activity result used for the Android document picker")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -607,6 +648,7 @@ class MainActivity : Activity() {
     }
     private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
     private fun releaseMap() {
+        pendingPhoneLocate = false
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
         routeMap = null; routeStatus = null; mapBadge = null; musicButton = null
