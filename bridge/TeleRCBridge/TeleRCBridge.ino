@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <Preferences.h>
+#include <esp_system.h>
 
 // ESP32-S3 DevKitC-1 example. Change GPIOs if your S3 board exposes different pins.
 // FC T3 -> GPIO18 (RX); FC R3 <- GPIO17 (TX); FC GND <-> ESP GND.
@@ -10,12 +12,15 @@ constexpr uint32_t FC_BAUD = 115200; // ArduRover SERIAL3_BAUD = 115
 constexpr uint16_t UDP_PORT = 14550;
 const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to the FC
 const char AP_SSID[] = "TeleRC-Rover";
-const char AP_PASSWORD[] = "CHANGE_TO_PRIVATE_PASSWORD";
+// Generated once on first boot and retained in the ESP32's nonvolatile storage.
+// Open USB Serial Monitor at 115200 to read the board's unique Wi-Fi password.
+char apPassword[17] = {};
 const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_BROADCAST(192, 168, 4, 255);
 
 HardwareSerial fc(1);
 WiFiUDP udp;
+Preferences settings;
 IPAddress phone(0, 0, 0, 0);
 uint32_t lastPhonePacketMs = 0;
 uint32_t lastControlMs = 0;
@@ -127,18 +132,39 @@ void consumeFcByte(uint8_t b) {
 
 void setup() {
   Serial.begin(115200); // USB diagnostics, never the FC UART
-  if (strcmp(AP_PASSWORD, "CHANGE_TO_PRIVATE_PASSWORD") == 0) {
-    Serial.println("Set a private Wi-Fi password in the sketch before use.");
+  delay(1200); // let the ESP32-S3 USB CDC monitor attach after reset
+  Serial.println("TeleRC bridge starting...");
+  WiFi.mode(WIFI_AP);
+  if (!settings.begin("telerc-ap", false)) {
+    Serial.println("ERROR: Wi-Fi password storage unavailable. AP disabled.");
     while (true) delay(1000);
   }
+  String saved = settings.getString("password", "");
+  if (saved.length() != 16) {
+    char generated[17];
+    snprintf(generated, sizeof(generated), "%08lX%08lX",
+             static_cast<unsigned long>(esp_random()),
+             static_cast<unsigned long>(esp_random()));
+    saved = generated;
+    if (settings.putString("password", saved) != saved.length()) {
+      Serial.println("ERROR: Could not save Wi-Fi password. AP disabled.");
+      settings.end();
+      while (true) delay(1000);
+    }
+  }
+  saved.toCharArray(apPassword, sizeof(apPassword));
+  settings.end();
   fc.setRxBufferSize(4096);
   fc.begin(FC_BAUD, SERIAL_8N1, FC_RX_GPIO, FC_TX_GPIO);
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0));
-  if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
-    Serial.println("Wi-Fi AP failed to start.");
+  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0))) {
+    Serial.println("ERROR: Wi-Fi AP IP configuration failed.");
     while (true) delay(1000);
   }
+  if (!WiFi.softAP(AP_SSID, apPassword)) {
+    Serial.println("ERROR: Wi-Fi AP failed to start.");
+    while (true) delay(1000);
+  }
+  Serial.printf("Wi-Fi name: %s\nWi-Fi password: %s\n", AP_SSID, apPassword);
   if (!udp.begin(UDP_PORT)) {
     Serial.println("UDP port unavailable.");
     while (true) delay(1000);
