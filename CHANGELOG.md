@@ -1,3 +1,7 @@
+## 0.8.10
+- Correct RC_CHANNELS_OVERRIDE CRC extra to 124; prior Android and ESP32 bridge used heartbeat CRC 50, so the FC discarded joystick frames.
+- The updated bridge accepts legacy app packets and rewrites their checksum before UART. Flash it before installing the updated APK.
+
 ## 0.8.9
 - Bind the rover UDP socket explicitly to Wi-Fi so a phone using mobile data alongside an offline ESP32 access point cannot route TeleRC discovery or control traffic over cellular.
 - Explain that a missing bridge diagnostic reply may mean an older ESP32 sketch is installed; keep live control blocked without a valid heartbeat.
