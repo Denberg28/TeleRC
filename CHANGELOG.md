@@ -1,3 +1,7 @@
+## 0.8.14
+- Test and Live crosshairs request a current precise phone GPS fix and center the map once a valid fix arrives.
+- Let the crosshair retry location permission and open device location settings when services are off, without interrupting active rover control.
+
 ## 0.8.13
 - Distinguish a delayed heartbeat from a lost link in Setup while preserving the 2.5-second control cutoff.
 - Limit queued link status UI refreshes to four per second, avoiding redundant main-thread work during telemetry bursts.
