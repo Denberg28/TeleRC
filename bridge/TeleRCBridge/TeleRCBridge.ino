@@ -39,6 +39,14 @@ uint32_t serialByteMs = 0;
 uint32_t serialBytesSeen = 0;
 uint32_t serialFramesSeen = 0;
 uint32_t lastDiagnosticMs = 0;
+uint32_t discoveryCount = 0;
+uint32_t commandCandidates = 0;
+uint32_t commandsAccepted = 0;
+uint32_t commandsRejected = 0;
+uint32_t uartCommandBytesWritten = 0;
+uint16_t lastSteer = 1500;
+uint16_t lastDrive = 1500;
+const char *lastReject = "none";
 
 uint16_t crcByte(uint16_t crc, uint8_t byte) {
   uint8_t tmp = byte ^ (crc & 0xff);
@@ -203,17 +211,27 @@ void loop() {
     if (packetSize == sizeof(DISCOVERY) - 1 && count == packetSize &&
         senderPort == UDP_PORT && local && paired &&
         memcmp(p, DISCOVERY, sizeof(DISCOVERY) - 1) == 0) {
+      discoveryCount++;
       phone = sender;
       lastPhonePacketMs = millis();
-    } else if (packetSize == 26 && count == 26 && senderPort == UDP_PORT && local &&
-        paired && validTeleRcCommand(p, count)) {
-      phone = sender;
-      lastPhonePacketMs = millis();
-      targetSystem = p[22];
-      bool release = p[6] == 0 && p[7] == 0;
-      fc.write(p, count);
-      controlActive = !release;
-      lastControlMs = millis();
+    } else if (packetSize == 26) {
+      commandCandidates++;
+      if (count != 26 || senderPort != UDP_PORT || !local || !paired) {
+        commandsRejected++; lastReject = "source/port/length";
+      } else if (!validTeleRcCommand(p, count)) {
+        commandsRejected++; lastReject = "MAVLink frame/CRC";
+      } else {
+        phone = sender;
+        lastPhonePacketMs = millis();
+        targetSystem = p[22];
+        bool release = p[6] == 0 && p[7] == 0;
+        lastSteer = uint16_t(p[6]) | (uint16_t(p[7]) << 8);
+        lastDrive = uint16_t(p[10]) | (uint16_t(p[11]) << 8);
+        uartCommandBytesWritten += fc.write(p, count);
+        commandsAccepted++;
+        controlActive = !release;
+        lastControlMs = millis();
+      }
     }
   }
   for (int n = 0; n < 512 && fc.available(); ++n)
@@ -239,6 +257,14 @@ void loop() {
                   static_cast<unsigned long>(serialBytesSeen),
                   static_cast<unsigned long>(serialFramesSeen),
                   WiFi.softAPgetStationNum(), phone.toString().c_str());
+    Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu "
+                  "UART_TX_bytes=%lu CH1=%u CH3=%u reject=%s\n",
+                  static_cast<unsigned long>(discoveryCount),
+                  static_cast<unsigned long>(commandCandidates),
+                  static_cast<unsigned long>(commandsAccepted),
+                  static_cast<unsigned long>(commandsRejected),
+                  static_cast<unsigned long>(uartCommandBytesWritten),
+                  lastSteer, lastDrive, lastReject);
   }
   delay(1);
 }
