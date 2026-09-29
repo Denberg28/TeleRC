@@ -806,10 +806,12 @@ class MainActivity : Activity() {
                                 if (fields.size >= 8) {
                                     val counters = fields.drop(3).map { it.toLongOrNull() }
                                     if (counters.all { it != null && it >= 0 } &&
-                                        counters[3]!! in 1000..2000 && counters[4]!! in 1000..2000) {
+                                        (counters[3] == 0L || counters[3]!! in 1000..2000) &&
+                                        (counters[4] == 0L || counters[4]!! in 1000..2000)) {
                                         bridgeAccepted = counters[0]!!; bridgeRejected = counters[1]!!
                                         bridgeCommandBytes = counters[2]!!
-                                        bridgeSteer = counters[3]!!.toInt(); bridgeDrive = counters[4]!!.toInt()
+                                        bridgeSteer = if (counters[3] == 0L) 1500 else counters[3]!!.toInt()
+                                        bridgeDrive = if (counters[4] == 0L) 1500 else counters[4]!!.toInt()
                                         if (fields.size == 11 && counters[5]!! in 1000..2000 &&
                                             counters[6]!! in 1000..2000 && counters[5]!! <= counters[6]!!) {
                                             bridgeDriveMin = counters[5]!!.toInt()

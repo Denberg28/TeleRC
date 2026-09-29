@@ -1,3 +1,7 @@
+## 0.8.17
+- Accept the bridge's valid zero-valued RC release report after Stop, preserving CH3 history in Link diagnostics. Display released channels as neutral 1500.
+- Report neutral CH1/CH3 from the bridge after a release while retaining the non-neutral drive range.
+
 ## 0.8.16
 - Retain the lowest and highest non-neutral CH3 values received by the ESP32 and count changed drive commands. Diagnose link now shows this history after leaving Controls, when the stop command has reset the live CH3 value to 1500.
 - Keep compatibility with earlier bridge diagnostic formats. Motor response still requires bench verification.
