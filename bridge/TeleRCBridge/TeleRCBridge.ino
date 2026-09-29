@@ -254,13 +254,17 @@ void loop() {
     sendOverride(0);    // release to calibrated Flysky receiver
     controlActive = false;
   }
-  if (millis() - lastDiagnosticMs >= 3000) {
+  if (millis() - lastDiagnosticMs >= 1000) {
     lastDiagnosticMs = millis();
     if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhonePacketMs < 5000) {
-      char report[80];
-      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu",
+      char report[160];
+      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u",
                             static_cast<unsigned long>(serialBytesSeen),
-                            static_cast<unsigned long>(serialFramesSeen));
+                            static_cast<unsigned long>(serialFramesSeen),
+                            static_cast<unsigned long>(commandsAccepted),
+                            static_cast<unsigned long>(commandsRejected),
+                            static_cast<unsigned long>(uartCommandBytesWritten),
+                            lastSteer, lastDrive);
       if (length > 0 && length < int(sizeof(report)) && udp.beginPacket(phone, UDP_PORT)) {
         udp.write(reinterpret_cast<const uint8_t *>(report), size_t(length));
         udp.endPacket();

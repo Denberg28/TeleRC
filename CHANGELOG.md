@@ -1,3 +1,7 @@
+## 0.8.15
+- Report ESP32 accepted/rejected control frames, UART transmit bytes, last CH1/CH3 values, and heartbeat age in Link diagnostics.
+- Refresh bridge diagnostics once per second. This release adds observability; motor motion and intermittent heartbeat loss still require a bench diagnosis.
+
 ## 0.8.14
 - Test and Live crosshairs request a current precise phone GPS fix and center the map once a valid fix arrives.
 - Let the crosshair retry location permission and open device location settings when services are off, without interrupting active rover control.

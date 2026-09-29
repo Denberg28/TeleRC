@@ -51,6 +51,11 @@ class MainActivity : Activity() {
     @Volatile private var bridgeStatusAt = 0L
     @Volatile private var bridgeRxBytes = 0L
     @Volatile private var bridgeFrames = 0L
+    @Volatile private var bridgeAccepted = -1L
+    @Volatile private var bridgeRejected = -1L
+    @Volatile private var bridgeCommandBytes = -1L
+    @Volatile private var bridgeSteer = 1500
+    @Volatile private var bridgeDrive = 1500
     @Volatile private var target = 0
     @Volatile private var steering = 1500
     @Volatile private var drive = 1500
@@ -667,7 +672,14 @@ class MainActivity : Activity() {
     private fun linkFresh() = HeartbeatHealth.isFresh(target, heartbeatAt, SystemClock.elapsedRealtime())
     private fun linkDiagnosis(): String {
         if (!connected.get()) return "Tap Connect first, then wait four seconds and diagnose again."
-        if (linkFresh()) return "Rover heartbeat received. Link active. Control still requires Enable Control."
+        if (linkFresh()) {
+            val commands = if (bridgeAccepted >= 0) {
+                " Bridge: accepted $bridgeAccepted, rejected $bridgeRejected, UART TX $bridgeCommandBytes bytes, " +
+                    "CH1 $bridgeSteer, CH3 $bridgeDrive."
+            } else " Bridge command counters unavailable; upload the current bridge sketch."
+            return "Rover heartbeat received. Link active. Control still requires Enable Control." + commands +
+                " An accepted command does not prove the rover is armed or that its motor outputs are configured."
+        }
         if (bridgeStatusAt == 0L || SystemClock.elapsedRealtime() - bridgeStatusAt > 7000)
             return "No recent reply from the ESP32 bridge over Wi-Fi. Verify that the updated bridge sketch " +
                 "is running (older firmware cannot send diagnostics), and check its USB Serial Monitor. " +
@@ -679,9 +691,12 @@ class MainActivity : Activity() {
         if (bridgeFrames == 0L)
             return "ESP32 receives UART bytes ($bridgeRxBytes), but no complete MAVLink frames. " +
                 "Check baud 115200, the ESP GPIO18 RX pin and UART3 wiring."
-        return "ESP32 receives UART bytes ($bridgeRxBytes) and complete frames ($bridgeFrames), " +
-            "but TeleRC has no valid autopilot heartbeat. Check that the F405 is sending MAVLink " +
-            "heartbeats from SERIAL3. Frame count alone does not verify message contents."
+        val age = if (heartbeatAt > 0) "Last valid heartbeat ${SystemClock.elapsedRealtime() - heartbeatAt} ms ago. " else "No valid autopilot heartbeat yet. "
+        return age + "ESP32 UART RX: $bridgeRxBytes bytes, $bridgeFrames frames; commands accepted: " +
+            "$bridgeAccepted, rejected: $bridgeRejected, UART TX: $bridgeCommandBytes bytes. " +
+            "Last CH1/CH3: $bridgeSteer/$bridgeDrive. If commands are accepted but motors do not move, " +
+            "check ArduRover armed state, mode, RC override source system ID, RC1/RC3 input calibration, " +
+            "SERVO output functions, motor driver enable and power. A written UART frame is not a motor acknowledgement."
     }
     private fun refreshUi() {
         val now = SystemClock.elapsedRealtime()
@@ -752,6 +767,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
+        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
@@ -772,15 +788,24 @@ class MainActivity : Activity() {
                     udp.receive(packet)
                     if (packet.address == remote && packet.port == number) {
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
-                        if (payload.size in 20..80 && payload.take(17).toByteArray()
+                        if (payload.size in 20..160 && payload.take(17).toByteArray()
                                 .contentEquals("TELERC_STATUS_V1,".toByteArray(Charsets.US_ASCII))) {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size == 3 && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 8) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
+                                if (fields.size == 8) {
+                                    val counters = fields.subList(3, 8).map { it.toLongOrNull() }
+                                    if (counters.all { it != null && it >= 0 } &&
+                                        counters[3]!! in 1000..2000 && counters[4]!! in 1000..2000) {
+                                        bridgeAccepted = counters[0]!!; bridgeRejected = counters[1]!!
+                                        bridgeCommandBytes = counters[2]!!
+                                        bridgeSteer = counters[3]!!.toInt(); bridgeDrive = counters[4]!!.toInt()
+                                    }
+                                }
                             }
                         } else for (frame in Mavlink.frames(payload)) {
                             val system = Mavlink.heartbeatSystem(frame)
@@ -858,6 +883,7 @@ class MainActivity : Activity() {
         disableControl(); connected.set(false)
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
+        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
     override fun onPause() { resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
