@@ -46,6 +46,9 @@ uint32_t commandsRejected = 0;
 uint32_t uartCommandBytesWritten = 0;
 uint16_t lastSteer = 1500;
 uint16_t lastDrive = 1500;
+uint16_t driveMin = 1500;
+uint16_t driveMax = 1500;
+uint32_t driveChangedCount = 0;
 const char *lastReject = "none";
 
 uint16_t crcByte(uint16_t crc, uint8_t byte) {
@@ -240,6 +243,11 @@ void loop() {
         bool release = p[6] == 0 && p[7] == 0;
         lastSteer = uint16_t(p[6]) | (uint16_t(p[7]) << 8);
         lastDrive = uint16_t(p[10]) | (uint16_t(p[11]) << 8);
+        if (!release && lastDrive != 1500) {
+          if (lastDrive < driveMin) driveMin = lastDrive;
+          if (lastDrive > driveMax) driveMax = lastDrive;
+          driveChangedCount++;
+        }
         uartCommandBytesWritten += writeFcCommand(p, count);
         commandsAccepted++;
         controlActive = !release;
@@ -258,13 +266,14 @@ void loop() {
     lastDiagnosticMs = millis();
     if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhonePacketMs < 5000) {
       char report[160];
-      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u",
+      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu",
                             static_cast<unsigned long>(serialBytesSeen),
                             static_cast<unsigned long>(serialFramesSeen),
                             static_cast<unsigned long>(commandsAccepted),
                             static_cast<unsigned long>(commandsRejected),
                             static_cast<unsigned long>(uartCommandBytesWritten),
-                            lastSteer, lastDrive);
+                            lastSteer, lastDrive, driveMin, driveMax,
+                            static_cast<unsigned long>(driveChangedCount));
       if (length > 0 && length < int(sizeof(report)) && udp.beginPacket(phone, UDP_PORT)) {
         udp.write(reinterpret_cast<const uint8_t *>(report), size_t(length));
         udp.endPacket();
@@ -275,13 +284,14 @@ void loop() {
                   static_cast<unsigned long>(serialFramesSeen),
                   WiFi.softAPgetStationNum(), phone.toString().c_str());
     Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu "
-                  "UART_TX_bytes=%lu CH1=%u CH3=%u reject=%s\n",
+                  "UART_TX_bytes=%lu CH1=%u CH3=%u CH3_min=%u CH3_max=%u CH3_changed=%lu reject=%s\n",
                   static_cast<unsigned long>(discoveryCount),
                   static_cast<unsigned long>(commandCandidates),
                   static_cast<unsigned long>(commandsAccepted),
                   static_cast<unsigned long>(commandsRejected),
                   static_cast<unsigned long>(uartCommandBytesWritten),
-                  lastSteer, lastDrive, lastReject);
+                  lastSteer, lastDrive, driveMin, driveMax,
+                  static_cast<unsigned long>(driveChangedCount), lastReject);
   }
   delay(1);
 }

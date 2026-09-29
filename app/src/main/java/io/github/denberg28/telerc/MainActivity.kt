@@ -56,6 +56,9 @@ class MainActivity : Activity() {
     @Volatile private var bridgeCommandBytes = -1L
     @Volatile private var bridgeSteer = 1500
     @Volatile private var bridgeDrive = 1500
+    @Volatile private var bridgeDriveMin = 1500
+    @Volatile private var bridgeDriveMax = 1500
+    @Volatile private var bridgeDriveChanged = -1L
     @Volatile private var target = 0
     @Volatile private var steering = 1500
     @Volatile private var drive = 1500
@@ -675,7 +678,10 @@ class MainActivity : Activity() {
         if (linkFresh()) {
             val commands = if (bridgeAccepted >= 0) {
                 " Bridge: accepted $bridgeAccepted, rejected $bridgeRejected, UART TX $bridgeCommandBytes bytes, " +
-                    "CH1 $bridgeSteer, CH3 $bridgeDrive."
+                    "CH1 $bridgeSteer, CH3 $bridgeDrive. " +
+                    (if (bridgeDriveChanged >= 0) "Drive history: min $bridgeDriveMin, max $bridgeDriveMax, " +
+                        "$bridgeDriveChanged non-neutral commands since bridge boot."
+                    else "Drive history unavailable; update the bridge sketch.")
             } else " Bridge command counters unavailable; upload the current bridge sketch."
             return "Rover heartbeat received. Link active. Control still requires Enable Control." + commands +
                 " An accepted command does not prove the rover is armed or that its motor outputs are configured."
@@ -767,7 +773,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
-        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
+        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
@@ -793,17 +799,23 @@ class MainActivity : Activity() {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size in listOf(3, 8) && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 8, 11) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
-                                if (fields.size == 8) {
-                                    val counters = fields.subList(3, 8).map { it.toLongOrNull() }
+                                if (fields.size >= 8) {
+                                    val counters = fields.drop(3).map { it.toLongOrNull() }
                                     if (counters.all { it != null && it >= 0 } &&
                                         counters[3]!! in 1000..2000 && counters[4]!! in 1000..2000) {
                                         bridgeAccepted = counters[0]!!; bridgeRejected = counters[1]!!
                                         bridgeCommandBytes = counters[2]!!
                                         bridgeSteer = counters[3]!!.toInt(); bridgeDrive = counters[4]!!.toInt()
+                                        if (fields.size == 11 && counters[5]!! in 1000..2000 &&
+                                            counters[6]!! in 1000..2000 && counters[5]!! <= counters[6]!!) {
+                                            bridgeDriveMin = counters[5]!!.toInt()
+                                            bridgeDriveMax = counters[6]!!.toInt()
+                                            bridgeDriveChanged = counters[7]!!
+                                        }
                                     }
                                 }
                             }
@@ -883,7 +895,7 @@ class MainActivity : Activity() {
         disableControl(); connected.set(false)
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
-        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
+        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
     override fun onPause() { resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }

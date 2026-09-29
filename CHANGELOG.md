@@ -1,3 +1,7 @@
+## 0.8.16
+- Retain the lowest and highest non-neutral CH3 values received by the ESP32 and count changed drive commands. Diagnose link now shows this history after leaving Controls, when the stop command has reset the live CH3 value to 1500.
+- Keep compatibility with earlier bridge diagnostic formats. Motor response still requires bench verification.
+
 ## 0.8.15
 - Report ESP32 accepted/rejected control frames, UART transmit bytes, last CH1/CH3 values, and heartbeat age in Link diagnostics.
 - Refresh bridge diagnostics once per second. This release adds observability; motor motion and intermittent heartbeat loss still require a bench diagnosis.
