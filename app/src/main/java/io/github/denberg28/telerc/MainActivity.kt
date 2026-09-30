@@ -444,19 +444,6 @@ class MainActivity : Activity() {
         left.addView(link, LinearLayout.LayoutParams(-1, 0, 1f))
         body.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
 
-        val updates = card().apply {
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(text("APP UPDATE", 12f, accent, true))
-            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 14f, ink, true))
-            updateStatus = text("Signed APK · manual check", 11f, muted).apply {
-                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            }
-            addView(updateStatus)
-            addView(button("Check for updates", false) { updater.check() },
-                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
-        }
-        right.addView(updates, LinearLayout.LayoutParams(-1, 0, 0.85f).apply { bottomMargin = dp(8) })
-
         val theme = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             addView(text("THEME & CONTROL FEEL", 12f, accent, true))
@@ -485,7 +472,20 @@ class MainActivity : Activity() {
                 })
             }, LinearLayout.LayoutParams(-1, dp(28)))
         }
-        right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1.15f))
+        right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1.15f).apply { bottomMargin = dp(8) })
+        val updates = card().apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            addView(text("APP UPDATE", 12f, accent, true))
+            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 14f, ink, true))
+            updateStatus = text("Signed APK · manual check", 11f, muted).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            addView(updateStatus)
+            addView(button("Check for updates", false) { updater.check() },
+                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
+        }
+        right.addView(updates, LinearLayout.LayoutParams(-1, 0, 0.85f))
+
         body.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
 
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
