@@ -953,7 +953,7 @@ class MainActivity : Activity() {
         return age + "ESP32 UART RX: $bridgeRxBytes bytes, $bridgeFrames frames; commands accepted: " +
             "$bridgeAccepted, rejected: $bridgeRejected, UART TX: $bridgeCommandBytes bytes. " +
             "Last CH1/CH2: $bridgeSteer/$bridgeDrive. If commands are accepted but motors do not move, " +
-            "check ArduRover armed state, mode, RC override source system ID, RC1/RC3 input calibration, " +
+            "check ArduRover armed state, mode, RC override source system ID, RC1/RC2 input calibration, " +
             "SERVO output functions, motor driver enable and power. A written UART frame is not a motor acknowledgement."
     }
     private fun refreshUi() {
@@ -1036,7 +1036,6 @@ class MainActivity : Activity() {
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
-            var lastBridgePacketAt = SystemClock.elapsedRealtime()
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
                 // Do not tear down the socket because Android temporarily changes
@@ -1054,7 +1053,6 @@ class MainActivity : Activity() {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
                     if (packet.address == remote && packet.port == number) {
-                        lastBridgePacketAt = SystemClock.elapsedRealtime()
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                         if (payload.size in 20..160 && payload.take(17).toByteArray()
                                 .contentEquals("TELERC_STATUS_V1,".toByteArray(Charsets.US_ASCII))) {
@@ -1111,10 +1109,11 @@ class MainActivity : Activity() {
                     }
                 } catch (_: SocketTimeoutException) {} catch (_: Exception) { break }
                 val now = SystemClock.elapsedRealtime()
-                // The bridge normally answers discovery/status every second. Eight
-                // seconds of total bridge silence is a transport failure; heartbeat
-                // loss alone is not and must not churn the UDP connection.
-                if (now - lastBridgePacketAt >= 8000) break
+                // Never convert packet silence into a disconnect. Android may suspend
+                // this Activity/thread while another app is foreground, making elapsed
+                // time jump when TeleRC resumes. Keep the bound UDP socket and discovery
+                // loop alive; only an actual socket/send/receive failure or explicit
+                // Disconnect is allowed to tear down the transport.
                 val fresh = HeartbeatHealth.isFresh(target, heartbeatAt, now)
                 if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
