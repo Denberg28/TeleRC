@@ -595,7 +595,7 @@ class MainActivity : Activity() {
             val reset = button("Reset", false) {
                 if (mapActive) {
                     route.reset(); map.reset(); updateRoute(); locatePhone()
-                } else course.setMode(TestDriveView.Mode.TEST)
+                } else course.resetCourse()
             }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
             bottom.addView(locate, LinearLayout.LayoutParams(dp(42), dp(36)))
             bottom.addView(reset, LinearLayout.LayoutParams(dp(68), dp(36)).apply { leftMargin = dp(5) })
