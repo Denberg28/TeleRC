@@ -893,17 +893,21 @@ class MainActivity : Activity() {
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
     }
     private fun disableControl() {
-        // Serialize release with periodic sends so a queued override cannot follow Stop.
+        // Safety invariant: leaving live control must command neutral, never release immediately
+        // back to a possibly non-neutral physical RC input. The ESP32 bridge then holds neutral
+        // through app/tab/link loss until a fresh non-neutral TeleRC control session starts.
         synchronized(commandLock) {
-            val active = controlEnabled.getAndSet(false)
+            controlEnabled.set(false)
             steering = 1500; drive = 1500
-            if (active && target != 0) try {
+            if (target != 0) try {
                 val udp = socket; val remote = endpoint
                 if (udp != null && remote != null) {
-                    val neutral = Mavlink.override(0, target, 1, 1500, 1500, 1500, 1500)
-                    udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
-                    val release = Mavlink.release(1, target, 1)
-                    udp.send(DatagramPacket(release, release.size, remote, endpointPort))
+                    // UDP is intentionally repeated so a tab change/Disconnect is very unlikely
+                    // to lose the one packet that establishes the bridge's safe-stop state.
+                    repeat(3) { sequence ->
+                        val neutral = Mavlink.override(sequence, target, 1, 1500, 1500, 1500, 1500)
+                        udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
+                    }
                 }
             } catch (_: Exception) {}
         }
