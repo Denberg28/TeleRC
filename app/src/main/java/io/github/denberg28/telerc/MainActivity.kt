@@ -1102,8 +1102,8 @@ class MainActivity : Activity() {
             while (connected.get() && socket === udp) {
                 // Do not tear down the socket because Android temporarily changes
                 // capabilities on the captured Network object. The ESP32 data path
-                // is authoritative: actual UDP failure or sustained packet silence
-                // drives reconnection instead.
+                // is authoritative: only an actual UDP failure or explicit
+                // Disconnect tears down the transport.
                 val discoveryNow = SystemClock.elapsedRealtime()
                 if (discoveryNow - lastDiscovery >= 1000) {
                     try {
@@ -1124,11 +1124,22 @@ class MainActivity : Activity() {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size in listOf(3, 8, 11, 14) && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 7, 8, 11, 14) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
-                                if (fields.size >= 8) {
+                                if (fields.size == 7) {
+                                    val counters = fields.drop(3).map { it.toLongOrNull() }
+                                    if (counters.all { it != null && it >= 0 }) {
+                                        bridgeAccepted = counters[0]!!
+                                        bridgeRejected = counters[1]!!
+                                        bridgeCommandBytes = counters[2]!!
+                                        // Field 6 is ARM/DISARM commands forwarded. Keep
+                                        // legacy CH diagnostics unavailable rather than
+                                        // pretending values the minimal bridge no longer sends.
+                                        bridgeDriveChanged = -1
+                                    }
+                                } else if (fields.size >= 8) {
                                     val counters = fields.drop(3).map { it.toLongOrNull() }
                                     if (counters.all { it != null && it >= 0 } &&
                                         (counters[3] == 0L || counters[3]!! in 1000..2000) &&
@@ -1288,10 +1299,15 @@ class MainActivity : Activity() {
         if (explicitDisconnect && udp != null && remote != null && system != 0) {
             txExecutor.execute {
                 try {
-                    sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = true)
+                    // Neutralize first. The bridge owns the actual receiver-release
+                    // transition when it receives TELERC_DISCONNECT_V1, avoiding two
+                    // independent handover sequences racing each other.
+                    sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = false)
                     val message = "TELERC_DISCONNECT_V1".toByteArray(Charsets.US_ASCII)
                     repeat(3) { udp.send(DatagramPacket(message, message.size, remote, endpointPort)) }
                 } catch (_: Exception) {
+                    // If the explicit message cannot be delivered, the bridge watchdog
+                    // remains in neutral hold instead of guessing that handover succeeded.
                 } finally {
                     udp.close()
                 }
