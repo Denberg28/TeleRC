@@ -237,7 +237,7 @@ void loop() {
       targetSystem = p[22];
       bool release = p[6] == 0 && p[7] == 0;
       lastSteer = uint16_t(p[6]) | (uint16_t(p[7]) << 8);
-      lastDrive = uint16_t(p[10]) | (uint16_t(p[11]) << 8);
+      lastDrive = uint16_t(p[8]) | (uint16_t(p[9]) << 8);
       uartTxBytes += writeFcCommand(p, count);
       acceptedOverrides++;
       controlActive = !release;
@@ -267,7 +267,7 @@ void loop() {
                   static_cast<unsigned long>(serialBytesSeen),
                   static_cast<unsigned long>(serialFramesSeen),
                   WiFi.softAPgetStationNum(), phone.toString().c_str());
-    Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu UART_TX_bytes=%lu CH1=%u CH3=%u\n",
+    Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu UART_TX_bytes=%lu CH1=%u CH2=%u\n",
                   static_cast<unsigned long>(discoveryCount),
                   static_cast<unsigned long>(overridePackets),
                   static_cast<unsigned long>(acceptedOverrides),
