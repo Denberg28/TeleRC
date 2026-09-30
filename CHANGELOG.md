@@ -1,3 +1,11 @@
+## 0.8.28
+- Make the large former Servo button a dedicated rover ARM / DISARM control on Controls and Test Drive; its label follows the real armed state reported by MAVLink HEARTBEAT.
+- Send normal MAV_CMD_COMPONENT_ARM_DISARM commands through a narrowly whitelisted ESP32-S3 bridge path; ArduRover arming checks remain active and no force-arm bypass is used.
+- Keep F1, F2 and F3 exclusively for external servo output assignments; automatically clear the temporary ARM/DISARM assignment if it was previously stored on an F-button.
+- Harden Stop, tab changes, app pause, Disconnect and heartbeat loss: TeleRC sends repeated neutral commands and the bridge holds 1500 neutral at 10 Hz instead of releasing RC override back to a possibly non-neutral receiver.
+- Keep the bridge-side 500 ms control watchdog and Wi-Fi station/AP-loss failsafes; recovery restores telemetry only and never resumes joystick authority automatically.
+- Include passing Android unit/build checks and matching ESP32-S3 bridge compilation for this release.
+
 ## 0.8.27
 - Rebuild the latest TeleRC code after the v0.8.26 landscape spacing and footer-overlap fixes.
 - Retain the layered Wi-Fi/control fail-safe introduced in v0.8.25.
