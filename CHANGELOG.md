@@ -1,3 +1,9 @@
+## 0.8.36
+- Keep ARM/DISARM on the existing MAVLink link instead of performing receiver handover first.
+- Neutralize TeleRC joystick output before ARM/DISARM while preserving the active transport session.
+- Add transport-drop diagnostics for discovery send, UDP receive, and control send failures.
+- Includes the v0.8.35 background command-transmission fix.
+
 ## 0.8.35
 - Android networking reliability update for command transmission.
 - Includes the validated post-0.8.34 sender-thread fix.
