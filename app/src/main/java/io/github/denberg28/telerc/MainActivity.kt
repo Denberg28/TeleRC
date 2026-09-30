@@ -272,34 +272,26 @@ class MainActivity : Activity() {
     private fun renderControls() {
         host = null; port = null; connect = null
         val root = shell()
-        val expandedTabs = nav().apply { visibility = View.GONE }
-        root.addView(expandedTabs, LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
         status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val pages = button("Controls ▾", true) {
-            PopupMenu(this, header.getChildAt(0)).apply {
+        lateinit var pages: Button
+        pages = button("Controls ▾", true) {
+            PopupMenu(this, pages).apply {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
                 menu.add(0, 3, 2, "Test drive")
-                menu.add(0, 4, 3, if (expandedTabs.visibility == View.GONE) "Show tabs" else "Minimize tabs")
                 setOnMenuItemClickListener { item ->
                     when (item.itemId) {
                         1 -> switchTo(Page.SETUP)
                         2 -> Unit
                         3 -> switchTo(Page.TEST_DRIVE)
-                        4 -> expandedTabs.visibility = if (expandedTabs.visibility == View.GONE) View.VISIBLE else View.GONE
                     }
                     true
                 }
             }.show()
         }
-        header.addView(pages, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
-        header.addView(status, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
         val servo = button("Servo") {
             Toast.makeText(this, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
         }.apply { contentDescription = "Servo control placeholder, not configured" }
-        header.addView(servo, LinearLayout.LayoutParams(0, -1, 1f))
-        root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
@@ -320,6 +312,8 @@ class MainActivity : Activity() {
         }
         val (steerPanel, steerInput) = control("STEER", "CH1 · left / right", false) { steering = it }
         val (drivePanel, driveInput) = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
+        steerPanel.addView(pages, 0, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
+        drivePanel.addView(servo, 0, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
         steeringStick = steerInput; driveStick = driveInput
         val actions = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -378,7 +372,7 @@ class MainActivity : Activity() {
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         toolbar.addView(enable, LinearLayout.LayoutParams(dp(180), -1).apply { rightMargin = dp(8) })
-        toolbar.addView(text("Purple · GPS   Cyan · estimate", 10f, muted), LinearLayout.LayoutParams(0, -1, 1f))
+        toolbar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
         for (label in listOf("F1", "F2", "F3")) {
             toolbar.addView(button(label) {
                 Toast.makeText(this, "$label is not configured yet", Toast.LENGTH_SHORT).show()
@@ -435,21 +429,40 @@ class MainActivity : Activity() {
         host = null; port = null; connect = null; enable = null
         steeringStick = null; driveStick = null
         val root = shell()
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
+        lateinit var pages: Button
+        pages = button("Test drive ▾", true) {
+            PopupMenu(this, pages).apply {
+                menu.add(0, 1, 0, "Setup")
+                menu.add(0, 2, 1, "Controls")
+                menu.add(0, 3, 2, "Test drive")
+                setOnMenuItemClickListener { item ->
+                    when (item.itemId) {
+                        1 -> switchTo(Page.SETUP)
+                        2 -> switchTo(Page.CONTROLS)
+                    }
+                    true
+                }
+            }.show()
+        }
+        status = text("DISCONNECTED", 11f, accent, true).apply { gravity = Gravity.CENTER }
+        lateinit var bottom: LinearLayout
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val course = TestDriveView(this)
         testCourse = course
         val vehiclePrefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
         course.maxYawRateDegrees = vehiclePrefs.getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
         val left = card().apply {
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            addView(pages, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
             addView(text("STEER", 16f, ink, true).apply { gravity = Gravity.CENTER })
             addView(text("CH1  ·  left / right", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, false) { course.setSteering(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        row.addView(left, LinearLayout.LayoutParams(0, -1, 0.9f).apply { rightMargin = dp(8) })
+        row.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
         val middle = card().apply {
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
             scene.addView(course, FrameLayout.LayoutParams(-1, -1))
             val map = RouteMapView(this@MainActivity, route)
@@ -471,12 +484,12 @@ class MainActivity : Activity() {
             if (started) map.onStart()
             if (resumed) map.onResume()
             addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
-            val bottom = LinearLayout(this@MainActivity).apply {
+            bottom = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
             val modeLabel = text("GAME", 12f, ink, true)
-            bottom.addView(modeLabel, LinearLayout.LayoutParams(0, -2, 1f))
+            bottom.addView(modeLabel, LinearLayout.LayoutParams(dp(48), -2))
             routeStatus = text("", 11f, muted)
             val locate = button("⌖", false) { locatePhone() }.apply {
                 contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
@@ -536,22 +549,34 @@ class MainActivity : Activity() {
                 }
             }, LinearLayout.LayoutParams(-2, dp(36)))
             bottom.addView(music, LinearLayout.LayoutParams(dp(60), dp(36)).apply { leftMargin = dp(6) })
-            addView(bottom, LinearLayout.LayoutParams(-1, dp(36)))
+
             routeStatus?.visibility = View.GONE
-            addView(routeStatus, LinearLayout.LayoutParams(-1, dp(24)))
+
         }
-        row.addView(middle, LinearLayout.LayoutParams(0, -1, 2.1f).apply { rightMargin = dp(8) })
+        row.addView(middle, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
         val right = card().apply {
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            addView(button("Servo") {
+                Toast.makeText(this@MainActivity, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
+            }, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
             addView(text("DRIVE", 16f, ink, true).apply { gravity = Gravity.CENTER })
             addView(text("CH3  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        row.addView(right, LinearLayout.LayoutParams(0, -1, 0.9f))
+        row.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("Test map: cyan offline rover · blue phone branch · purple live rover · live controls recorded on Controls", 11f, muted),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val tools = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(bottom) }
+        toolbar.addView(tools, LinearLayout.LayoutParams(0, -1, 1f))
+        toolbar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
+        for (label in listOf("F1", "F2", "F3")) {
+            toolbar.addView(button(label) {
+                Toast.makeText(this, "$label is not configured yet", Toast.LENGTH_SHORT).show()
+            }, LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
+        }
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
         setContentView(root)
         updateRoute()
     }

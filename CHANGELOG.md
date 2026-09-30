@@ -1,3 +1,9 @@
+## 0.8.20
+- Extend the center pane to the top on Controls and Test drive, beside compact navigation and Servo buttons.
+- Move link status to the lower center and remove the bottom explanatory text.
+- Use matching narrow joystick panels and F1/F2/F3 placeholders on both screens.
+- Keep navigation in the dropdown only; remove Show tabs.
+
 ## 0.8.19
 - Add compact navigation above steering with expandable and collapsible tabs.
 - Add a Servo placeholder above Drive and F1/F2/F3 placeholders at bottom right.
