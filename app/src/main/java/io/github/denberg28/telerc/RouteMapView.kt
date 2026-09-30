@@ -88,7 +88,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         canvas.drawPath(Path().apply { moveTo(28f, 3f); lineTo(18f, 14f); lineTo(38f, 14f); close() }, paint)
         return bitmap
         }
-        style.addImage("telerc-rover-heading", icon(Color.rgb(0, 125, 235)))
+        style.addImage("telerc-rover-heading", icon(AppColors.accent(context)))
         style.addImage("telerc-preview-heading", icon(Color.rgb(0, 180, 186)))
         roverSource = GeoJsonSource("telerc-rover-position", FeatureCollection.fromFeatures(arrayOf<Feature>()))
         style.addSource(roverSource!!)
@@ -237,7 +237,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         if (session.phone.size > 1) phoneLine = m.addPolyline(
             PolylineOptions().addAll(session.phone.map(::coords)).color(Color.rgb(49, 113, 203)).width(5f))
         if (session.rover.size > 1) roverLine = m.addPolyline(
-            PolylineOptions().addAll(session.rover.map(::coords)).color(Color.rgb(0, 125, 235)).width(6f))
+            PolylineOptions().addAll(session.rover.map(::coords)).color(AppColors.accent(context)).width(6f))
     }
 
     fun locateHome() {

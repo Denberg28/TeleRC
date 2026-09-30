@@ -11,8 +11,8 @@ import kotlin.math.min
 /** Spring-return rover input. Axis output is neutral immediately on release. */
 class JoystickView(context: Context, private val vertical: Boolean, private val changed: (Int) -> Unit) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val purple = Color.rgb(0, 125, 235)
-    private val track = if (context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getBoolean("dark", false)) Color.rgb(28, 53, 76) else Color.rgb(227, 239, 252)
+    private val purple = AppColors.accent(context)
+    private val track = AppColors.softAccent(context)
     private var position = StickPosition(0f, 0f)
     private var pointer = -1
 

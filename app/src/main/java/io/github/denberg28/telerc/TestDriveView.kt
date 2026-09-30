@@ -25,7 +25,7 @@ class TestDriveView(context: Context) : View(context) {
     internal var onTestPose: ((RoverPose) -> Unit)? = null
     private data class Gate(var y: Float, val center: Float, var passed: Boolean = false)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val purple = Color.rgb(0, 125, 235)
+    private val purple = AppColors.accent(context)
     private val gates = mutableListOf<Gate>()
     private val random = Random.Default
     private var steer = 0f

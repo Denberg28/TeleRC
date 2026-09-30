@@ -107,10 +107,10 @@ class MainActivity : Activity() {
     private val darkTheme get() = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark", false)
     private val ink get() = if (darkTheme) Color.rgb(232, 239, 246) else Color.rgb(27, 38, 49)
     private val muted get() = if (darkTheme) Color.rgb(164, 181, 196) else Color.rgb(96, 114, 131)
-    private val accent get() = if (darkTheme) Color.rgb(55, 151, 245) else Color.rgb(0, 112, 218)
+    private val accent get() = AppColors.accent(this)
     private val pale get() = if (darkTheme) Color.rgb(12, 20, 28) else Color.rgb(245, 248, 251)
     private val surface get() = if (darkTheme) Color.rgb(22, 34, 45) else Color.WHITE
-    private val softAccent get() = if (darkTheme) Color.rgb(28, 53, 76) else Color.rgb(227, 239, 252)
+    private val softAccent get() = AppColors.softAccent(this)
 
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density + 0.5f).toInt()
@@ -237,9 +237,10 @@ class MainActivity : Activity() {
             recreate()
         }.apply { contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme" }, LinearLayout.LayoutParams(dp(48), dp(44)))
         root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(8) })
-        val scroll = ScrollView(this).apply { isFillViewport = false }
+        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
         val connection = card().apply {
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             addView(text("CONNECTION", 12f, accent, true))
             host = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
@@ -255,8 +256,12 @@ class MainActivity : Activity() {
                 setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
                 isEnabled = !connected.get()
             }
-            addView(host, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
-            addView(port, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(6) })
+            val endpointRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            host?.textSize = 15f; port?.textSize = 15f
+            host?.contentDescription = "Bridge IPv4 address"; port?.contentDescription = "UDP port"
+            endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(40), 2f).apply { rightMargin = dp(6) })
+            endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(40), 1f))
+            addView(endpointRow, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
             connect = button("Connect") {
                 if (wantsLink) {
                     wantsLink = false
@@ -268,32 +273,49 @@ class MainActivity : Activity() {
                     start(); scheduleReconnect()
                 }
             }
-            addView(connect, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
+            addView(connect, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
         }
-        body.addView(connection, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+        left.addView(connection, LinearLayout.LayoutParams(-1, 0, 1.15f).apply { bottomMargin = dp(8) })
+        val colors = card().apply {
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            addView(text("COLOR THEME", 12f, accent, true))
+            val choices = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            val selected = getSharedPreferences("appearance", MODE_PRIVATE).getString("accent", "Blue")
+            AppColors.names.forEach { name ->
+                choices.addView(button(if (selected == name) "✓ $name" else name, selected == name) {
+                    getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("accent", name).apply()
+                    render()
+                }.apply { textSize = 12f; contentDescription = "$name accent${if (selected == name) ", selected" else ""}" },
+                    LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(4) })
+            }
+            addView(choices, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
+        }
+        left.addView(colors, LinearLayout.LayoutParams(-1, 0, 1f))
+        body.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
         val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val info = card().apply {
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             addView(text("LINK STATUS", 12f, accent, true))
             status = text("DISCONNECTED", 15f, ink, true); addView(status)
-            addView(text("A valid heartbeat and Enable action are required.", 12f, muted))
+            status?.apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
             addView(button("Diagnose link", false) {
                 AlertDialog.Builder(this@MainActivity).setTitle("Link diagnostics")
                     .setMessage(linkDiagnosis()).setPositiveButton("OK", null).show()
-            }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
+            }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
         }
-        details.addCard(info)
+        details.addView(info, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
         val updates = card().apply {
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             addView(text("APP UPDATE", 12f, accent, true))
-            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 17f, ink, true))
-            addView(text("Check GitHub for a newer signed APK.", 12f, muted))
-            updateStatus = text("Updates are checked only when you tap the button.", 12f, muted)
+            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 14f, ink, true))
+            updateStatus = text("Signed APK · manual check", 11f, muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
             addView(updateStatus)
             addView(button("Check for updates", false) { updater.check() },
-                LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
+                LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
         }
-        details.addCard(updates)
-        body.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-        scroll.addView(body); root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        details.addView(updates, LinearLayout.LayoutParams(-1, 0, 1.15f))
+        body.addView(details, LinearLayout.LayoutParams(0, -1, 1f))
+        root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
     private fun renderControls() {
