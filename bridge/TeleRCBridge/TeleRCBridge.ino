@@ -69,7 +69,7 @@ bool validRcOverride(const uint8_t *p, size_t n) {
   uint16_t crc = 0xffff;
   for (size_t i = 1; i < 24; ++i) crc = crcByte(crc, p[i]);
   const uint16_t received = uint16_t(p[24]) | (uint16_t(p[25]) << 8);
-  if (received != crcByte(crc, 124) && received != crcByte(crc, 50)) return false;
+  if (received != crcByte(crc, 124)) return false;
 
   bool release = true;
   for (int ch = 0; ch < 4; ++ch) {
