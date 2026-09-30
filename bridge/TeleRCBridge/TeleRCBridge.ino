@@ -355,7 +355,7 @@ void loop() {
         targetSystem = p[22];
         bool release = p[6] == 0 && p[7] == 0;
         lastSteer = release ? 1500 : uint16_t(p[6]) | (uint16_t(p[7]) << 8);
-        lastDrive = release ? 1500 : uint16_t(p[10]) | (uint16_t(p[11]) << 8);
+        lastDrive = release ? 1500 : uint16_t(p[8]) | (uint16_t(p[9]) << 8);
         commandsAccepted++;
         if (release) {
           // Older TeleRC APKs used all-zero RC override as "Stop control".
@@ -425,7 +425,7 @@ void loop() {
                   WiFi.softAPgetStationNum(), phone.toString().c_str(),
                   static_cast<unsigned long>(apRestartCount));
     Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu "
-                  "UART_TX_bytes=%lu CH1=%u CH3=%u CH3_min=%u CH3_max=%u CH3_changed=%lu "
+                  "UART_TX_bytes=%lu CH1=%u CH2=%u CH2_min=%u CH2_max=%u CH2_changed=%lu "
                   "failsafe_count=%lu last_failsafe=%s reject=%s\n",
                   static_cast<unsigned long>(discoveryCount),
                   static_cast<unsigned long>(commandCandidates),
