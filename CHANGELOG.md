@@ -1,3 +1,8 @@
+## 0.8.35
+- Android networking reliability update for command transmission.
+- Includes the validated post-0.8.34 sender-thread fix.
+- Compatible with the current ESP32-S3 bridge sketch.
+
 ## 0.8.34
 - Fix MAVLink ARM/DISARM flow: arm/disarm now neutralizes and releases RC override first, then sends one standard MAV_CMD_COMPONENT_ARM_DISARM COMMAND_LONG with confirmation=0.
 - Parse MAVLink COMMAND_ACK for command 400 and show ACCEPTED / TEMPORARILY REJECTED / DENIED / UNSUPPORTED / FAILED in TeleRC instead of silently waiting for heartbeat state.
