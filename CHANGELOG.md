@@ -1,3 +1,6 @@
+## 0.8.24
+- Make Reset restart the offline Test simulator, alongside the Game return and servo assignment updates in 0.8.23.
+
 ## 0.8.23
 - Replace the hidden Game/Test switch with an explicit Test / Game return button.
 - Center text messages across the application.
