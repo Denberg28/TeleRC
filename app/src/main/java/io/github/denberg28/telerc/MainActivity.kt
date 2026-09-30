@@ -272,9 +272,34 @@ class MainActivity : Activity() {
     private fun renderControls() {
         host = null; port = null; connect = null
         val root = shell()
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
+        val expandedTabs = nav().apply { visibility = View.GONE }
+        root.addView(expandedTabs, LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
         status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
-        root.addView(status, LinearLayout.LayoutParams(-1, dp(30)).apply { bottomMargin = dp(6) })
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val pages = button("Controls ▾", true) {
+            PopupMenu(this, header.getChildAt(0)).apply {
+                menu.add(0, 1, 0, "Setup")
+                menu.add(0, 2, 1, "Controls")
+                menu.add(0, 3, 2, "Test drive")
+                menu.add(0, 4, 3, if (expandedTabs.visibility == View.GONE) "Show tabs" else "Minimize tabs")
+                setOnMenuItemClickListener { item ->
+                    when (item.itemId) {
+                        1 -> switchTo(Page.SETUP)
+                        2 -> Unit
+                        3 -> switchTo(Page.TEST_DRIVE)
+                        4 -> expandedTabs.visibility = if (expandedTabs.visibility == View.GONE) View.VISIBLE else View.GONE
+                    }
+                    true
+                }
+            }.show()
+        }
+        header.addView(pages, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
+        header.addView(status, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
+        val servo = button("Servo") {
+            Toast.makeText(this, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
+        }.apply { contentDescription = "Servo control placeholder, not configured" }
+        header.addView(servo, LinearLayout.LayoutParams(0, -1, 1f))
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
@@ -347,13 +372,20 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        actions.addView(enable, 0, LinearLayout.LayoutParams(-1, dp(44)))
         row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 3.4f).apply { rightMargin = dp(6) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
         row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("Purple: last rover GPS · Cyan: RC estimate · ⌖ locate · link loss stops commands", 11f, muted),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        toolbar.addView(enable, LinearLayout.LayoutParams(dp(180), -1).apply { rightMargin = dp(8) })
+        toolbar.addView(text("Purple · GPS   Cyan · estimate", 10f, muted), LinearLayout.LayoutParams(0, -1, 1f))
+        for (label in listOf("F1", "F2", "F3")) {
+            toolbar.addView(button(label) {
+                Toast.makeText(this, "$label is not configured yet", Toast.LENGTH_SHORT).show()
+            }.apply { contentDescription = "$label function placeholder, not configured" },
+                LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
+        }
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
         setContentView(root)
         if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
         updateRoute()

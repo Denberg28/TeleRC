@@ -1,3 +1,9 @@
+## 0.8.19
+- Add compact navigation above steering with expandable and collapsible tabs.
+- Add a Servo placeholder above Drive and F1/F2/F3 placeholders at bottom right.
+- Expand the center map and move Enable/Stop into the bottom toolbar.
+- New auxiliary buttons display not-configured feedback and send no commands.
+
 ## 0.8.18
 - Use compact equal-width steering and drive panels around a larger center map pane.
 - Move Enable/Stop above the map and reduce Controls card padding and headings.
