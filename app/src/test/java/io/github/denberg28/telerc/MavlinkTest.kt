@@ -6,7 +6,7 @@ import org.junit.Test
 class MavlinkTest {
     @Test fun roverNeutralAndMapping() {
         assertEquals(RcChannels(1500, 1500, 1500, 1500), RoverControls.neutral)
-        assertEquals(RcChannels(1700, 1500, 1200, 1500), RoverControls.channels(1700, 1200))
+        assertEquals(RcChannels(1700, 1200, 1500, 1500), RoverControls.channels(1700, 1200))
         assertFalse(CraftProfile.ROCKET.available)
     }
     @Test fun overrideBoundsAndFrame() {
