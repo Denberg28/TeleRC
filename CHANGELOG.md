@@ -1,7 +1,8 @@
-## Unreleased
+## 0.8.30
 - Change the TeleRC rover drive/throttle command from RC CH3 to RC CH2 end-to-end.
 - Update live-control UI labels, sent-command logging, dead-reckoning input, ESP32 bridge diagnostics, diagnostic sketch, and the checked-in ArduRover profile to use CH2.
 - Steering remains on CH1; CH3 and CH4 are neutral in TeleRC live control.
+- Android checks and the matching ESP32-S3 bridge compile pass for the final CH2 mapping.
 
 ## 0.8.29
 - Stabilize the Android rover link by no longer tearing down UDP when Android temporarily changes the captured Wi-Fi Network capability state.
