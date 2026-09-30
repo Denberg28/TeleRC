@@ -28,6 +28,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.SocketTimeoutException
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -47,6 +48,9 @@ class MainActivity : Activity() {
     }
     private val controlEnabled = AtomicBoolean(false)
     private val commandLock = Any()
+    private val txExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "telerc-tx").apply { isDaemon = true }
+    }
     @Volatile private var heartbeatAt = 0L
     @Volatile private var bridgeStatusAt = 0L
     @Volatile private var bridgeRxBytes = 0L
@@ -274,6 +278,42 @@ class MainActivity : Activity() {
             control.contentDescription = "Assign external servo output to $label"
         }
     }
+    private fun sendControlHandoverBlocking(
+        udp: DatagramSocket,
+        remote: InetAddress,
+        system: Int,
+        releaseToReceiver: Boolean
+    ) {
+        synchronized(commandLock) {
+            repeat(3) { sequence ->
+                val neutral = Mavlink.override(sequence, system, 1, 1500, 1500, 1500, 1500)
+                udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
+            }
+            if (releaseToReceiver) {
+                repeat(3) { sequence ->
+                    val release = Mavlink.release(100 + sequence, system, 1)
+                    udp.send(DatagramPacket(release, release.size, remote, endpointPort))
+                }
+            }
+        }
+    }
+
+    private fun disableControlState() {
+        controlEnabled.set(false)
+        steering = 1500
+        drive = 1500
+        if (page == Page.CONTROLS && mapActive) {
+            deadReckoning.hold()
+            controlsEstimate?.text = "RC STOPPED · last estimate frozen"
+            updateRoute()
+        }
+        steeringStick?.isEnabled = false
+        driveStick?.isEnabled = false
+        steeringStick?.reset()
+        driveStick?.reset()
+        refreshUi()
+    }
+
     private fun toggleArmDisarm() {
         val armed = vehicleArmed
         val udp = socket
@@ -284,25 +324,34 @@ class MainActivity : Activity() {
                 android.widget.Toast.LENGTH_SHORT).show()
             return
         }
-        // Match ArduPilot's GCS arming flow: neutralize, release RC override,
-        // then send one MAV_CMD_COMPONENT_ARM_DISARM COMMAND_LONG with confirmation=0.
-        disableControl(releaseToReceiver = true)
+
+        // UI state changes immediately. Network I/O is serialized off the main thread.
+        disableControlState()
         lastArmAck = "WAITING FOR ACK"
-        try {
-            synchronized(commandLock) {
-                val command = Mavlink.armDisarm(200, system, 1, !armed)
-                udp.send(DatagramPacket(command, command.size, remote, endpointPort))
+
+        txExecutor.execute {
+            try {
+                sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = true)
+                synchronized(commandLock) {
+                    val command = Mavlink.armDisarm(200, system, 1, !armed)
+                    udp.send(DatagramPacket(command, command.size, remote, endpointPort))
+                }
+                runOnUiThread {
+                    android.widget.Toast.makeText(this@MainActivity,
+                        if (armed) "DISARM sent · waiting for COMMAND_ACK"
+                        else "ARM sent · waiting for COMMAND_ACK",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                lastArmAck = "SEND FAILED: " + e.javaClass.simpleName
+                runOnUiThread {
+                    android.widget.Toast.makeText(this@MainActivity,
+                        "ARM/DISARM send failed: " + e.javaClass.simpleName,
+                        android.widget.Toast.LENGTH_LONG).show()
+                }
             }
-            android.widget.Toast.makeText(this,
-                if (armed) "DISARM sent · waiting for COMMAND_ACK" else "ARM sent · waiting for COMMAND_ACK",
-                android.widget.Toast.LENGTH_SHORT).show()
-        } catch (_: Exception) {
-            lastArmAck = "SEND FAILED"
-            android.widget.Toast.makeText(this, "ARM/DISARM command could not be sent",
-                android.widget.Toast.LENGTH_SHORT).show()
         }
     }
-
     private fun servoAssignmentButton(label: String): Button {
         require(label in listOf("F1", "F2", "F3"))
         val prefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
@@ -975,39 +1024,20 @@ class MainActivity : Activity() {
         refreshFunctionButtons()
     }
     private fun disableControl(releaseToReceiver: Boolean = false) {
-        // Default safety path: tab/app/link loss commands neutral and lets the bridge
-        // enter neutral-hold. Deliberate Stop Control/Disconnect additionally sends a
-        // MAVLink release so the physical receiver can take over immediately.
-        synchronized(commandLock) {
-            controlEnabled.set(false)
-            steering = 1500; drive = 1500
-            if (target != 0) try {
-                val udp = socket; val remote = endpoint
-                if (udp != null && remote != null) {
-                    // UDP is intentionally repeated so a tab change/Disconnect is very unlikely
-                    // to lose the one packet that establishes the bridge's safe-stop state.
-                    repeat(3) { sequence ->
-                        val neutral = Mavlink.override(sequence, target, 1, 1500, 1500, 1500, 1500)
-                        udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
-                    }
-                    if (releaseToReceiver) {
-                        repeat(3) { sequence ->
-                            val release = Mavlink.release(100 + sequence, target, 1)
-                            udp.send(DatagramPacket(release, release.size, remote, endpointPort))
-                        }
-                    }
+        // State changes are immediate; UDP safety/handover packets run on the dedicated TX thread.
+        val system = target
+        val udp = socket
+        val remote = endpoint
+        disableControlState()
+        if (system != 0 && udp != null && remote != null) {
+            txExecutor.execute {
+                try {
+                    sendControlHandoverBlocking(udp, remote, system, releaseToReceiver)
+                } catch (_: Exception) {
+                    // ESP32 500 ms watchdog remains the final safety layer if phone TX fails.
                 }
-            } catch (_: Exception) {}
+            }
         }
-        if (page == Page.CONTROLS && mapActive) {
-            // Preserve the recovery map and its last estimate after Stop or link loss.
-            deadReckoning.hold()
-            controlsEstimate?.text = "RC STOPPED · last estimate frozen"
-            updateRoute()
-        }
-        steeringStick?.isEnabled = false; driveStick?.isEnabled = false
-        steeringStick?.reset(); driveStick?.reset()
-        refreshUi()
     }
     private fun start() {
         if (connected.get()) return
@@ -1186,26 +1216,50 @@ class MainActivity : Activity() {
         if (resumed && wantsLink) reconnectHandler.postDelayed(reconnect, 2000)
     }
     private fun stop(explicitDisconnect: Boolean = false) {
-        disableControl(releaseToReceiver = explicitDisconnect)
         val udp = socket
         val remote = endpoint
-        if (explicitDisconnect && udp != null && remote != null) {
-            val message = "TELERC_DISCONNECT_V1".toByteArray(Charsets.US_ASCII)
-            try {
-                repeat(3) { udp.send(DatagramPacket(message, message.size, remote, endpointPort)) }
-            } catch (_: Exception) {}
-        }
+        val system = target
+        disableControlState()
         connected.set(false)
-        udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; lastArmAck = ""; heartbeatAt = 0
-        bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
-        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
-        bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
-        host?.isEnabled = true; port?.isEnabled = true; refreshUi()
+        socket = null
+        endpoint = null
+        target = 0
+        vehicleArmed = null
+        lastArmAck = ""
+        heartbeatAt = 0
+        bridgeStatusAt = 0
+        bridgeRxBytes = 0
+        bridgeFrames = 0
+        bridgeAccepted = -1
+        bridgeRejected = -1
+        bridgeCommandBytes = -1
+        bridgeDriveChanged = -1
+        bridgeHeartbeatCount = -1
+        bridgeHeartbeatGapMs = -1
+        bridgeHeartbeatMaxGapMs = -1
+        host?.isEnabled = true
+        port?.isEnabled = true
+        refreshUi()
+
+        if (explicitDisconnect && udp != null && remote != null && system != 0) {
+            txExecutor.execute {
+                try {
+                    sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = true)
+                    val message = "TELERC_DISCONNECT_V1".toByteArray(Charsets.US_ASCII)
+                    repeat(3) { udp.send(DatagramPacket(message, message.size, remote, endpointPort)) }
+                } catch (_: Exception) {
+                } finally {
+                    udp.close()
+                }
+            }
+        } else {
+            udp?.close()
+        }
     }
     override fun onPause() { resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
     override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); super.onDestroy() }
+    override fun onDestroy() { wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); txExecutor.shutdown(); super.onDestroy() }
 }
