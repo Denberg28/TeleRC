@@ -1,3 +1,12 @@
+## 0.8.29
+- Stabilize the Android rover link by no longer tearing down UDP when Android temporarily changes the captured Wi-Fi Network capability state.
+- Separate transport health from MAVLink heartbeat health: heartbeat loss still disables live control, but does not by itself churn the UDP connection.
+- Treat sustained total bridge silence as the transport failure condition; reconnect only after roughly 8 seconds without any ESP32 packet or on a real socket failure.
+- Keep automatic reconnect at 2 seconds after a genuine transport failure, while preserving the faster 500 ms ESP32 control watchdog and 2.5-second heartbeat control cutoff.
+- Extend Diagnose Link with ESP32 access-point restart count and phone station-disconnect event count so AP resets, phone Wi-Fi drops, and FC/UART heartbeat loss can be distinguished.
+- Retain v0.8.28 dedicated ARM / DISARM, F1/F2/F3 external-servo assignments, and neutral-hold failsafe behavior.
+- Android checks and the matching ESP32-S3 bridge compile pass for this release.
+
 ## 0.8.28
 - Make the large former Servo button a dedicated rover ARM / DISARM control on Controls and Test Drive; its label follows the real armed state reported by MAVLink HEARTBEAT.
 - Send normal MAV_CMD_COMPONENT_ARM_DISARM commands through a narrowly whitelisted ESP32-S3 bridge path; ArduRover arming checks remain active and no force-arm bypass is used.
