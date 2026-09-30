@@ -13,6 +13,7 @@ constexpr uint32_t FC_BAUD = 115200; // ArduRover SERIAL3_BAUD = 115
 constexpr uint16_t UDP_PORT = 14550;
 constexpr uint32_t AP_RETRY_MS = 5000;
 constexpr uint32_t CONTROL_WATCHDOG_MS = 500; // 5 missed 10 Hz control frames
+constexpr uint32_t SAFE_HOLD_REFRESH_MS = 100; // keep neutral override alive at 10 Hz
 const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to the FC
 const char AP_SSID[] = "TeleRC-Rover";
 // Optional: enter your own 12-63 character Wi-Fi password here on your PC.
@@ -31,6 +32,8 @@ IPAddress phone(0, 0, 0, 0);
 uint32_t lastPhonePacketMs = 0;
 uint32_t lastControlMs = 0;
 bool controlActive = false;
+bool safeHoldActive = false;
+uint32_t lastSafeHoldMs = 0;
 uint8_t targetSystem = 0;
 uint8_t bridgeSequence = 0;
 
@@ -59,6 +62,7 @@ uint32_t apRestartCount = 0;
 
 enum class FailsafeReason : uint8_t {
   NONE = 0,
+  APP_STOP,
   CONTROL_TIMEOUT,
   STATION_DISCONNECT,
   AP_STOP,
@@ -70,6 +74,7 @@ size_t sendOverride(uint16_t value);
 
 const char *failsafeReasonName(FailsafeReason reason) {
   switch (reason) {
+    case FailsafeReason::APP_STOP: return "app-stop";
     case FailsafeReason::CONTROL_TIMEOUT: return "control-timeout";
     case FailsafeReason::STATION_DISCONNECT: return "wifi-station-disconnect";
     case FailsafeReason::AP_STOP: return "wifi-ap-stop";
@@ -78,15 +83,19 @@ const char *failsafeReasonName(FailsafeReason reason) {
 }
 
 void triggerFailsafe(FailsafeReason reason) {
-  if (!controlActive || !targetSystem) return;
-  uartCommandBytesWritten += sendOverride(1500); // neutral first
-  uartCommandBytesWritten += sendOverride(0);    // then release RC override
+  if (!targetSystem) return;
+  // Do not release RC override here. Releasing can immediately hand throttle back
+  // to a still-connected physical receiver. Hold neutral until TeleRC explicitly
+  // starts a fresh live-control stream.
+  uartCommandBytesWritten += sendOverride(1500);
   controlActive = false;
+  safeHoldActive = true;
+  lastSafeHoldMs = millis();
   lastSteer = 1500;
   lastDrive = 1500;
   ++failsafeCount;
   lastFailsafeReason = reason;
-  Serial.printf("FAILSAFE neutral/release reason=%s count=%lu\n",
+  Serial.printf("FAILSAFE neutral-hold reason=%s count=%lu\n",
                 failsafeReasonName(reason),
                 static_cast<unsigned long>(failsafeCount));
 }
@@ -327,15 +336,22 @@ void loop() {
         bool release = p[6] == 0 && p[7] == 0;
         lastSteer = release ? 1500 : uint16_t(p[6]) | (uint16_t(p[7]) << 8);
         lastDrive = release ? 1500 : uint16_t(p[10]) | (uint16_t(p[11]) << 8);
-        if (!release && lastDrive != 1500) {
-          if (lastDrive < driveMin) driveMin = lastDrive;
-          if (lastDrive > driveMax) driveMax = lastDrive;
-          driveChangedCount++;
-        }
-        uartCommandBytesWritten += writeFcCommand(p, count);
         commandsAccepted++;
-        controlActive = !release;
-        lastControlMs = millis();
+        if (release) {
+          // Older TeleRC APKs used all-zero RC override as "Stop control".
+          // Convert that request to neutral-hold instead of forwarding a release.
+          triggerFailsafe(FailsafeReason::APP_STOP);
+        } else {
+          if (lastDrive != 1500) {
+            if (lastDrive < driveMin) driveMin = lastDrive;
+            if (lastDrive > driveMax) driveMax = lastDrive;
+            driveChangedCount++;
+          }
+          safeHoldActive = false;
+          uartCommandBytesWritten += writeFcCommand(p, count);
+          controlActive = true;
+          lastControlMs = millis();
+        }
       }
     }
   }
@@ -344,6 +360,11 @@ void loop() {
   if (controlActive && targetSystem &&
       millis() - lastControlMs >= CONTROL_WATCHDOG_MS) {
     triggerFailsafe(FailsafeReason::CONTROL_TIMEOUT);
+  }
+  if (safeHoldActive && targetSystem &&
+      millis() - lastSafeHoldMs >= SAFE_HOLD_REFRESH_MS) {
+    uartCommandBytesWritten += sendOverride(1500);
+    lastSafeHoldMs = millis();
   }
   if (millis() - lastDiagnosticMs >= 1000) {
     lastDiagnosticMs = millis();
