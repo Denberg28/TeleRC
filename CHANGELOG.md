@@ -1,3 +1,13 @@
+## 0.8.38
+- Full reliability and sanitization review of Android control lifecycle, MAVLink handling, ESP32-S3 bridge, ARM/DISARM, diagnostics, updater, map/test isolation, and release workflow.
+- Simplify bridge control authority into live override, neutral hold, and receiver released states.
+- Keep tab changes, app backgrounding, heartbeat loss, and control timeout fail-safe in neutral hold; the bridge refreshes neutral at 10 Hz after a 500 ms live-control timeout.
+- Make explicit Disconnect a single-owner handover: Android neutralizes first, then TELERC_DISCONNECT_V1 tells the bridge to release RC override and clear phone pairing. If that message is lost, the safer fallback remains neutral hold.
+- Remove duplicate Android/bridge receiver-release sequencing, stale legacy diagnostic parsing, unused navigation code, and obsolete heartbeat/AP diagnostic state.
+- Require the correct MAVLink RC_CHANNELS_OVERRIDE CRC extra (124); remove compatibility with the obsolete incorrect CRC 50 format.
+- Retain strict endpoint/source filtering, checksum-valid autopilot heartbeat gating, standard non-forced ARM/DISARM, heartbeat-authoritative ARM button state, CH1 steering / CH2 drive, F1-F3 external-servo assignment isolation, and persistent AP/UDP transport.
+- Bridge diagnostics now report UART RX frames, accepted/rejected phone commands, UART command bytes, and ARM/DISARM forwards using one compact current status format.
+
 ## 0.8.37
 - Rearrange Setup into two compact columns: Connection above Link Status on the left; App Update above Theme & Control Feel on the right.
 - Move light/dark mode into the Theme card while retaining accent selection and joystick sensitivity.
