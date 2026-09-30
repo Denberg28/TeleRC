@@ -1,3 +1,9 @@
+## 0.8.37
+- Rearrange Setup into two compact columns: Connection above Link Status on the left; App Update above Theme & Control Feel on the right.
+- Move light/dark mode into the Theme card while retaining accent selection and joystick sensitivity.
+- Harden ARM/DISARM delivery by sending the normal MAV_CMD_COMPONENT_ARM_DISARM three times with unique MAVLink sequence numbers after neutralizing TeleRC control.
+- Keep normal ArduRover pre-arm checks active; no force-arm bypass is used. COMMAND_ACK remains the authoritative result shown by TeleRC.
+
 ## 0.8.36
 - Keep ARM/DISARM on the existing MAVLink link instead of performing receiver handover first.
 - Neutralize TeleRC joystick output before ARM/DISARM while preserving the active transport session.
