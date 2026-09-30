@@ -64,6 +64,7 @@ class MainActivity : Activity() {
     @Volatile private var bridgeHeartbeatMaxGapMs = -1L
     @Volatile private var target = 0
     @Volatile private var vehicleArmed: Boolean? = null
+    @Volatile private var lastArmAck = ""
     @Volatile private var steering = 1500
     @Volatile private var drive = 1500
     private var status: TextView? = null
@@ -283,19 +284,20 @@ class MainActivity : Activity() {
                 android.widget.Toast.LENGTH_SHORT).show()
             return
         }
-        // Arming and disarming always start from neutral and revoke live joystick authority.
-        disableControl()
+        // Match ArduPilot's GCS arming flow: neutralize, release RC override,
+        // then send one MAV_CMD_COMPONENT_ARM_DISARM COMMAND_LONG with confirmation=0.
+        disableControl(releaseToReceiver = true)
+        lastArmAck = "WAITING FOR ACK"
         try {
             synchronized(commandLock) {
-                repeat(3) { attempt ->
-                    val command = Mavlink.armDisarm(200 + attempt, system, 1, !armed, attempt)
-                    udp.send(DatagramPacket(command, command.size, remote, endpointPort))
-                }
+                val command = Mavlink.armDisarm(200, system, 1, !armed)
+                udp.send(DatagramPacket(command, command.size, remote, endpointPort))
             }
             android.widget.Toast.makeText(this,
-                if (armed) "DISARM command sent · waiting for heartbeat" else "ARM command sent · waiting for heartbeat",
+                if (armed) "DISARM sent · waiting for COMMAND_ACK" else "ARM sent · waiting for COMMAND_ACK",
                 android.widget.Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {
+            lastArmAck = "SEND FAILED"
             android.widget.Toast.makeText(this, "ARM/DISARM command could not be sent",
                 android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -1035,7 +1037,7 @@ class MainActivity : Activity() {
             }
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         socket = udp; endpoint = remote; endpointPort = number
-        target = 0; vehicleArmed = null; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
+        target = 0; vehicleArmed = null; lastArmAck = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
         disableControl(); connected.set(true)
@@ -1098,6 +1100,18 @@ class MainActivity : Activity() {
                                 target = heartbeat.system
                                 vehicleArmed = heartbeat.armed
                                 heartbeatAt = SystemClock.elapsedRealtime()
+                            }
+                            val ack = Mavlink.commandAck(frame)
+                            if (ack != null && ack.system == target && ack.command == 400) {
+                                lastArmAck = ack.resultText
+                                runOnUiThread {
+                                    if (socket === udp) {
+                                        android.widget.Toast.makeText(this@MainActivity,
+                                            "ARM/DISARM: ${ack.resultText}",
+                                            android.widget.Toast.LENGTH_SHORT).show()
+                                        refreshUi()
+                                    }
+                                }
                             }
                             val position = Mavlink.globalPosition(frame)
                             if (position != null && position.system == target && target != 0 && linkFresh()) {
@@ -1182,7 +1196,7 @@ class MainActivity : Activity() {
             } catch (_: Exception) {}
         }
         connected.set(false)
-        udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; heartbeatAt = 0
+        udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; lastArmAck = ""; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
