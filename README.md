@@ -1,4 +1,4 @@
-# TeleRC 0.8.28 — rover joystick private test
+# TeleRC 0.8.29 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls. The large control above DRIVE is a dedicated **ARM / DISARM** button whose label follows the armed state reported by MAVLink HEARTBEAT. F1/F2/F3 are reserved for external servo output assignments.
 
@@ -13,7 +13,7 @@ Setup and Controls share compact navigation and cards. Setup uses rounded connec
 5. Use the dedicated **ARM / DISARM** button only after a fresh heartbeat is present. TeleRC sends standard MAVLink arm/disarm commands and waits for HEARTBEAT to confirm the actual state before changing the label. ArduRover safety checks remain in force.
 
 If Setup remains at **WAITING FOR HEARTBEAT**, tap **Diagnose link** four seconds after Connect. With the matching ESP32 bridge, Setup can identify a missing bridge reply, zero bytes from the F405 UART, incomplete MAVLink frames, or frames without a valid autopilot heartbeat. Diagnostics do not send rover commands. The previous bridge firmware does not provide these counters.
-TeleRC binds the UDP socket to the connected Wi-Fi network so Android mobile data and no-internet network switching cannot silently route rover packets away from the ESP32. If Wi-Fi is unavailable, Connect fails instead of falling back to cellular.
+TeleRC binds the UDP socket to the connected Wi-Fi network so Android mobile data and no-internet network switching cannot silently route rover packets away from the ESP32. If Wi-Fi is unavailable, Connect fails instead of falling back to cellular. TeleRC keeps that bound UDP session alive across temporary Android Network-capability churn and distinguishes MAVLink heartbeat freshness from bridge transport health. Heartbeat loss disables live control without forcing a reconnect; only an actual socket failure or sustained bridge packet silence causes the link session to restart.
 
 ## Offline test drive
 
