@@ -11,10 +11,10 @@ constexpr int FC_RX_GPIO = 18;
 constexpr int FC_TX_GPIO = 17;
 constexpr uint32_t FC_BAUD = 115200; // ArduRover SERIAL3_BAUD = 115
 constexpr uint16_t UDP_PORT = 14550;
-constexpr uint32_t AP_RETRY_MS = 5000;
 constexpr uint32_t CONTROL_WATCHDOG_MS = 500; // 5 missed 10 Hz control frames
 constexpr uint32_t SAFE_HOLD_REFRESH_MS = 100; // keep neutral override alive at 10 Hz
 const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to the FC
+const char DISCONNECT[] = "TELERC_DISCONNECT_V1"; // explicit app disconnect; never sent to the FC
 const char AP_SSID[] = "TeleRC-Rover";
 // Optional: enter your own 12-63 character Wi-Fi password here on your PC.
 // Leave empty to generate a private password. Never commit your filled-in value.
@@ -55,18 +55,12 @@ uint16_t driveMin = 1500;
 uint16_t driveMax = 1500;
 uint32_t driveChangedCount = 0;
 const char *lastReject = "none";
-volatile bool apStopped = false;
-volatile bool stationDisconnected = false;
-uint32_t lastApRetryMs = 0;
-uint32_t apRestartCount = 0;
-uint32_t stationDisconnectCount = 0;
 
 enum class FailsafeReason : uint8_t {
   NONE = 0,
   APP_STOP,
   CONTROL_TIMEOUT,
-  STATION_DISCONNECT,
-  AP_STOP,
+  EXPLICIT_DISCONNECT,
 };
 uint32_t failsafeCount = 0;
 FailsafeReason lastFailsafeReason = FailsafeReason::NONE;
@@ -77,8 +71,7 @@ const char *failsafeReasonName(FailsafeReason reason) {
   switch (reason) {
     case FailsafeReason::APP_STOP: return "app-stop";
     case FailsafeReason::CONTROL_TIMEOUT: return "control-timeout";
-    case FailsafeReason::STATION_DISCONNECT: return "wifi-station-disconnect";
-    case FailsafeReason::AP_STOP: return "wifi-ap-stop";
+    case FailsafeReason::EXPLICIT_DISCONNECT: return "explicit-disconnect";
     default: return "none";
   }
 }
@@ -101,59 +94,10 @@ void triggerFailsafe(FailsafeReason reason) {
                 static_cast<unsigned long>(failsafeCount));
 }
 
-// Wi-Fi events run on another task. Only set flags here; repair the socket in loop().
-void onWiFiEvent(WiFiEvent_t event) {
-  if (event == ARDUINO_EVENT_WIFI_AP_STOP) apStopped = true;
-  if (event == ARDUINO_EVENT_WIFI_AP_STADISCONNECTED)
-    stationDisconnected = true;
-}
-
-bool startAccessPoint() {
-  WiFi.mode(WIFI_AP);
-  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0)) ||
-      !WiFi.softAP(AP_SSID, apPassword)) return false;
-  // The UDP socket is tied to the network interface; rebind after an AP restart.
-  udp.stop();
-  if (!udp.begin(UDP_PORT)) {
-    WiFi.softAPdisconnect(true);
-    return false;
-  }
-  apStopped = false;
-  Serial.print("TeleRC AP ready at ");
-  Serial.println(WiFi.softAPIP());
-  return true;
-}
-
-void serviceWiFi() {
-  if (stationDisconnected) {
-    stationDisconnected = false;
-    ++stationDisconnectCount;
-    // Safety-first: any station departure invalidates the active controller session.
-    triggerFailsafe(FailsafeReason::STATION_DISCONNECT);
-    phone = IPAddress(0, 0, 0, 0);
-    lastPhonePacketMs = 0;
-    Serial.println("Phone left ESP32 AP; control neutralized and pairing cleared.");
-  }
-
-  if (!apStopped) return;
-
-  // Neutralize immediately when the AP itself stops. AP_RETRY_MS throttles only
-  // network recovery; it must never delay the stop command to the flight controller.
-  triggerFailsafe(FailsafeReason::AP_STOP);
-  phone = IPAddress(0, 0, 0, 0);
-  lastPhonePacketMs = 0;
-
-  const uint32_t now = millis();
-  if (now - lastApRetryMs < AP_RETRY_MS) return;
-  lastApRetryMs = now;
-  Serial.println("ESP32 AP stopped; restarting Wi-Fi and UDP...");
-  udp.stop();
-  if (startAccessPoint()) ++apRestartCount;
-  else {
-    apStopped = true;
-    Serial.println("AP restart failed; retrying in five seconds.");
-  }
-}
+// Keep Wi-Fi transport deliberately simple: start the SoftAP and UDP socket once
+// in setup() and leave them running. Control safety is handled independently by
+// the 500 ms watchdog and neutral-hold; normal phone association changes never
+// restart the AP or rebind UDP.
 
 uint16_t crcByte(uint16_t crc, uint8_t byte) {
   uint8_t tmp = byte ^ (crc & 0xff);
@@ -284,7 +228,7 @@ void setup() {
   Serial.begin(115200); // USB diagnostics, never the FC UART
   delay(1200); // let the ESP32-S3 USB CDC monitor attach after reset
   Serial.println("TeleRC bridge starting...");
-  WiFi.onEvent(onWiFiEvent);
+  WiFi.mode(WIFI_AP);
   if (!settings.begin("telerc-ap", false)) {
     Serial.println("ERROR: Wi-Fi password storage unavailable. AP disabled.");
     while (true) delay(1000);
@@ -317,15 +261,24 @@ void setup() {
   settings.end();
   fc.setRxBufferSize(4096);
   fc.begin(FC_BAUD, SERIAL_8N1, FC_RX_GPIO, FC_TX_GPIO);
-  if (!startAccessPoint()) {
-    Serial.println("ERROR: Wi-Fi AP failed to start; retrying.");
-    apStopped = true;
+  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0))) {
+    Serial.println("ERROR: Wi-Fi AP IP configuration failed.");
+    while (true) delay(1000);
+  }
+  if (!WiFi.softAP(AP_SSID, apPassword)) {
+    Serial.println("ERROR: Wi-Fi AP failed to start.");
+    while (true) delay(1000);
+  }
+  if (!udp.begin(UDP_PORT)) {
+    Serial.println("ERROR: UDP port unavailable.");
+    while (true) delay(1000);
   }
   Serial.printf("Wi-Fi name: %s\nWi-Fi password: %s\n", AP_SSID, apPassword);
+  Serial.print("Bridge ready at ");
+  Serial.println(WiFi.softAPIP());
 }
 
 void loop() {
-  serviceWiFi();
   int packetSize = udp.parsePacket();
   if (packetSize > 0) {
     const IPAddress sender = udp.remoteIP();
@@ -337,7 +290,14 @@ void loop() {
                  sender[3] > 1 && sender[3] < 255;
     bool paired = phone == IPAddress(0, 0, 0, 0) || phone == sender ||
                   millis() - lastPhonePacketMs >= 5000;
-    if (packetSize == sizeof(DISCOVERY) - 1 && count == packetSize &&
+    if (packetSize == sizeof(DISCONNECT) - 1 && count == packetSize &&
+        senderPort == UDP_PORT && local && paired &&
+        memcmp(p, DISCONNECT, sizeof(DISCONNECT) - 1) == 0) {
+      triggerFailsafe(FailsafeReason::EXPLICIT_DISCONNECT);
+      phone = IPAddress(0, 0, 0, 0);
+      lastPhonePacketMs = 0;
+      Serial.println("TeleRC explicit disconnect; pairing cleared, neutral hold retained.");
+    } else if (packetSize == sizeof(DISCOVERY) - 1 && count == packetSize &&
         senderPort == UDP_PORT && local && paired &&
         memcmp(p, DISCOVERY, sizeof(DISCOVERY) - 1) == 0) {
       discoveryCount++;
@@ -403,27 +363,24 @@ void loop() {
   if (millis() - lastDiagnosticMs >= 1000) {
     lastDiagnosticMs = millis();
     if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhonePacketMs < 5000) {
-      char report[160];
-      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%lu,%lu",
+      char report[144];
+      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu",
                             static_cast<unsigned long>(serialBytesSeen),
                             static_cast<unsigned long>(serialFramesSeen),
                             static_cast<unsigned long>(commandsAccepted),
                             static_cast<unsigned long>(commandsRejected),
                             static_cast<unsigned long>(uartCommandBytesWritten),
                             lastSteer, lastDrive, driveMin, driveMax,
-                            static_cast<unsigned long>(driveChangedCount),
-                            static_cast<unsigned long>(apRestartCount),
-                            static_cast<unsigned long>(stationDisconnectCount));
+                            static_cast<unsigned long>(driveChangedCount));
       if (length > 0 && length < int(sizeof(report)) && udp.beginPacket(phone, UDP_PORT)) {
         udp.write(reinterpret_cast<const uint8_t *>(report), size_t(length));
         udp.endPacket();
       }
     }
-    Serial.printf("FC UART bytes=%lu frames=%lu Wi-Fi clients=%d phone=%s AP_restarts=%lu\n",
+    Serial.printf("FC UART bytes=%lu frames=%lu Wi-Fi clients=%d phone=%s\n",
                   static_cast<unsigned long>(serialBytesSeen),
                   static_cast<unsigned long>(serialFramesSeen),
-                  WiFi.softAPgetStationNum(), phone.toString().c_str(),
-                  static_cast<unsigned long>(apRestartCount));
+                  WiFi.softAPgetStationNum(), phone.toString().c_str());
     Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu "
                   "UART_TX_bytes=%lu CH1=%u CH2=%u CH2_min=%u CH2_max=%u CH2_changed=%lu "
                   "failsafe_count=%lu last_failsafe=%s reject=%s\n",
