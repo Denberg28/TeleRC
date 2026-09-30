@@ -27,7 +27,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
 /** Phone branch and measured rover positions are separate layers. Camera moves only at Home/Locate. */
-class RouteMapView(context: Context, private val session: RouteSession) {
+class RouteMapView(private val context: Context, private val session: RouteSession) {
     // Display-only map origin before the phone has an accepted GPS fix; never written to a route.
     private val sampleStart = TrackPoint(13.6218, 123.1948, 0L)
     val view: MapView
