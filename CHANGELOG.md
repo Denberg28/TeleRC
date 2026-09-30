@@ -1,3 +1,9 @@
+## 0.8.25
+- Harden the ESP32-S3 bridge fail-safe: Wi-Fi station disconnect and AP-stop events now neutralize steering/throttle and release RC override immediately.
+- Keep the existing 500 ms control-packet watchdog as a second bridge-side stop path for silent UDP/link stalls.
+- Record automatic fail-safe reason/count in ESP32 USB diagnostics and count the neutral/release bytes sent to the flight controller.
+- Keep TeleRC control non-latching: reconnection restores telemetry only; the operator must explicitly enable control again.
+
 ## 0.8.24
 - Make Reset restart the offline Test simulator, alongside the Game return and servo assignment updates in 0.8.23.
 
