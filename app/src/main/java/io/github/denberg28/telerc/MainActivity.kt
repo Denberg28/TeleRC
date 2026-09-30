@@ -124,6 +124,8 @@ class MainActivity : Activity() {
     }
     private fun button(value: String, filled: Boolean = true, action: () -> Unit) = Button(this).apply {
         text = value; isAllCaps = false; textSize = 15f
+        minimumWidth = 0; minimumHeight = 0
+        setPadding(dp(8), 0, dp(8), 0)
         setTextColor(if (filled) Color.WHITE else accent)
         background = shape(if (filled) accent else softAccent, 16)
         setOnClickListener { action() }
@@ -170,7 +172,7 @@ class MainActivity : Activity() {
     }
     private fun shell(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setBackgroundColor(pale)
-        setPadding(dp(16), dp(12), dp(16), dp(12))
+        setPadding(dp(12), dp(8), dp(12), dp(8))
         setOnApplyWindowInsetsListener { view, insets ->
             val left: Int; val top: Int; val right: Int; val bottom: Int
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -180,7 +182,7 @@ class MainActivity : Activity() {
                 left = insets.systemWindowInsetLeft; top = insets.systemWindowInsetTop
                 right = insets.systemWindowInsetRight; bottom = insets.systemWindowInsetBottom
             }
-            view.setPadding(dp(16) + left, dp(12) + top, dp(16) + right, dp(12) + bottom)
+            view.setPadding(dp(12) + left, dp(8) + top, dp(12) + right, dp(8) + bottom)
             insets
         }
     }
@@ -210,7 +212,7 @@ class MainActivity : Activity() {
     }
     private fun controlColumn(top: View, joystick: View): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        addView(top, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(12) })
+        addView(top, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(8) })
         addView(joystick, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
@@ -384,7 +386,7 @@ class MainActivity : Activity() {
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
             val panel = card().apply {
-                setPadding(dp(8), dp(10), dp(8), dp(10))
+                setPadding(dp(8), dp(8), dp(8), dp(8))
                 addView(text(title, 13f, ink, true).apply { gravity = Gravity.CENTER })
                 val feedback = text("$hint  ·  1500", 11f, muted).apply { gravity = Gravity.CENTER }
                 addView(feedback)
@@ -434,7 +436,7 @@ class MainActivity : Activity() {
                 .apply { rightMargin = dp(4); bottomMargin = dp(4) })
             if (started) map.onStart()
             if (resumed) map.onResume()
-            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(7) })
+            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl() else if (linkFresh()) {
@@ -452,18 +454,30 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
+        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
         row.addView(controlColumn(servo, drivePanel), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // Three-zone footer keeps link state centered and prevents control buttons from
+        // entering its space on narrow landscape screens.
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        toolbar.addView(enable, LinearLayout.LayoutParams(dp(180), -1).apply { rightMargin = dp(8) })
-        toolbar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
-        for (label in listOf("F1", "F2", "F3")) {
-            toolbar.addView(servoAssignmentButton(label),
-                LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
+        val leftSlot = LinearLayout(this).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL }
+        enable?.textSize = 13f
+        leftSlot.addView(enable, LinearLayout.LayoutParams(dp(156), -1))
+        toolbar.addView(leftSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+        status?.apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
+        toolbar.addView(status, LinearLayout.LayoutParams(dp(156), -1))
+        val rightSlot = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        for (label in listOf("F1", "F2", "F3")) {
+            rightSlot.addView(servoAssignmentButton(label),
+                LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
+        }
+        toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
         setContentView(root)
         if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
         updateRoute()
@@ -543,7 +557,7 @@ class MainActivity : Activity() {
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        row.addView(controlColumn(pages, left), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
+        row.addView(controlColumn(pages, left), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
         val middle = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
@@ -574,7 +588,8 @@ class MainActivity : Activity() {
             var testMode = false
             val modeButton = button("Test", false) { }
             modeButton.contentDescription = "Open Test mode; tap again to return to Game"
-            bottom.addView(modeButton, LinearLayout.LayoutParams(dp(68), dp(36)).apply { rightMargin = dp(5) })
+            modeButton.textSize = 12f
+            bottom.addView(modeButton, LinearLayout.LayoutParams(dp(62), dp(36)).apply { rightMargin = dp(4) })
             routeStatus = text("", 11f, muted)
             val locate = button("⌖", false) { locatePhone() }.apply {
                 contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
@@ -591,14 +606,16 @@ class MainActivity : Activity() {
                 viewMode.text = if (showTestMap) "SIM" else "MAP"
             }.apply { visibility = View.GONE }
             // The switch also exposes the offline simulator without sending commands.
-            bottom.addView(viewMode, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(5) })
+            viewMode.textSize = 12f
+            bottom.addView(viewMode, LinearLayout.LayoutParams(dp(52), dp(36)).apply { rightMargin = dp(4) })
             val reset = button("Reset", false) {
                 if (mapActive) {
                     route.reset(); map.reset(); updateRoute(); locatePhone()
                 } else course.resetCourse()
             }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
-            bottom.addView(locate, LinearLayout.LayoutParams(dp(42), dp(36)))
-            bottom.addView(reset, LinearLayout.LayoutParams(dp(68), dp(36)).apply { leftMargin = dp(5) })
+            bottom.addView(locate, LinearLayout.LayoutParams(dp(40), dp(36)).apply { rightMargin = dp(4) })
+            reset.textSize = 12f
+            bottom.addView(reset, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(4) })
             val export = button("CSV", false) {
                 val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
@@ -606,7 +623,8 @@ class MainActivity : Activity() {
                 }
                 startActivityForResult(intent, 43)
             }.apply { contentDescription = "Export recorded route and transmitted control commands as CSV"; visibility = View.GONE }
-            bottom.addView(export, LinearLayout.LayoutParams(dp(58), dp(36)).apply { leftMargin = dp(5) })
+            export.textSize = 12f
+            bottom.addView(export, LinearLayout.LayoutParams(dp(48), dp(36)))
             val music = button("♫", false) { }.apply {
                 contentDescription = "Turn game music on or off; uses media volume"
                 setOnClickListener {
@@ -634,12 +652,13 @@ class MainActivity : Activity() {
                     routeStatus?.visibility = if (checked) View.VISIBLE else View.GONE
                     if (mapActive) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
             }
-            bottom.addView(music, LinearLayout.LayoutParams(dp(60), dp(36)).apply { leftMargin = dp(6) })
+            music.textSize = 12f
+            bottom.addView(music, LinearLayout.LayoutParams(dp(52), dp(36)).apply { leftMargin = dp(4) })
 
             routeStatus?.visibility = View.GONE
 
         }
-        row.addView(middle, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
+        row.addView(middle, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
         val right = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
 
@@ -652,14 +671,27 @@ class MainActivity : Activity() {
         val servo = servoAssignmentButton("Servo")
         row.addView(controlColumn(servo, right), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+        // Match Controls: equal side zones + a fixed center status. The left tool
+        // strip may scroll only on unusually narrow displays; it never overlaps status.
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val tools = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(bottom) }
-        toolbar.addView(tools, LinearLayout.LayoutParams(0, -1, 1f))
-        toolbar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
-        for (label in listOf("F1", "F2", "F3")) {
-            toolbar.addView(servoAssignmentButton(label), LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
+        val tools = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(bottom)
         }
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
+        toolbar.addView(tools, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+        status?.apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        toolbar.addView(status, LinearLayout.LayoutParams(dp(156), -1))
+        val rightSlot = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        for (label in listOf("F1", "F2", "F3")) {
+            rightSlot.addView(servoAssignmentButton(label),
+                LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
+        }
+        toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
         setContentView(root)
         updateRoute()
     }
