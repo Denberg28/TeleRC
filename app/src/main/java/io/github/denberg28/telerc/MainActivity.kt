@@ -516,7 +516,7 @@ class MainActivity : Activity() {
             addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         enable = button("Enable control") {
-            if (controlEnabled.get()) disableControl() else if (linkFresh()) {
+            if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (linkFresh()) {
                 controlEnabled.set(true)
                 steeringStick?.isEnabled = true; driveStick?.isEnabled = true
                 if (!mapActive) setControlsMapVisible(true) else {
@@ -972,10 +972,10 @@ class MainActivity : Activity() {
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
         refreshFunctionButtons()
     }
-    private fun disableControl() {
-        // Safety invariant: leaving live control must command neutral, never release immediately
-        // back to a possibly non-neutral physical RC input. The ESP32 bridge then holds neutral
-        // through app/tab/link loss until a fresh non-neutral TeleRC control session starts.
+    private fun disableControl(releaseToReceiver: Boolean = false) {
+        // Default safety path: tab/app/link loss commands neutral and lets the bridge
+        // enter neutral-hold. Deliberate Stop Control/Disconnect additionally sends a
+        // MAVLink release so the physical receiver can take over immediately.
         synchronized(commandLock) {
             controlEnabled.set(false)
             steering = 1500; drive = 1500
@@ -987,6 +987,12 @@ class MainActivity : Activity() {
                     repeat(3) { sequence ->
                         val neutral = Mavlink.override(sequence, target, 1, 1500, 1500, 1500, 1500)
                         udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
+                    }
+                    if (releaseToReceiver) {
+                        repeat(3) { sequence ->
+                            val release = Mavlink.release(100 + sequence, target, 1)
+                            udp.send(DatagramPacket(release, release.size, remote, endpointPort))
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -1166,7 +1172,7 @@ class MainActivity : Activity() {
         if (resumed && wantsLink) reconnectHandler.postDelayed(reconnect, 2000)
     }
     private fun stop(explicitDisconnect: Boolean = false) {
-        disableControl()
+        disableControl(releaseToReceiver = explicitDisconnect)
         val udp = socket
         val remote = endpoint
         if (explicitDisconnect && udp != null && remote != null) {
