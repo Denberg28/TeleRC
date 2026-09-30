@@ -69,6 +69,7 @@ class MainActivity : Activity() {
     @Volatile private var target = 0
     @Volatile private var vehicleArmed: Boolean? = null
     @Volatile private var lastArmAck = ""
+    @Volatile private var lastLinkError = ""
     @Volatile private var steering = 1500
     @Volatile private var drive = 1500
     private var status: TextView? = null
@@ -331,7 +332,9 @@ class MainActivity : Activity() {
 
         txExecutor.execute {
             try {
-                sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = true)
+                // ARM/DISARM must not switch RC source. Hold neutral but keep the
+                // current MAVLink override/session alive; STOP/DISCONNECT own handover.
+                sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = false)
                 synchronized(commandLock) {
                     val command = Mavlink.armDisarm(200, system, 1, !armed)
                     udp.send(DatagramPacket(command, command.size, remote, endpointPort))
@@ -975,7 +978,9 @@ class MainActivity : Activity() {
     }
     private fun linkFresh() = HeartbeatHealth.isFresh(target, heartbeatAt, SystemClock.elapsedRealtime())
     private fun linkDiagnosis(): String {
-        if (!connected.get()) return "Tap Connect first, then wait four seconds and diagnose again."
+        if (!connected.get()) return if (lastLinkError.isNotBlank())
+            "Link closed after $lastLinkError. Reconnect, then use Diagnose link again if it repeats."
+        else "Tap Connect first, then wait four seconds and diagnose again."
         if (linkFresh()) {
             val commands = if (bridgeAccepted >= 0) {
                 " Bridge: accepted $bridgeAccepted, rejected $bridgeRejected, UART TX $bridgeCommandBytes bytes, " +
@@ -1067,7 +1072,7 @@ class MainActivity : Activity() {
             }
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         socket = udp; endpoint = remote; endpointPort = number
-        target = 0; vehicleArmed = null; lastArmAck = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
+        target = 0; vehicleArmed = null; lastArmAck = ""; lastLinkError = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
         disableControl(); connected.set(true)
@@ -1085,7 +1090,10 @@ class MainActivity : Activity() {
                     try {
                         udp.send(DatagramPacket(discovery, discovery.size, remote, number))
                         lastDiscovery = discoveryNow
-                    } catch (_: Exception) { break }
+                    } catch (e: Exception) {
+                        lastLinkError = "discovery send " + e.javaClass.simpleName
+                        break
+                    }
                 }
                 try {
                     val packet = DatagramPacket(input, input.size)
@@ -1158,7 +1166,11 @@ class MainActivity : Activity() {
                             }
                         }
                     }
-                } catch (_: SocketTimeoutException) {} catch (_: Exception) { break }
+                } catch (_: SocketTimeoutException) {
+                } catch (e: Exception) {
+                    lastLinkError = "UDP receive " + e.javaClass.simpleName
+                    break
+                }
                 val now = SystemClock.elapsedRealtime()
                 // Never convert packet silence into a disconnect. Android may suspend
                 // this Activity/thread while another app is foreground, making elapsed
@@ -1195,7 +1207,10 @@ class MainActivity : Activity() {
                                 // A sent frame changes only the cyan estimate; avoid redrawing GPS layers at 10 Hz.
                             }
                         }
-                    } catch (_: Exception) { break }
+                    } catch (e: Exception) {
+                        lastLinkError = "control send " + e.javaClass.simpleName
+                        break
+                    }
                 }
                 if (now - lastUiRefresh >= 250) {
                     lastUiRefresh = now
