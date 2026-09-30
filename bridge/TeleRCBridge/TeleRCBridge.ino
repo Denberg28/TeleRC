@@ -41,6 +41,10 @@ uint16_t frameExpected = 0;
 uint32_t lastSerialByteMs = 0;
 uint32_t serialBytes = 0;
 uint32_t serialFrames = 0;
+uint32_t acceptedCommands = 0;
+uint32_t rejectedCommands = 0;
+uint32_t uartCommandBytes = 0;
+uint32_t armCommands = 0;
 uint32_t lastStatusMs = 0;
 
 uint16_t crcByte(uint16_t crc, uint8_t value) {
@@ -108,7 +112,9 @@ size_t writeRcOverride(uint8_t *p, size_t n) {
   crc = crcByte(crc, 124);
   p[24] = uint8_t(crc);
   p[25] = uint8_t(crc >> 8);
-  return fc.write(p, n);
+  const size_t written = fc.write(p, n);
+  uartCommandBytes += written;
+  return written;
 }
 
 size_t sendOverride(uint16_t value) {
@@ -131,7 +137,9 @@ size_t sendOverride(uint16_t value) {
   crc = crcByte(crc, 124);
   p[24] = uint8_t(crc);
   p[25] = uint8_t(crc >> 8);
-  return fc.write(p, sizeof(p));
+  const size_t written = fc.write(p, sizeof(p));
+  uartCommandBytes += written;
+  return written;
 }
 
 void holdNeutral() {
@@ -262,31 +270,46 @@ void loop() {
     }
     else if (sourceOk && packetSize == int(sizeof(DISCONNECT) - 1) && count == packetSize &&
              memcmp(p, DISCONNECT, sizeof(DISCONNECT) - 1) == 0) {
+      // Explicit Disconnect is the only bridge-side receiver handover path.
+      // Normal tab/app-background safety uses neutral hold instead.
       releaseReceiver();
       phone = IPAddress(0, 0, 0, 0);
       lastPhoneMs = 0;
+      ++acceptedCommands;
     }
     else if (sourceOk && packetSize == 26 && count == 26 && validRcOverride(p, count)) {
       phone = sender;
       lastPhoneMs = millis();
       targetSystem = p[22];
+      ++acceptedCommands;
 
       const bool release = p[6] == 0 && p[7] == 0;
+      const uint16_t ch1 = uint16_t(p[6]) | (uint16_t(p[7]) << 8);
+      const uint16_t ch2 = uint16_t(p[8]) | (uint16_t(p[9]) << 8);
+      const bool neutral = !release && ch1 == 1500 && ch2 == 1500;
+
       if (release) {
         releaseReceiver();
       } else {
-        neutralHold = false;
         writeRcOverride(p, count);
-        controlActive = true;
+        controlActive = !neutral;
+        neutralHold = neutral;
         lastControlMs = millis();
+        if (neutral) lastNeutralMs = millis();
       }
     }
     else if (sourceOk && packetSize == 41 && count == 41 && validArmCommand(p, count)) {
       phone = sender;
       lastPhoneMs = millis();
       targetSystem = p[36];
-      fc.write(p, count);
+      const size_t written = fc.write(p, count);
+      uartCommandBytes += written;
+      ++acceptedCommands;
+      ++armCommands;
       Serial.printf("%s command forwarded.\n", p[8] == 0x80 ? "ARM" : "DISARM");
+    }
+    else if (localPhone(sender) && senderPort == UDP_PORT) {
+      ++rejectedCommands;
     }
   }
 
@@ -304,10 +327,14 @@ void loop() {
   if (millis() - lastStatusMs >= 1000) {
     lastStatusMs = millis();
     if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhoneMs < 5000) {
-      char status[64];
-      const int n = snprintf(status, sizeof(status), "TELERC_STATUS_V1,%lu,%lu",
+      char status[112];
+      const int n = snprintf(status, sizeof(status), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%lu",
                              static_cast<unsigned long>(serialBytes),
-                             static_cast<unsigned long>(serialFrames));
+                             static_cast<unsigned long>(serialFrames),
+                             static_cast<unsigned long>(acceptedCommands),
+                             static_cast<unsigned long>(rejectedCommands),
+                             static_cast<unsigned long>(uartCommandBytes),
+                             static_cast<unsigned long>(armCommands));
       if (n > 0 && n < int(sizeof(status)) && udp.beginPacket(phone, UDP_PORT)) {
         udp.write(reinterpret_cast<const uint8_t *>(status), size_t(n));
         udp.endPacket();
