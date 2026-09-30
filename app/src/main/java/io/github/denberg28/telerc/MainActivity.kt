@@ -457,7 +457,6 @@ class MainActivity : Activity() {
             }
             addView(choices, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
             val sensitivityLabel = text("Sensitivity · ${appearance.getInt("sensitivity", 100)}%", 11f, muted)
-            addView(sensitivityLabel)
             addView(SeekBar(this@MainActivity).apply {
                 max = 75; progress = appearance.getInt("sensitivity", 100).coerceIn(25, 100) - 25
                 progressTintList = android.content.res.ColorStateList.valueOf(accent)
@@ -470,7 +469,8 @@ class MainActivity : Activity() {
                     override fun onStartTrackingTouch(bar: SeekBar?) {}
                     override fun onStopTrackingTouch(bar: SeekBar?) {}
                 })
-            }, LinearLayout.LayoutParams(-1, dp(28)))
+            }, LinearLayout.LayoutParams(-1, dp(28)).apply { topMargin = dp(2) })
+            addView(sensitivityLabel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(1) })
         }
         right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
         val updates = card().apply {
