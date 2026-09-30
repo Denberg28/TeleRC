@@ -32,6 +32,7 @@ class MavlinkTest {
         assertEquals(0x01, arm[35].toInt() and 255)
         assertEquals(1, arm[36].toInt() and 255)
         assertEquals(1, arm[37].toInt() and 255)
+        assertEquals(0, arm[38].toInt() and 255)
         val disarm = Mavlink.armDisarm(10, 1, 1, false)
         assertTrue((6..9).all { disarm[it].toInt() == 0 })
     }
