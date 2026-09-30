@@ -1,3 +1,8 @@
+## 0.8.39
+- Refine Setup layout only: keep the compact light/dark toggle in the upper-right header.
+- Move Theme & Control Feel above App Update in the right Setup column.
+- Preserve the v0.8.38 reliability, MAVLink, ARM/DISARM, connection, and fail-safe behavior unchanged.
+
 ## 0.8.38
 - Full reliability and sanitization review of Android control lifecycle, MAVLink handling, ESP32-S3 bridge, ARM/DISARM, diagnostics, updater, map/test isolation, and release workflow.
 - Simplify bridge control authority into live override, neutral hold, and receiver released states.
