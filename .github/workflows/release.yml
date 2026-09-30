@@ -1,6 +1,10 @@
 name: Signed APK release
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.release-trigger'
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -12,6 +16,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
       - run: ./scripts/check-android-env.sh
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Compile matching ESP32-S3 fail-safe bridge
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli compile --fqbn esp32:esp32:esp32s3 bridge/TeleRCBridge
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
