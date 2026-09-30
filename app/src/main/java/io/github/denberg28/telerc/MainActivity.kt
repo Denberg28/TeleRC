@@ -59,6 +59,8 @@ class MainActivity : Activity() {
     @Volatile private var bridgeDriveMin = 1500
     @Volatile private var bridgeDriveMax = 1500
     @Volatile private var bridgeDriveChanged = -1L
+    @Volatile private var bridgeApRestarts = -1L
+    @Volatile private var bridgeStationDisconnects = -1L
     @Volatile private var target = 0
     @Volatile private var vehicleArmed: Boolean? = null
     @Volatile private var steering = 1500
@@ -930,8 +932,11 @@ class MainActivity : Activity() {
                         "$bridgeDriveChanged non-neutral commands since bridge boot."
                     else "Drive history unavailable; update the bridge sketch.")
             } else " Bridge command counters unavailable; upload the current bridge sketch."
+            val wifiEvents = if (bridgeApRestarts >= 0 && bridgeStationDisconnects >= 0)
+                " Bridge Wi-Fi: AP restarts $bridgeApRestarts, phone disconnect events $bridgeStationDisconnects."
+            else ""
             return "Rover heartbeat received. Link active. Control still requires Enable Control." + commands +
-                " An accepted command does not prove the rover is armed or that its motor outputs are configured."
+                wifiEvents + " An accepted command does not prove the rover is armed or that its motor outputs are configured."
         }
         if (bridgeStatusAt == 0L || SystemClock.elapsedRealtime() - bridgeStatusAt > 7000)
             return "No recent reply from the ESP32 bridge over Wi-Fi. Verify that the updated bridge sketch " +
@@ -1026,14 +1031,18 @@ class MainActivity : Activity() {
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; vehicleArmed = null; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
+        bridgeApRestarts = -1; bridgeStationDisconnects = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
+            var lastBridgePacketAt = SystemClock.elapsedRealtime()
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
-                if (connectivity.getNetworkCapabilities(wifi)
-                        ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) break
+                // Do not tear down the socket because Android temporarily changes
+                // capabilities on the captured Network object. The ESP32 data path
+                // is authoritative: actual UDP failure or sustained packet silence
+                // drives reconnection instead.
                 val discoveryNow = SystemClock.elapsedRealtime()
                 if (discoveryNow - lastDiscovery >= 1000) {
                     try {
@@ -1045,13 +1054,14 @@ class MainActivity : Activity() {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
                     if (packet.address == remote && packet.port == number) {
+                        lastBridgePacketAt = SystemClock.elapsedRealtime()
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                         if (payload.size in 20..160 && payload.take(17).toByteArray()
                                 .contentEquals("TELERC_STATUS_V1,".toByteArray(Charsets.US_ASCII))) {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size in listOf(3, 8, 11) && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 8, 11, 13) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
@@ -1064,11 +1074,15 @@ class MainActivity : Activity() {
                                         bridgeCommandBytes = counters[2]!!
                                         bridgeSteer = if (counters[3] == 0L) 1500 else counters[3]!!.toInt()
                                         bridgeDrive = if (counters[4] == 0L) 1500 else counters[4]!!.toInt()
-                                        if (fields.size == 11 && counters[5]!! in 1000..2000 &&
+                                        if (fields.size >= 11 && counters[5]!! in 1000..2000 &&
                                             counters[6]!! in 1000..2000 && counters[5]!! <= counters[6]!!) {
                                             bridgeDriveMin = counters[5]!!.toInt()
                                             bridgeDriveMax = counters[6]!!.toInt()
                                             bridgeDriveChanged = counters[7]!!
+                                        }
+                                        if (fields.size == 13) {
+                                            bridgeApRestarts = counters[8]!!
+                                            bridgeStationDisconnects = counters[9]!!
                                         }
                                     }
                                 }
@@ -1097,6 +1111,10 @@ class MainActivity : Activity() {
                     }
                 } catch (_: SocketTimeoutException) {} catch (_: Exception) { break }
                 val now = SystemClock.elapsedRealtime()
+                // The bridge normally answers discovery/status every second. Eight
+                // seconds of total bridge silence is a transport failure; heartbeat
+                // loss alone is not and must not churn the UDP connection.
+                if (now - lastBridgePacketAt >= 8000) break
                 val fresh = HeartbeatHealth.isFresh(target, heartbeatAt, now)
                 if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
@@ -1152,6 +1170,7 @@ class MainActivity : Activity() {
         val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
+        bridgeApRestarts = -1; bridgeStationDisconnects = -1
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
     override fun onPause() { resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
