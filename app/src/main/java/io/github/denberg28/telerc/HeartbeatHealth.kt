@@ -1,8 +1,8 @@
 package io.github.denberg28.telerc
 
 internal object HeartbeatHealth {
-    const val TIMEOUT_MS = 2500L
-    const val STATUS_TIMEOUT_MS = 6000L
+    const val TIMEOUT_MS = 4000L
+    const val STATUS_TIMEOUT_MS = 8000L
 
     fun isFresh(system: Int, lastHeartbeatMs: Long, nowMs: Long): Boolean =
         system != 0 && lastHeartbeatMs > 0L && nowMs >= lastHeartbeatMs &&
