@@ -1,3 +1,8 @@
+## 0.8.41
+- Refine Setup Theme & Control Feel spacing.
+- Move the sensitivity value below the adjustment slider while preserving the symmetric 2x2 Setup card layout.
+- Preserve v0.8.40 connection, control, MAVLink, ARM/DISARM, and fail-safe behavior unchanged.
+
 ## 0.8.40
 - Refine Setup into a vertically symmetric 2x2 layout.
 - Match Theme & Control Feel height to Connection and App Update height to Link Status.
