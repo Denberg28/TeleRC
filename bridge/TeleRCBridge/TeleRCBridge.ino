@@ -12,6 +12,7 @@ constexpr int FC_TX_GPIO = 17;
 constexpr uint32_t FC_BAUD = 115200; // ArduRover SERIAL3_BAUD = 115
 constexpr uint16_t UDP_PORT = 14550;
 constexpr uint32_t AP_RETRY_MS = 5000;
+constexpr uint32_t CONTROL_WATCHDOG_MS = 500; // 5 missed 10 Hz control frames
 const char DISCOVERY[] = "TELERC_DISCOVER_V1"; // routing only; never sent to the FC
 const char AP_SSID[] = "TeleRC-Rover";
 // Optional: enter your own 12-63 character Wi-Fi password here on your PC.
@@ -55,7 +56,40 @@ volatile bool apStopped = false;
 volatile bool stationDisconnected = false;
 uint32_t lastApRetryMs = 0;
 uint32_t apRestartCount = 0;
-void sendOverride(uint16_t value);
+
+enum class FailsafeReason : uint8_t {
+  NONE = 0,
+  CONTROL_TIMEOUT,
+  STATION_DISCONNECT,
+  AP_STOP,
+};
+uint32_t failsafeCount = 0;
+FailsafeReason lastFailsafeReason = FailsafeReason::NONE;
+
+size_t sendOverride(uint16_t value);
+
+const char *failsafeReasonName(FailsafeReason reason) {
+  switch (reason) {
+    case FailsafeReason::CONTROL_TIMEOUT: return "control-timeout";
+    case FailsafeReason::STATION_DISCONNECT: return "wifi-station-disconnect";
+    case FailsafeReason::AP_STOP: return "wifi-ap-stop";
+    default: return "none";
+  }
+}
+
+void triggerFailsafe(FailsafeReason reason) {
+  if (!controlActive || !targetSystem) return;
+  uartCommandBytesWritten += sendOverride(1500); // neutral first
+  uartCommandBytesWritten += sendOverride(0);    // then release RC override
+  controlActive = false;
+  lastSteer = 1500;
+  lastDrive = 1500;
+  ++failsafeCount;
+  lastFailsafeReason = reason;
+  Serial.printf("FAILSAFE neutral/release reason=%s count=%lu\n",
+                failsafeReasonName(reason),
+                static_cast<unsigned long>(failsafeCount));
+}
 
 // Wi-Fi events run on another task. Only set flags here; repair the socket in loop().
 void onWiFiEvent(WiFiEvent_t event) {
@@ -83,21 +117,25 @@ bool startAccessPoint() {
 void serviceWiFi() {
   if (stationDisconnected) {
     stationDisconnected = false;
-    Serial.println("Phone left ESP32 AP; AP remains available for reconnection.");
+    // Safety-first: any station departure invalidates the active controller session.
+    triggerFailsafe(FailsafeReason::STATION_DISCONNECT);
+    phone = IPAddress(0, 0, 0, 0);
+    lastPhonePacketMs = 0;
+    Serial.println("Phone left ESP32 AP; control neutralized and pairing cleared.");
   }
+
   if (!apStopped) return;
+
+  // Neutralize immediately when the AP itself stops. AP_RETRY_MS throttles only
+  // network recovery; it must never delay the stop command to the flight controller.
+  triggerFailsafe(FailsafeReason::AP_STOP);
+  phone = IPAddress(0, 0, 0, 0);
+  lastPhonePacketMs = 0;
+
   const uint32_t now = millis();
   if (now - lastApRetryMs < AP_RETRY_MS) return;
   lastApRetryMs = now;
   Serial.println("ESP32 AP stopped; restarting Wi-Fi and UDP...");
-  // Do not carry an old controller address or active override into a new AP.
-  if (controlActive && targetSystem) {
-    sendOverride(1500);
-    sendOverride(0);
-    controlActive = false;
-  }
-  phone = IPAddress(0, 0, 0, 0);
-  lastPhonePacketMs = 0;
   udp.stop();
   if (startAccessPoint()) ++apRestartCount;
   else {
@@ -154,7 +192,7 @@ size_t writeFcCommand(uint8_t *p, size_t n) {
   return fc.write(p, n);
 }
 
-void sendOverride(uint16_t value) {
+size_t sendOverride(uint16_t value) {
   uint8_t p[26] = {0xfe, 18, bridgeSequence++, 255, 190, 70};
   for (int i = 0; i < 4; ++i) {
     p[6 + i * 2] = uint8_t(value);
@@ -171,7 +209,7 @@ void sendOverride(uint16_t value) {
   crc = crcByte(crc, 124);
   p[24] = uint8_t(crc);
   p[25] = uint8_t(crc >> 8);
-  fc.write(p, sizeof(p));
+  return fc.write(p, sizeof(p));
 }
 
 void toPhone(const uint8_t *frame, size_t length) {
@@ -303,10 +341,9 @@ void loop() {
   }
   for (int n = 0; n < 512 && fc.available(); ++n)
     consumeFcByte(uint8_t(fc.read()));
-  if (controlActive && millis() - lastControlMs > 500 && targetSystem) {
-    sendOverride(1500); // best effort neutral
-    sendOverride(0);    // release to calibrated Flysky receiver
-    controlActive = false;
+  if (controlActive && targetSystem &&
+      millis() - lastControlMs >= CONTROL_WATCHDOG_MS) {
+    triggerFailsafe(FailsafeReason::CONTROL_TIMEOUT);
   }
   if (millis() - lastDiagnosticMs >= 1000) {
     lastDiagnosticMs = millis();
@@ -331,14 +368,17 @@ void loop() {
                   WiFi.softAPgetStationNum(), phone.toString().c_str(),
                   static_cast<unsigned long>(apRestartCount));
     Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu "
-                  "UART_TX_bytes=%lu CH1=%u CH3=%u CH3_min=%u CH3_max=%u CH3_changed=%lu reject=%s\n",
+                  "UART_TX_bytes=%lu CH1=%u CH3=%u CH3_min=%u CH3_max=%u CH3_changed=%lu "
+                  "failsafe_count=%lu last_failsafe=%s reject=%s\n",
                   static_cast<unsigned long>(discoveryCount),
                   static_cast<unsigned long>(commandCandidates),
                   static_cast<unsigned long>(commandsAccepted),
                   static_cast<unsigned long>(commandsRejected),
                   static_cast<unsigned long>(uartCommandBytesWritten),
                   lastSteer, lastDrive, driveMin, driveMax,
-                  static_cast<unsigned long>(driveChangedCount), lastReject);
+                  static_cast<unsigned long>(driveChangedCount),
+                  static_cast<unsigned long>(failsafeCount),
+                  failsafeReasonName(lastFailsafeReason), lastReject);
   }
   delay(1);
 }
