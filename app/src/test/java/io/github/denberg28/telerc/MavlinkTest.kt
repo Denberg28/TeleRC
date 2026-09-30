@@ -21,6 +21,37 @@ class MavlinkTest {
         assertEquals(0x28, frame[25].toInt() and 255)
         assertThrows(IllegalArgumentException::class.java) { Mavlink.override(0, 1, 1, 999, 1500, 1000, 1500) }
     }
+    @Test fun armDisarmCommandLongFrame() {
+        val arm = Mavlink.armDisarm(9, 1, 1, true)
+        assertEquals(41, arm.size)
+        assertEquals(0xFE, arm[0].toInt() and 255)
+        assertEquals(76, arm[5].toInt() and 255)
+        assertEquals(0x80, arm[8].toInt() and 255)
+        assertEquals(0x3F, arm[9].toInt() and 255)
+        assertEquals(0x90, arm[34].toInt() and 255)
+        assertEquals(0x01, arm[35].toInt() and 255)
+        assertEquals(1, arm[36].toInt() and 255)
+        assertEquals(1, arm[37].toInt() and 255)
+        val disarm = Mavlink.armDisarm(10, 1, 1, false)
+        assertTrue((6..9).all { disarm[it].toInt() == 0 })
+    }
+    @Test fun heartbeatReportsArmedState() {
+        fun heartbeat(armed: Boolean): ByteArray {
+            val payload = ByteArray(9)
+            payload[6] = if (armed) 0x80.toByte() else 0
+            val header = byteArrayOf(0xFE.toByte(), 9, 0, 1, 1, 0)
+            val content = header + payload
+            var crc = 0xffff
+            for (value in content.drop(1).map { it.toInt() and 255 } + 50) {
+                var tmp = (value xor (crc and 255)) and 255
+                tmp = (tmp xor (tmp shl 4)) and 255
+                crc = ((crc ushr 8) xor (tmp shl 8) xor (tmp shl 3) xor (tmp ushr 4)) and 65535
+            }
+            return content + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+        }
+        assertFalse(Mavlink.heartbeat(heartbeat(false))!!.armed)
+        assertTrue(Mavlink.heartbeat(heartbeat(true))!!.armed)
+    }
     @Test fun releaseClearsOverrides() {
         val frame = Mavlink.release(1, 1, 1)
         assertTrue((6..13).all { frame[it].toInt() == 0 })
