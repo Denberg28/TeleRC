@@ -1,8 +1,9 @@
-## Unreleased
+## 0.8.31
 - Keep the TeleRC UDP session persistent when Android backgrounds or temporarily suspends the Activity while another app is in use.
 - Remove the 8-second packet-silence transport teardown; heartbeat loss still disables rover control, but no longer resets the socket or target system by elapsed time alone.
 - Reconnect remains reserved for actual UDP/socket failure or an explicit operator Disconnect.
 - Correct link diagnostics to reference CH1 steering and CH2 drive/throttle.
+- The signed release workflow re-runs Android tests/build verification before publishing.
 
 ## 0.8.30
 - Change the TeleRC rover drive/throttle command from RC CH3 to RC CH2 end-to-end.
