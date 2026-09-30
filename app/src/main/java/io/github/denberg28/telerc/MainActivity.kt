@@ -477,12 +477,12 @@ class MainActivity : Activity() {
             return panel to stick
         }
         val (steerPanel, steerInput) = control("STEER", "CH1 · left / right", false) { steering = it }
-        val (drivePanel, driveInput) = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
+        val (drivePanel, driveInput) = control("DRIVE", "CH2 · forward / reverse", true) { drive = it }
         steeringStick = steerInput; driveStick = driveInput
         val actions = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
-            controlsPlaceholder = text("Rover · CH1 / CH3\n\nEnable control to show recovery map", 12f, muted).apply {
+            controlsPlaceholder = text("Rover · CH1 / CH2\n\nEnable control to show recovery map", 12f, muted).apply {
                 gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
             }
             scene.addView(controlsPlaceholder, FrameLayout.LayoutParams(-1, -1))
@@ -739,7 +739,7 @@ class MainActivity : Activity() {
             setPadding(dp(8), dp(8), dp(8), dp(8))
 
             addView(text("DRIVE", 16f, ink, true).apply { gravity = Gravity.CENTER })
-            addView(text("CH3  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
+            addView(text("CH2  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -927,7 +927,7 @@ class MainActivity : Activity() {
         if (linkFresh()) {
             val commands = if (bridgeAccepted >= 0) {
                 " Bridge: accepted $bridgeAccepted, rejected $bridgeRejected, UART TX $bridgeCommandBytes bytes, " +
-                    "CH1 $bridgeSteer, CH3 $bridgeDrive. " +
+                    "CH1 $bridgeSteer, CH2 $bridgeDrive. " +
                     (if (bridgeDriveChanged >= 0) "Drive history: min $bridgeDriveMin, max $bridgeDriveMax, " +
                         "$bridgeDriveChanged non-neutral commands since bridge boot."
                     else "Drive history unavailable; update the bridge sketch.")
@@ -952,7 +952,7 @@ class MainActivity : Activity() {
         val age = if (heartbeatAt > 0) "Last valid heartbeat ${SystemClock.elapsedRealtime() - heartbeatAt} ms ago. " else "No valid autopilot heartbeat yet. "
         return age + "ESP32 UART RX: $bridgeRxBytes bytes, $bridgeFrames frames; commands accepted: " +
             "$bridgeAccepted, rejected: $bridgeRejected, UART TX: $bridgeCommandBytes bytes. " +
-            "Last CH1/CH3: $bridgeSteer/$bridgeDrive. If commands are accepted but motors do not move, " +
+            "Last CH1/CH2: $bridgeSteer/$bridgeDrive. If commands are accepted but motors do not move, " +
             "check ArduRover armed state, mode, RC override source system ID, RC1/RC3 input calibration, " +
             "SERVO output functions, motor driver enable and power. A written UART frame is not a motor acknowledgement."
     }
@@ -1128,12 +1128,12 @@ class MainActivity : Activity() {
                                 channels
                             }
                         } ?: continue
-                        val sent = ControlSample(System.currentTimeMillis(), rc.one, rc.three)
+                        val sent = ControlSample(System.currentTimeMillis(), rc.one, rc.two)
                         runOnUiThread {
                             if (socket === udp) {
                                 route.addCommand(sent)
                                 if (page == Page.CONTROLS && mapActive && controlEnabled.get()) {
-                                    val pose = deadReckoning.accept(now, rc.one, rc.three)
+                                    val pose = deadReckoning.accept(now, rc.one, rc.two)
                                     routeMap?.updatePreview(pose)
                                     val metersPerUnit = (routeMap?.maxSpeedMetersPerSecond ?: 2.8) / .7
                                     val distance = kotlin.math.hypot((pose.x - .5f).toDouble(),
