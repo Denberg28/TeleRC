@@ -1,3 +1,8 @@
+## 0.8.18
+- Use compact equal-width steering and drive panels around a larger center map pane.
+- Move Enable/Stop above the map and reduce Controls card padding and headings.
+- UI layout update only; rover commands and bridge firmware are unchanged.
+
 ## 0.8.17
 - Accept the bridge's valid zero-valued RC release report after Stop, preserving CH3 history in Link diagnostics. Display released channels as neutral 1500.
 - Report neutral CH1/CH3 from the bridge after a release while retaining the non-neutral drive range.

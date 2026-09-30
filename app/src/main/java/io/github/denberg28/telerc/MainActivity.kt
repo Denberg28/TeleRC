@@ -279,7 +279,8 @@ class MainActivity : Activity() {
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
             val panel = card().apply {
-                addView(text(title, 16f, ink, true).apply { gravity = Gravity.CENTER })
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                addView(text(title, 13f, ink, true).apply { gravity = Gravity.CENTER })
                 val feedback = text("$hint  ·  1500", 11f, muted).apply { gravity = Gravity.CENTER }
                 addView(feedback)
                 stick = JoystickView(this@MainActivity, vertical) { value ->
@@ -296,7 +297,7 @@ class MainActivity : Activity() {
         val (drivePanel, driveInput) = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
         steeringStick = steerInput; driveStick = driveInput
         val actions = card().apply {
-            addView(text("CONTROL", 16f, ink, true).apply { gravity = Gravity.CENTER })
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
             controlsPlaceholder = text("Rover · CH1 / CH3\n\nEnable control to show recovery map", 12f, muted).apply {
                 gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -346,9 +347,9 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        actions.addView(enable, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(7) })
-        row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 1.4f).apply { rightMargin = dp(8) })
+        actions.addView(enable, 0, LinearLayout.LayoutParams(-1, dp(44)))
+        row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 3.4f).apply { rightMargin = dp(6) })
         row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(text("Purple: last rover GPS · Cyan: RC estimate · ⌖ locate · link loss stops commands", 11f, muted),
