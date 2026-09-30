@@ -82,9 +82,7 @@ const char *failsafeReasonName(FailsafeReason reason) {
 
 void triggerFailsafe(FailsafeReason reason) {
   if (!targetSystem) return;
-  // Do not release RC override here. Releasing can immediately hand throttle back
-  // to a still-connected physical receiver. Hold neutral until TeleRC explicitly
-  // starts a fresh live-control stream.
+  // Unexpected loss remains safety-first: actively hold neutral.
   uartCommandBytesWritten += sendOverride(1500);
   controlActive = false;
   safeHoldActive = true;
@@ -96,6 +94,19 @@ void triggerFailsafe(FailsafeReason reason) {
   Serial.printf("FAILSAFE neutral-hold reason=%s count=%lu\n",
                 failsafeReasonName(reason),
                 static_cast<unsigned long>(failsafeCount));
+}
+
+void releaseToReceiver() {
+  if (!targetSystem) return;
+  // Deliberate handover: neutral once, then release all RC override channels.
+  // ArduRover can immediately resume the attached physical receiver.
+  uartCommandBytesWritten += sendOverride(1500);
+  uartCommandBytesWritten += sendOverride(0);
+  controlActive = false;
+  safeHoldActive = false;
+  lastSteer = 1500;
+  lastDrive = 1500;
+  Serial.println("RC override released to physical receiver.");
 }
 
 // Keep Wi-Fi transport deliberately simple: start the SoftAP and UDP socket once
@@ -317,7 +328,8 @@ void loop() {
     if (packetSize == sizeof(DISCONNECT) - 1 && count == packetSize &&
         senderPort == UDP_PORT && local && paired &&
         memcmp(p, DISCONNECT, sizeof(DISCONNECT) - 1) == 0) {
-      triggerFailsafe(FailsafeReason::EXPLICIT_DISCONNECT);
+      releaseToReceiver();
+      lastFailsafeReason = FailsafeReason::EXPLICIT_DISCONNECT;
       phone = IPAddress(0, 0, 0, 0);
       lastPhonePacketMs = 0;
       Serial.println("TeleRC explicit disconnect; pairing cleared, neutral hold retained.");
@@ -342,9 +354,8 @@ void loop() {
         lastDrive = release ? 1500 : uint16_t(p[8]) | (uint16_t(p[9]) << 8);
         commandsAccepted++;
         if (release) {
-          // Older TeleRC APKs used all-zero RC override as "Stop control".
-          // Convert that request to neutral-hold instead of forwarding a release.
-          triggerFailsafe(FailsafeReason::APP_STOP);
+          // All-zero override is an explicit operator handover request.
+          releaseToReceiver();
         } else {
           if (lastDrive != 1500) {
             if (lastDrive < driveMin) driveMin = lastDrive;
