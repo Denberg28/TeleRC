@@ -1,3 +1,8 @@
+## 0.8.27
+- Rebuild the latest TeleRC code after the v0.8.26 landscape spacing and footer-overlap fixes.
+- Retain the layered Wi-Fi/control fail-safe introduced in v0.8.25.
+- No control mapping or protocol behavior changes from v0.8.26.
+
 ## 0.8.26
 - Fix Test Drive footer overlap where CSV could intrude into the centered DISCONNECTED/link-status area.
 - Use equal left/right footer zones with a fixed centered link status on Controls and Test Drive.
