@@ -368,7 +368,7 @@ class MainActivity : Activity() {
                 if (wantsLink) {
                     wantsLink = false
                     getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
-                    reconnectHandler.removeCallbacks(reconnect); stop()
+                    reconnectHandler.removeCallbacks(reconnect); stop(explicitDisconnect = true)
                 } else {
                     wantsLink = true
                     getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
@@ -1164,9 +1164,18 @@ class MainActivity : Activity() {
         reconnectHandler.removeCallbacks(reconnect)
         if (resumed && wantsLink) reconnectHandler.postDelayed(reconnect, 2000)
     }
-    private fun stop() {
-        disableControl(); connected.set(false)
-        val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; heartbeatAt = 0
+    private fun stop(explicitDisconnect: Boolean = false) {
+        disableControl()
+        val udp = socket
+        val remote = endpoint
+        if (explicitDisconnect && udp != null && remote != null) {
+            val message = "TELERC_DISCONNECT_V1".toByteArray(Charsets.US_ASCII)
+            try {
+                repeat(3) { udp.send(DatagramPacket(message, message.size, remote, endpointPort)) }
+            } catch (_: Exception) {}
+        }
+        connected.set(false)
+        udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         bridgeApRestarts = -1; bridgeStationDisconnects = -1
@@ -1177,5 +1186,5 @@ class MainActivity : Activity() {
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(); saveRoute(); updater.close(); super.onDestroy() }
+    override fun onDestroy() { wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); super.onDestroy() }
 }
