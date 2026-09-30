@@ -4,17 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HeartbeatHealthTest {
-    @Test fun toleratesOneMissedHeartbeatThenExpires() {
-        assertTrue(HeartbeatHealth.isFresh(1, 1000L, 3000L))
-        assertTrue(HeartbeatHealth.isFresh(1, 1000L, 3499L))
-        assertFalse(HeartbeatHealth.isFresh(1, 1000L, 3500L))
+    @Test fun toleratesHeartbeatJitterThenExpires() {
+        assertTrue(HeartbeatHealth.isFresh(1, 1000L, 4000L))
+        assertTrue(HeartbeatHealth.isFresh(1, 1000L, 4999L))
+        assertFalse(HeartbeatHealth.isFresh(1, 1000L, 5000L))
     }
 
     @Test fun displayGraceDoesNotExtendControlAuthority() {
-        assertFalse(HeartbeatHealth.isFresh(1, 1000L, 3600L))
-        assertTrue(HeartbeatHealth.isRecentlySeen(1, 1000L, 3600L))
-        assertFalse(HeartbeatHealth.isRecentlySeen(1, 1000L, 7000L))
-        assertFalse(HeartbeatHealth.isRecentlySeen(0, 1000L, 3600L))
+        assertFalse(HeartbeatHealth.isFresh(1, 1000L, 5100L))
+        assertTrue(HeartbeatHealth.isRecentlySeen(1, 1000L, 5100L))
+        assertFalse(HeartbeatHealth.isRecentlySeen(1, 1000L, 9000L))
+        assertFalse(HeartbeatHealth.isRecentlySeen(0, 1000L, 5100L))
     }
 
     @Test fun requiresVerifiedHeartbeatAndNonzeroTarget() {
