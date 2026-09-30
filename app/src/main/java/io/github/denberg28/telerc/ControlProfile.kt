@@ -10,9 +10,9 @@ data class RcChannels(val one: Int, val two: Int, val three: Int, val four: Int)
 
 object RoverControls {
     val neutral = RcChannels(1500, 1500, 1500, 1500)
-    /** ArduRover default: steering on CH1, bidirectional throttle on CH3. */
+    /** TeleRC rover mapping: steering on CH1, bidirectional throttle on CH2. */
     fun channels(steering: Int, drive: Int): RcChannels {
         require(steering in 1000..2000 && drive in 1000..2000)
-        return RcChannels(steering, 1500, drive, 1500)
+        return RcChannels(steering, drive, 1500, 1500)
     }
 }
