@@ -1,9 +1,10 @@
-## Unreleased
+## 0.8.32
 - Simplify the ESP32-S3 bridge transport to the early stable model: start SoftAP and UDP once and do not restart/rebind them for normal phone association events.
 - Keep control safety independent from transport: tab changes and app backgrounding send neutral, and the bridge keeps the existing 500 ms watchdog plus 10 Hz neutral-hold.
 - Add an explicit TELERC_DISCONNECT_V1 routing message. Pressing Disconnect sends neutral, clears the bridge phone pairing immediately, closes the Android UDP socket, and disables auto-reconnect.
 - Keep passive telemetry recovery: if the paired phone is absent for five seconds, FC MAVLink returns to broadcast without restarting Wi-Fi.
 - Preserve CH1 steering, CH2 drive, ARM/DISARM, external servo assignments, MAVLink validation, and bridge diagnostics.
+- Android checks and ESP32-S3 bridge compilation pass for this simplified transport release.
 
 ## 0.8.31
 - Keep the TeleRC UDP session persistent when Android backgrounds or temporarily suspends the Activity while another app is in use.
