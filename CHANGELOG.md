@@ -1,4 +1,8 @@
 ## Unreleased
+- Fix MAVLink ARM/DISARM flow: arm/disarm now neutralizes and releases RC override first, then sends one standard MAV_CMD_COMPONENT_ARM_DISARM COMMAND_LONG with confirmation=0.
+- Parse MAVLink COMMAND_ACK for command 400 and show ACCEPTED / TEMPORARILY REJECTED / DENIED / UNSUPPORTED / FAILED in TeleRC instead of silently waiting for heartbeat state.
+- Set ARMING_OPTIONS=0 in the checked-in Rover profile so pre-arm messages are no longer suppressed. Normal ArduRover arming checks remain enabled; no force-arm bypass is used.
+
 - Make deliberate STOP CONTROL and explicit Disconnect hand control back to the physical RC receiver: TeleRC sends neutral first, then MAVLink RC override release. Tab changes, app backgrounding, heartbeat loss and unexpected link loss still use neutral-hold.
 - Align TeleRC joystick output with the calibrated RC1/RC2 range (1100-1900 us instead of 1000-2000 us) to avoid early saturation and abrupt steering/throttle response.
 - Soften the checked-in Rover profile for bench driving with MOT_SLEWRATE=40 and MANUAL_STR_EXPO=0.3. RC_OVERRIDE_TIME remains 3 s as a fallback if MAVLink overrides disappear without an explicit release.
