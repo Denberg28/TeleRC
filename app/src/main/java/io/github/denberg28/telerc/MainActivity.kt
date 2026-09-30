@@ -1154,9 +1154,19 @@ class MainActivity : Activity() {
                         } else for (frame in Mavlink.frames(payload)) {
                             val heartbeat = Mavlink.heartbeat(frame)
                             if (heartbeat != null && (target == 0 || target == heartbeat.system)) {
+                                val previousSystem = target
+                                val previousArmed = vehicleArmed
                                 target = heartbeat.system
                                 vehicleArmed = heartbeat.armed
                                 heartbeatAt = SystemClock.elapsedRealtime()
+                                // Heartbeat is authoritative for armed state. Refresh the
+                                // ARM/DISARM caption immediately when that state changes,
+                                // rather than waiting for the periodic link UI refresh.
+                                if (previousSystem != heartbeat.system || previousArmed != heartbeat.armed) {
+                                    runOnUiThread {
+                                        if (socket === udp) refreshUi()
+                                    }
+                                }
                             }
                             val ack = Mavlink.commandAck(frame)
                             if (ack != null && ack.system == target && ack.command == 400) {
