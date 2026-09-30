@@ -159,7 +159,7 @@ uint16_t crcByte(uint16_t crc, uint8_t byte) {
   return (crc >> 8) ^ (uint16_t(tmp) << 8) ^ (uint16_t(tmp) << 3) ^ (tmp >> 4);
 }
 
-// Only TeleRC's complete MAVLink 1 RC_CHANNELS_OVERRIDE commands enter the FC.
+// Only explicitly whitelisted TeleRC MAVLink commands enter the FC.
 // This filters malformed packets; CRC and source ID are not authentication.
 bool validTeleRcCommand(const uint8_t *p, size_t n) {
   if (n != 26 || p[0] != 0xfe || p[1] != 18 || p[3] != 255 ||
@@ -189,6 +189,24 @@ bool validTeleRcCommand(const uint8_t *p, size_t n) {
     if (p[6 + channel * 2] == 0 && p[7 + channel * 2] == 0) return false;
   }
   return true;
+}
+
+bool validTeleRcArmCommand(const uint8_t *p, size_t n) {
+  if (n != 41 || p[0] != 0xfe || p[1] != 33 || p[3] != 255 ||
+      p[4] != 190 || p[5] != 76 || p[36] == 0 || p[36] == 255 || p[37] != 1)
+    return false;
+  // Whitelist only MAV_CMD_COMPONENT_ARM_DISARM (400).
+  if ((uint16_t(p[34]) | (uint16_t(p[35]) << 8)) != 400) return false;
+  // param1 must be exactly float 0.0 or 1.0; param2..param7 must be zero.
+  const bool disarm = p[6] == 0 && p[7] == 0 && p[8] == 0 && p[9] == 0;
+  const bool arm = p[6] == 0 && p[7] == 0 && p[8] == 0x80 && p[9] == 0x3f;
+  if (!disarm && !arm) return false;
+  for (int i = 10; i < 34; ++i) if (p[i] != 0) return false;
+  uint16_t crc = 0xffff;
+  for (size_t i = 1; i < 39; ++i) crc = crcByte(crc, p[i]);
+  crc = crcByte(crc, 152); // COMMAND_LONG CRC extra
+  const uint16_t receivedCrc = uint16_t(p[39]) | (uint16_t(p[40]) << 8);
+  return receivedCrc == crc;
 }
 
 // Recompute the outgoing CRC so ArduRover decodes legacy app packets.
@@ -352,6 +370,20 @@ void loop() {
           controlActive = true;
           lastControlMs = millis();
         }
+      }
+    } else if (packetSize == 41) {
+      commandCandidates++;
+      if (count != 41 || senderPort != UDP_PORT || !local || !paired) {
+        commandsRejected++; lastReject = "arm source/port/length";
+      } else if (!validTeleRcArmCommand(p, count)) {
+        commandsRejected++; lastReject = "arm MAVLink frame/CRC";
+      } else {
+        phone = sender;
+        lastPhonePacketMs = millis();
+        targetSystem = p[36];
+        uartCommandBytesWritten += fc.write(p, count);
+        commandsAccepted++;
+        Serial.printf("ARM/DISARM command forwarded to system %u\n", targetSystem);
       }
     }
   }
