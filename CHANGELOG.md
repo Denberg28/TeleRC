@@ -1,3 +1,9 @@
+## 0.8.26
+- Fix Test Drive footer overlap where CSV could intrude into the centered DISCONNECTED/link-status area.
+- Use equal left/right footer zones with a fixed centered link status on Controls and Test Drive.
+- Tighten button dimensions and horizontal spacing for Game/SIM/GPS/Reset/CSV/F1/F2/F3 while preserving touch targets.
+- Normalize landscape shell, panel, top-control, center-pane and footer spacing for a cleaner balanced layout.
+
 ## 0.8.25
 - Harden the ESP32-S3 bridge fail-safe: Wi-Fi station disconnect and AP-stop events now neutralize steering/throttle and release RC override immediately.
 - Keep the existing 500 ms control-packet watchdog as a second bridge-side stop path for silent UDP/link stalls.
