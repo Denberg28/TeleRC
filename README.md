@@ -1,4 +1,4 @@
-# TeleRC 0.8.9 — rover joystick private test
+# TeleRC 0.8.25 — rover joystick private test
 
 Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls.
 
@@ -20,7 +20,7 @@ The third, landscape **Test drive** page has Game and Test modes selected with t
 
 The Controls page records CH1/CH3 **frames actually sent** while live control is enabled. Navigating to Test disables live control as before; Test joysticks never command the vehicle. The TEST SIM/MAP button restores the offline differential-drive preview; it remains an illustrative model, not measured rover motion. Test shows counts for phone positions, rover positions, and sent controls. **CSV** exports all three streams through Android's document picker. The route is retained in private app storage across restarts; **Reset** clears it and sets the next good phone fix as a new Home. The phone position is never used as a substitute for rover GPS.
 
-**Private bench/SITL tests only.** UDP endpoint and checksum checks do not authenticate a vehicle. No MAVLink signing, telemetry validation, arm/mode controls, vehicle configuration, or tested link failsafe is provided. Never use this prototype to control a moving vehicle or flight craft.
+**Private bench/SITL tests only.** UDP endpoint and checksum checks do not authenticate a vehicle. TeleRC disables command output on app/link loss, while the matching ESP32-S3 bridge neutralizes/releases immediately on Wi-Fi station/AP loss and after 500 ms without fresh control packets. These software layers are not a substitute for ArduRover's own failsafe/override timeout, receiver failsafe, or an independent hardware motor cutoff. No MAVLink signing, arm/mode controls, or vehicle configuration is provided. Bench-test every stop path before powering the wheels.
 
 ## Architecture and future craft profiles
 
@@ -33,7 +33,7 @@ The first build uses local Wi-Fi UDP to an ESP32/Raspberry Pi MAVLink bridge. Di
 - Invalid IPv4 address and port are rejected; valid endpoint persists locally.
 - No override is sent until a checksum-valid heartbeat arrives from the configured IP and source port **and** the user enables control.
 - Default rover mapping sends CH1 steering, CH3 bidirectional drive, CH2/CH4 neutral; CH5–8 ignored; at most 10 Hz.
-- Both joysticks center on touch release. Disable, disconnect, and app pause attempt a neutral frame and release override. Lost heartbeat stops periodic output and disables the controls.
+- Both joysticks center on touch release. Disable, disconnect, and app pause attempt a neutral frame and release override. Lost heartbeat stops periodic output and disables the controls; the matching bridge independently neutralizes/releases on Wi-Fi loss or 500 ms control silence.
 - Other craft profiles cannot be selected or operated. The Test map and offline test course cannot send vehicle commands; only actual transmitted controls enter the CSV command stream.
 
 ## Build and status
