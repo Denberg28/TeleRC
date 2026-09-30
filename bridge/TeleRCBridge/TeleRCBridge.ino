@@ -59,6 +59,7 @@ volatile bool apStopped = false;
 volatile bool stationDisconnected = false;
 uint32_t lastApRetryMs = 0;
 uint32_t apRestartCount = 0;
+uint32_t stationDisconnectCount = 0;
 
 enum class FailsafeReason : uint8_t {
   NONE = 0,
@@ -126,6 +127,7 @@ bool startAccessPoint() {
 void serviceWiFi() {
   if (stationDisconnected) {
     stationDisconnected = false;
+    ++stationDisconnectCount;
     // Safety-first: any station departure invalidates the active controller session.
     triggerFailsafe(FailsafeReason::STATION_DISCONNECT);
     phone = IPAddress(0, 0, 0, 0);
@@ -402,14 +404,16 @@ void loop() {
     lastDiagnosticMs = millis();
     if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhonePacketMs < 5000) {
       char report[160];
-      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu",
+      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%lu,%lu",
                             static_cast<unsigned long>(serialBytesSeen),
                             static_cast<unsigned long>(serialFramesSeen),
                             static_cast<unsigned long>(commandsAccepted),
                             static_cast<unsigned long>(commandsRejected),
                             static_cast<unsigned long>(uartCommandBytesWritten),
                             lastSteer, lastDrive, driveMin, driveMax,
-                            static_cast<unsigned long>(driveChangedCount));
+                            static_cast<unsigned long>(driveChangedCount),
+                            static_cast<unsigned long>(apRestartCount),
+                            static_cast<unsigned long>(stationDisconnectCount));
       if (length > 0 && length < int(sizeof(report)) && udp.beginPacket(phone, UDP_PORT)) {
         udp.write(reinterpret_cast<const uint8_t *>(report), size_t(length));
         udp.endPacket();
