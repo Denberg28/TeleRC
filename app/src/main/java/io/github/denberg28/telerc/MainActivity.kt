@@ -120,7 +120,7 @@ class MainActivity : Activity() {
     private fun text(value: String, size: Float = 16f, color: Int = ink, bold: Boolean = false) = TextView(this).apply {
         this.text = value; textSize = size; setTextColor(color)
         if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-        gravity = Gravity.CENTER_VERTICAL
+        gravity = Gravity.CENTER
     }
     private fun button(value: String, filled: Boolean = true, action: () -> Unit) = Button(this).apply {
         text = value; isAllCaps = false; textSize = 15f
@@ -225,6 +225,30 @@ class MainActivity : Activity() {
         }
         refreshUi()
     }
+    private fun servoAssignmentButton(label: String): Button {
+        val prefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
+        fun caption(): String = prefs.getInt(label, 0).let { if (it == 0) label else "$label · $it" }
+        val control = button(caption()) { }
+        control.textSize = if (label == "Servo") 15f else 11f
+        control.contentDescription = "Assign servo output to $label"
+        control.setOnClickListener {
+            val labels = listOf("Servo", "F1", "F2", "F3")
+            val available = listOf(0) + (1..16).filter { output ->
+                output !in 5..8 && labels.none { it != label && prefs.getInt(it, 0) == output }
+            }
+            val names = available.map { if (it == 0) "Unassigned" else "Servo output $it" }.toTypedArray()
+            AlertDialog.Builder(this).setTitle("$label output assignment")
+                .setSingleChoiceItems(names, available.indexOf(prefs.getInt(label, 0))) { dialog, index ->
+                    prefs.edit().putInt(label, available[index]).apply()
+                    control.text = caption()
+                    dialog.dismiss()
+                }
+                .setView(text("M5–M8 reserved · assignment only", 12f, muted).apply { setPadding(dp(16), dp(8), dp(16), dp(8)) })
+                .setNegativeButton("Close", null).show()
+        }
+        return control
+    }
+
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
@@ -355,9 +379,7 @@ class MainActivity : Activity() {
                 }
             }.show()
         }
-        val servo = button("Servo") {
-            Toast.makeText(this, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
-        }.apply { contentDescription = "Servo control placeholder, not configured" }
+        val servo = servoAssignmentButton("Servo")
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
@@ -438,9 +460,7 @@ class MainActivity : Activity() {
         toolbar.addView(enable, LinearLayout.LayoutParams(dp(180), -1).apply { rightMargin = dp(8) })
         toolbar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
         for (label in listOf("F1", "F2", "F3")) {
-            toolbar.addView(button(label) {
-                Toast.makeText(this, "$label is not configured yet", Toast.LENGTH_SHORT).show()
-            }.apply { contentDescription = "$label function placeholder, not configured" },
+            toolbar.addView(servoAssignmentButton(label),
                 LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
         }
         root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
@@ -551,8 +571,10 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            val modeLabel = text("GAME", 12f, ink, true)
-            bottom.addView(modeLabel, LinearLayout.LayoutParams(dp(48), -2))
+            var testMode = false
+            val modeButton = button("Test", false) { }
+            modeButton.contentDescription = "Open Test mode; tap again to return to Game"
+            bottom.addView(modeButton, LinearLayout.LayoutParams(dp(68), dp(36)).apply { rightMargin = dp(5) })
             routeStatus = text("", 11f, muted)
             val locate = button("⌖", false) { locatePhone() }.apply {
                 contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
@@ -571,7 +593,9 @@ class MainActivity : Activity() {
             // The switch also exposes the offline simulator without sending commands.
             bottom.addView(viewMode, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(5) })
             val reset = button("Reset", false) {
-                route.reset(); map.reset(); updateRoute(); locatePhone()
+                if (mapActive) {
+                    route.reset(); map.reset(); updateRoute(); locatePhone()
+                } else course.setMode(TestDriveView.Mode.TEST)
             }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
             bottom.addView(locate, LinearLayout.LayoutParams(dp(42), dp(36)))
             bottom.addView(reset, LinearLayout.LayoutParams(dp(68), dp(36)).apply { leftMargin = dp(5) })
@@ -591,12 +615,12 @@ class MainActivity : Activity() {
                 }
             }
             musicButton = music
-            bottom.addView(Switch(this@MainActivity).apply {
-                text = ""; isChecked = false
-                contentDescription = "Switch between Game and Test modes"
-                setOnCheckedChangeListener { _, checked ->
+            modeButton.setOnClickListener {
+                    testMode = !testMode
+                    val checked = testMode
                     course.setMode(if (checked) TestDriveView.Mode.TEST else TestDriveView.Mode.GAME)
-                    modeLabel.text = if (checked) "TEST" else "GAME"
+                    modeButton.text = if (checked) "Game" else "Test"
+                    modeButton.contentDescription = if (checked) "Return to Game" else "Open Test"
                     music.visibility = if (checked) View.GONE else View.VISIBLE
                     if (checked) { music.isSelected = false; music.text = "♫" }
                     mapActive = checked && showTestMap
@@ -609,8 +633,7 @@ class MainActivity : Activity() {
                     viewMode.visibility = if (checked) View.VISIBLE else View.GONE
                     routeStatus?.visibility = if (checked) View.VISIBLE else View.GONE
                     if (mapActive) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
-                }
-            }, LinearLayout.LayoutParams(-2, dp(36)))
+            }
             bottom.addView(music, LinearLayout.LayoutParams(dp(60), dp(36)).apply { leftMargin = dp(6) })
 
             routeStatus?.visibility = View.GONE
@@ -626,9 +649,7 @@ class MainActivity : Activity() {
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        val servo = button("Servo") {
-            Toast.makeText(this, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
-        }
+        val servo = servoAssignmentButton("Servo")
         row.addView(controlColumn(servo, right), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -636,9 +657,7 @@ class MainActivity : Activity() {
         toolbar.addView(tools, LinearLayout.LayoutParams(0, -1, 1f))
         toolbar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
         for (label in listOf("F1", "F2", "F3")) {
-            toolbar.addView(button(label) {
-                Toast.makeText(this, "$label is not configured yet", Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
+            toolbar.addView(servoAssignmentButton(label), LinearLayout.LayoutParams(dp(48), -1).apply { leftMargin = dp(6) })
         }
         root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
         setContentView(root)

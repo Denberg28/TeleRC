@@ -1,3 +1,9 @@
+## 0.8.23
+- Replace the hidden Game/Test switch with an explicit Test / Game return button.
+- Center text messages across the application.
+- Add persistent Servo/F1/F2/F3 output assignments, prevent duplicates and reserve rover motor outputs M5–M8.
+- Keep assignment separate from operation: current bridge only supports RC overrides.
+
 ## 0.8.22
 - Add saved joystick sensitivity from 25 to 100 percent; retain neutral release and assigned axes.
 - Compact Setup with saved accent choices and a fixed non-scrolling layout.
