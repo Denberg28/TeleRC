@@ -374,9 +374,16 @@ class MainActivity : Activity() {
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
+        val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(120), dp(44)))
         header.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
+        header.addView(button(if (darkTheme) "☀" else "☾", false) {
+            disableControl()
+            appearance.edit().putBoolean("dark", !darkTheme).apply()
+            recreate()
+        }.apply { contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme" },
+            LinearLayout.LayoutParams(dp(48), dp(44)))
         root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(8) })
 
         val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
@@ -450,18 +457,9 @@ class MainActivity : Activity() {
         }
         right.addView(updates, LinearLayout.LayoutParams(-1, 0, 0.85f).apply { bottomMargin = dp(8) })
 
-        val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
         val theme = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             addView(text("THEME & CONTROL FEEL", 12f, accent, true))
-            val modeRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            modeRow.addView(button(if (darkTheme) "☀  Light" else "☾  Dark", false) {
-                disableControl()
-                appearance.edit().putBoolean("dark", !darkTheme).apply()
-                recreate()
-            }, LinearLayout.LayoutParams(0, dp(36), 1f))
-            addView(modeRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
-
             val choices = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
             val selected = appearance.getString("accent", "Blue")
             AppColors.names.forEach { name ->
