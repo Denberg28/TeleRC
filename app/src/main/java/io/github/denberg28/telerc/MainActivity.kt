@@ -58,14 +58,6 @@ class MainActivity : Activity() {
     @Volatile private var bridgeAccepted = -1L
     @Volatile private var bridgeRejected = -1L
     @Volatile private var bridgeCommandBytes = -1L
-    @Volatile private var bridgeSteer = 1500
-    @Volatile private var bridgeDrive = 1500
-    @Volatile private var bridgeDriveMin = 1500
-    @Volatile private var bridgeDriveMax = 1500
-    @Volatile private var bridgeDriveChanged = -1L
-    @Volatile private var bridgeHeartbeatCount = -1L
-    @Volatile private var bridgeHeartbeatGapMs = -1L
-    @Volatile private var bridgeHeartbeatMaxGapMs = -1L
     @Volatile private var target = 0
     @Volatile private var vehicleArmed: Boolean? = null
     @Volatile private var lastArmAck = ""
@@ -206,15 +198,6 @@ class MainActivity : Activity() {
             view.setPadding(dp(12) + left, dp(8) + top, dp(12) + right, dp(8) + bottom)
             insets
         }
-    }
-    private fun nav(): LinearLayout = LinearLayout(this).apply {
-        gravity = Gravity.CENTER; orientation = LinearLayout.HORIZONTAL
-        val setup = button("⌂  Setup", page == Page.SETUP) { switchTo(Page.SETUP) }
-        val controls = button("▣  Controls", page == Page.CONTROLS) { switchTo(Page.CONTROLS) }
-        val test = button("▤  Test drive", page == Page.TEST_DRIVE) { switchTo(Page.TEST_DRIVE) }
-        addView(setup, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(7) })
-        addView(controls, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(7) })
-        addView(test, LinearLayout.LayoutParams(0, -1, 1f))
     }
     private fun pageDropdown(label: String): Button {
         lateinit var anchor: Button
@@ -998,39 +981,29 @@ class MainActivity : Activity() {
     private fun linkFresh() = HeartbeatHealth.isFresh(target, heartbeatAt, SystemClock.elapsedRealtime())
     private fun linkDiagnosis(): String {
         if (!connected.get()) return if (lastLinkError.isNotBlank())
-            "Link closed after $lastLinkError. Reconnect, then use Diagnose link again if it repeats."
-        else "Tap Connect first, then wait four seconds and diagnose again."
+            "Link closed after $lastLinkError. Reconnect, then diagnose again if it repeats."
+        else "Tap Connect first, wait a few seconds, then diagnose again."
         if (linkFresh()) {
-            val commands = if (bridgeAccepted >= 0) {
-                " Bridge: accepted $bridgeAccepted, rejected $bridgeRejected, UART TX $bridgeCommandBytes bytes, " +
-                    "CH1 $bridgeSteer, CH2 $bridgeDrive. " +
-                    (if (bridgeDriveChanged >= 0) "Drive history: min $bridgeDriveMin, max $bridgeDriveMax, " +
-                        "$bridgeDriveChanged non-neutral commands since bridge boot."
-                    else "Drive history unavailable; update the bridge sketch.")
-            } else " Bridge command counters unavailable; upload the current bridge sketch."
-            val heartbeatTiming = if (bridgeHeartbeatCount >= 0)
-                " FC heartbeat count $bridgeHeartbeatCount, latest gap $bridgeHeartbeatGapMs ms, max gap $bridgeHeartbeatMaxGapMs ms."
-            else ""
-            return "Rover heartbeat received. Link active. Control still requires Enable Control." + commands +
-                heartbeatTiming + " An accepted command does not prove the rover is armed or that its motor outputs are configured."
+            val commands = if (bridgeAccepted >= 0)
+                " Bridge: accepted $bridgeAccepted, rejected $bridgeRejected, UART command TX $bridgeCommandBytes bytes."
+            else " Bridge command counters unavailable; upload the current matching bridge sketch."
+            val ack = if (lastArmAck.isNotBlank()) " Last ARM/DISARM result: $lastArmAck." else ""
+            return "Verified rover heartbeat received. Link active; live driving still requires Enable Control." +
+                commands + ack + " A forwarded command does not prove motor output or successful arming."
         }
         if (bridgeStatusAt == 0L || SystemClock.elapsedRealtime() - bridgeStatusAt > 7000)
-            return "No recent reply from the ESP32 bridge over Wi-Fi. Verify that the updated bridge sketch " +
-                "is running (older firmware cannot send diagnostics), and check its USB Serial Monitor. " +
-                "Confirm the bridge address/UDP port and phone Wi-Fi address are on the same network. " +
-                "Wait four seconds after Connect and try again."
+            return "No recent ESP32 bridge status. Verify the matching bridge sketch, rover Wi-Fi, " +
+                "bridge address/port, and the bridge USB Serial Monitor."
         if (bridgeRxBytes == 0L)
-            return "ESP32 responds, but receives zero bytes from the F405. Check T3 → ESP GPIO18, " +
-                "shared GND, SERIAL3_PROTOCOL=2 and SERIAL3_BAUD=115; reboot the F405 after setting them."
+            return "ESP32 is reachable but receives zero F405 UART bytes. Check T3 → ESP GPIO18, shared GND, " +
+                "SERIAL3_PROTOCOL=2 and SERIAL3_BAUD=115, then reboot the F405."
         if (bridgeFrames == 0L)
-            return "ESP32 receives UART bytes ($bridgeRxBytes), but no complete MAVLink frames. " +
-                "Check baud 115200, the ESP GPIO18 RX pin and UART3 wiring."
-        val age = if (heartbeatAt > 0) "Last valid heartbeat ${SystemClock.elapsedRealtime() - heartbeatAt} ms ago. " else "No valid autopilot heartbeat yet. "
-        return age + "ESP32 UART RX: $bridgeRxBytes bytes, $bridgeFrames frames; commands accepted: " +
-            "$bridgeAccepted, rejected: $bridgeRejected, UART TX: $bridgeCommandBytes bytes. " +
-            "Last CH1/CH2: $bridgeSteer/$bridgeDrive. If commands are accepted but motors do not move, " +
-            "check ArduRover armed state, mode, RC override source system ID, RC1/RC2 input calibration, " +
-            "SERVO output functions, motor driver enable and power. A written UART frame is not a motor acknowledgement."
+            return "ESP32 receives UART bytes ($bridgeRxBytes) but no complete MAVLink frames. Check 115200 baud and UART wiring."
+        val age = if (heartbeatAt > 0) "Last verified heartbeat ${SystemClock.elapsedRealtime() - heartbeatAt} ms ago. "
+            else "No verified autopilot heartbeat yet. "
+        return age + "ESP32 UART RX: $bridgeRxBytes bytes / $bridgeFrames frames; accepted commands: " +
+            "$bridgeAccepted, rejected: $bridgeRejected, UART command TX: $bridgeCommandBytes bytes." +
+            (if (lastArmAck.isNotBlank()) " Last ARM/DISARM result: $lastArmAck." else "")
     }
     private fun refreshUi() {
         val now = SystemClock.elapsedRealtime()
@@ -1092,8 +1065,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; vehicleArmed = null; lastArmAck = ""; lastLinkError = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
-        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
-        bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
+        bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
@@ -1124,41 +1096,17 @@ class MainActivity : Activity() {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size in listOf(3, 7, 8, 11, 14) && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 7) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
                                 if (fields.size == 7) {
-                                    val counters = fields.drop(3).map { it.toLongOrNull() }
-                                    if (counters.all { it != null && it >= 0 }) {
-                                        bridgeAccepted = counters[0]!!
-                                        bridgeRejected = counters[1]!!
-                                        bridgeCommandBytes = counters[2]!!
-                                        // Field 6 is ARM/DISARM commands forwarded. Keep
-                                        // legacy CH diagnostics unavailable rather than
-                                        // pretending values the minimal bridge no longer sends.
-                                        bridgeDriveChanged = -1
-                                    }
-                                } else if (fields.size >= 8) {
-                                    val counters = fields.drop(3).map { it.toLongOrNull() }
-                                    if (counters.all { it != null && it >= 0 } &&
-                                        (counters[3] == 0L || counters[3]!! in 1000..2000) &&
-                                        (counters[4] == 0L || counters[4]!! in 1000..2000)) {
-                                        bridgeAccepted = counters[0]!!; bridgeRejected = counters[1]!!
-                                        bridgeCommandBytes = counters[2]!!
-                                        bridgeSteer = if (counters[3] == 0L) 1500 else counters[3]!!.toInt()
-                                        bridgeDrive = if (counters[4] == 0L) 1500 else counters[4]!!.toInt()
-                                        if (fields.size >= 11 && counters[5]!! in 1000..2000 &&
-                                            counters[6]!! in 1000..2000 && counters[5]!! <= counters[6]!!) {
-                                            bridgeDriveMin = counters[5]!!.toInt()
-                                            bridgeDriveMax = counters[6]!!.toInt()
-                                            bridgeDriveChanged = counters[7]!!
-                                        }
-                                        if (fields.size == 14) {
-                                            bridgeHeartbeatCount = counters[8]!!
-                                            bridgeHeartbeatGapMs = counters[9]!!
-                                            bridgeHeartbeatMaxGapMs = counters[10]!!
-                                        }
+                                    val accepted = fields[3].toLongOrNull()
+                                    val rejected = fields[4].toLongOrNull()
+                                    val txBytes = fields[5].toLongOrNull()
+                                    val armCount = fields[6].toLongOrNull()
+                                    if (listOf(accepted, rejected, txBytes, armCount).all { it != null && it >= 0 }) {
+                                        bridgeAccepted = accepted!!; bridgeRejected = rejected!!; bridgeCommandBytes = txBytes!!
                                     }
                                 }
                             }
@@ -1288,10 +1236,6 @@ class MainActivity : Activity() {
         bridgeAccepted = -1
         bridgeRejected = -1
         bridgeCommandBytes = -1
-        bridgeDriveChanged = -1
-        bridgeHeartbeatCount = -1
-        bridgeHeartbeatGapMs = -1
-        bridgeHeartbeatMaxGapMs = -1
         host?.isEnabled = true
         port?.isEnabled = true
         refreshUi()
