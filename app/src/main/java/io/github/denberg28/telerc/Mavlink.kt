@@ -1,6 +1,7 @@
 package io.github.denberg28.telerc
 
 object Mavlink {
+    data class Heartbeat(val system: Int, val armed: Boolean)
     data class GlobalPosition(val system: Int, val latitude: Double, val longitude: Double, val headingDegrees: Double?)
     fun frames(datagram: ByteArray): List<ByteArray> {
         val result = mutableListOf<ByteArray>()
@@ -45,7 +46,7 @@ object Mavlink {
         crc = accumulate(crc, EXTRA)
         return frame + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
     }
-    fun heartbeatSystem(packet: ByteArray): Int? {
+    fun heartbeat(packet: ByteArray): Heartbeat? {
         if (packet.size < 17) return null
         val v1 = (packet[0].toInt() and 255) == 0xFE
         val v2 = (packet[0].toInt() and 255) == 0xFD
@@ -63,7 +64,35 @@ object Mavlink {
         if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
             (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
         val system = packet[if (v1) 3 else 5].toInt() and 255
-        return system.takeIf { it in 1..254 }
+        if (system !in 1..254) return null
+        val armed = (packet[offset + 6].toInt() and 0x80) != 0
+        return Heartbeat(system, armed)
+    }
+
+    fun heartbeatSystem(packet: ByteArray): Int? = heartbeat(packet)?.system
+
+    fun armDisarm(
+        sequence: Int,
+        targetSystem: Int,
+        targetComponent: Int,
+        arm: Boolean,
+        confirmation: Int = 0
+    ): ByteArray {
+        require(targetSystem in 1..254 && targetComponent in 1..255 && confirmation in 0..255)
+        val payload = ByteArray(33)
+        val armBits = java.lang.Float.floatToIntBits(if (arm) 1f else 0f)
+        for (i in 0..3) payload[i] = (armBits ushr (8 * i)).toByte()
+        // param2..param7 remain 0: normal arm/disarm, never force safety checks.
+        payload[28] = 0x90.toByte() // MAV_CMD_COMPONENT_ARM_DISARM = 400 (0x0190)
+        payload[29] = 0x01
+        payload[30] = targetSystem.toByte()
+        payload[31] = targetComponent.toByte()
+        payload[32] = confirmation.toByte()
+        val frame = byteArrayOf(0xFE.toByte(), 33, sequence.toByte(), 255.toByte(), 190.toByte(), 76) + payload
+        var crc = 0xffff
+        for (b in frame.drop(1)) crc = accumulate(crc, b.toInt() and 255)
+        crc = accumulate(crc, 152) // COMMAND_LONG CRC extra
+        return frame + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
     }
 
     /** Accept only complete, checksum-valid GLOBAL_POSITION_INT frames from the rover. */
