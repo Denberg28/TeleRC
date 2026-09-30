@@ -104,10 +104,14 @@ class MainActivity : Activity() {
     private lateinit var updater: AppUpdater
     private var endpoint: InetAddress? = null
     private var endpointPort = 0
-    private val ink = Color.rgb(35, 38, 53)
-    private val muted = Color.rgb(103, 105, 124)
-    private val accent = Color.rgb(112, 88, 166)
-    private val pale = Color.rgb(247, 245, 251)
+    private val darkTheme get() = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark", false)
+    private val ink get() = if (darkTheme) Color.rgb(232, 239, 246) else Color.rgb(27, 38, 49)
+    private val muted get() = if (darkTheme) Color.rgb(164, 181, 196) else Color.rgb(96, 114, 131)
+    private val accent get() = if (darkTheme) Color.rgb(55, 151, 245) else Color.rgb(0, 112, 218)
+    private val pale get() = if (darkTheme) Color.rgb(12, 20, 28) else Color.rgb(245, 248, 251)
+    private val surface get() = if (darkTheme) Color.rgb(22, 34, 45) else Color.WHITE
+    private val softAccent get() = if (darkTheme) Color.rgb(28, 53, 76) else Color.rgb(227, 239, 252)
+
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density + 0.5f).toInt()
     private fun shape(color: Int, radius: Int = 20) = GradientDrawable().apply {
@@ -121,17 +125,18 @@ class MainActivity : Activity() {
     private fun button(value: String, filled: Boolean = true, action: () -> Unit) = Button(this).apply {
         text = value; isAllCaps = false; textSize = 15f
         setTextColor(if (filled) Color.WHITE else accent)
-        background = shape(if (filled) accent else Color.rgb(237, 231, 249), 16)
+        background = shape(if (filled) accent else softAccent, 16)
         setOnClickListener { action() }
     }
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
-        background = shape(Color.WHITE); elevation = dp(2).toFloat()
+        background = shape(surface); elevation = dp(2).toFloat()
     }
     private fun LinearLayout.addCard(view: View) {
         addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
     }
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(if (darkTheme) android.R.style.Theme_Material_NoActionBar else android.R.style.Theme_Material_Light_NoActionBar)
         super.onCreate(savedInstanceState)
         try {
             val session = getFileStreamPath("route-session.csv")
@@ -145,7 +150,7 @@ class MainActivity : Activity() {
             "TEST_DRIVE" -> Page.TEST_DRIVE
             else -> Page.SETUP
         }
-        requestedOrientation = if (page == Page.SETUP) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         render()
     }
     override fun onSaveInstanceState(outState: Bundle) {
@@ -159,7 +164,7 @@ class MainActivity : Activity() {
         disableControl()
         testCourse?.stop(); testCourse = null; releaseMap()
         page = next
-        val orientation = if (next == Page.SETUP) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        val orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         requestedOrientation = orientation
         render()
     }
@@ -188,8 +193,31 @@ class MainActivity : Activity() {
         addView(controls, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(7) })
         addView(test, LinearLayout.LayoutParams(0, -1, 1f))
     }
+    private fun pageDropdown(label: String): Button {
+        lateinit var anchor: Button
+        anchor = button("$label ▾", true) {
+            PopupMenu(this, anchor).apply {
+                menu.add(0, 1, 0, "Setup")
+                menu.add(0, 2, 1, "Controls")
+                menu.add(0, 3, 2, "Test drive")
+                setOnMenuItemClickListener { item ->
+                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; else -> Page.TEST_DRIVE })
+                    true
+                }
+            }.show()
+        }
+        return anchor
+    }
+    private fun controlColumn(top: View, joystick: View): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(top, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(12) })
+        addView(joystick, LinearLayout.LayoutParams(-1, 0, 1f))
+    }
+
     private fun render() {
-        window.decorView.systemUiVisibility = 0
+        window.statusBarColor = pale
+        window.navigationBarColor = pale
+        window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         when (page) {
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
@@ -200,30 +228,28 @@ class MainActivity : Activity() {
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
-        root.addView(nav(), LinearLayout.LayoutParams(-1, dp(40)).apply { bottomMargin = dp(6) })
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(120), dp(44)))
+        header.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
+        header.addView(button(if (darkTheme) "☀" else "☾", false) {
+            disableControl()
+            getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark", !darkTheme).apply()
+            recreate()
+        }.apply { contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme" }, LinearLayout.LayoutParams(dp(48), dp(44)))
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(8) })
         val scroll = ScrollView(this).apply { isFillViewport = false }
-        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
-        body.addView(text("TeleRC", 24f, ink, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-        val craft = card().apply {
-            addView(text("CRAFT PROFILE", 12f, accent, true))
-            addView(text("Rover", 19f, ink, true))
-            addView(text("ArduRover  ·  CH1 steer  ·  CH3 drive", 12f, muted))
-            addView(text("Other craft profiles are not yet available.", 11f, muted))
-        }
-        body.addCard(craft)
+        val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
         val connection = card().apply {
             addView(text("CONNECTION", 12f, accent, true))
-            addView(text("MAVLink over local Wi-Fi", 17f, ink, true))
-            addView(text("ESP32 or Raspberry Pi bridge address and UDP port", 12f, muted))
             host = EditText(this@MainActivity).apply {
-                setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink)
+                setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
                 inputType = InputType.TYPE_CLASS_TEXT
                 background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
                 setText(if (connected.get()) endpoint?.hostAddress else getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
                 isEnabled = !connected.get()
             }
             port = EditText(this@MainActivity).apply {
-                setSingleLine(); hint = "UDP port"; setTextColor(ink)
+                setSingleLine(); hint = "UDP port"; setTextColor(ink); setHintTextColor(muted)
                 inputType = InputType.TYPE_CLASS_NUMBER
                 background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
                 setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
@@ -244,7 +270,8 @@ class MainActivity : Activity() {
             }
             addView(connect, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(10) })
         }
-        body.addCard(connection)
+        body.addView(connection, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+        val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val info = card().apply {
             addView(text("LINK STATUS", 12f, accent, true))
             status = text("DISCONNECTED", 15f, ink, true); addView(status)
@@ -254,7 +281,7 @@ class MainActivity : Activity() {
                     .setMessage(linkDiagnosis()).setPositiveButton("OK", null).show()
             }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
         }
-        body.addCard(info)
+        details.addCard(info)
         val updates = card().apply {
             addView(text("APP UPDATE", 12f, accent, true))
             addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 17f, ink, true))
@@ -264,8 +291,8 @@ class MainActivity : Activity() {
             addView(button("Check for updates", false) { updater.check() },
                 LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
         }
-        body.addCard(updates)
-        body.addView(text("Private bench test  •  Raise wheels before enabling control.", 12f, muted))
+        details.addCard(updates)
+        body.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
         scroll.addView(body); root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
@@ -312,8 +339,6 @@ class MainActivity : Activity() {
         }
         val (steerPanel, steerInput) = control("STEER", "CH1 · left / right", false) { steering = it }
         val (drivePanel, driveInput) = control("DRIVE", "CH3 · forward / reverse", true) { drive = it }
-        steerPanel.addView(pages, 0, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
-        drivePanel.addView(servo, 0, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
         steeringStick = steerInput; driveStick = driveInput
         val actions = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -329,7 +354,7 @@ class MainActivity : Activity() {
             map.view.visibility = View.GONE
             scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
             val badge = text("CYAN · ESTIMATE FROM SENT RC", 10f, ink, true).apply {
-                background = shape(Color.WHITE, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
+                background = shape(surface, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
                 visibility = View.GONE
             }
             mapBadge = badge
@@ -341,7 +366,7 @@ class MainActivity : Activity() {
             scene.addView(controlsLocate, FrameLayout.LayoutParams(dp(36), dp(34), Gravity.TOP or Gravity.RIGHT)
                 .apply { rightMargin = dp(4); topMargin = dp(4) })
             controlsEstimate = text("EST 0 m · H 0° · 0 m/s", 10f, ink, true).apply {
-                background = shape(Color.WHITE, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
+                background = shape(surface, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
                 visibility = View.GONE
             }
             scene.addView(controlsEstimate, FrameLayout.LayoutParams(-2, dp(25), Gravity.BOTTOM or Gravity.RIGHT)
@@ -366,9 +391,9 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
+        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
         row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
-        row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 1f))
+        row.addView(controlColumn(servo, drivePanel), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         toolbar.addView(enable, LinearLayout.LayoutParams(dp(180), -1).apply { rightMargin = dp(8) })
@@ -453,14 +478,13 @@ class MainActivity : Activity() {
         course.maxYawRateDegrees = vehiclePrefs.getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
         val left = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            addView(pages, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
             addView(text("STEER", 16f, ink, true).apply { gravity = Gravity.CENTER })
             addView(text("CH1  ·  left / right", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, false) { course.setSteering(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        row.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
+        row.addView(controlColumn(pages, left), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(6) })
         val middle = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
@@ -472,7 +496,7 @@ class MainActivity : Activity() {
             map.view.visibility = View.GONE
             scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
             mapBadge = text("CYAN ROVER · OFFLINE PREVIEW", 10f, ink, true).apply {
-                background = shape(Color.WHITE, 8)
+                background = shape(surface, 8)
                 setPadding(dp(6), dp(2), dp(6), dp(2))
                 visibility = View.GONE
                 contentDescription = "Vehicle settings: name, estimated maximum speed and turn rate"
@@ -556,16 +580,17 @@ class MainActivity : Activity() {
         row.addView(middle, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(6) })
         val right = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            addView(button("Servo") {
-                Toast.makeText(this@MainActivity, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
+
             addView(text("DRIVE", 16f, ink, true).apply { gravity = Gravity.CENTER })
             addView(text("CH3  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
             val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        row.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
+        val servo = button("Servo") {
+            Toast.makeText(this, "Servo control is not configured yet", Toast.LENGTH_SHORT).show()
+        }
+        row.addView(controlColumn(servo, right), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val tools = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(bottom) }

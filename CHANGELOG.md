@@ -1,3 +1,9 @@
+## 0.8.21
+- Add a saved light/dark theme switch in Setup and blue application accents.
+- Make Setup landscape with dropdown navigation and a compact two-column layout.
+- Separate navigation and Servo buttons from joystick cards with a clear gap on Controls and Test drive.
+- Apply theme colors to cards, inputs, overlays, joysticks and system bars.
+
 ## 0.8.20
 - Extend the center pane to the top on Controls and Test drive, beside compact navigation and Servo buttons.
 - Move link status to the lower center and remove the bottom explanatory text.
