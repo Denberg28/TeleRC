@@ -43,6 +43,10 @@ uint16_t serialExpected = 0;
 uint32_t serialByteMs = 0;
 uint32_t serialBytesSeen = 0;
 uint32_t serialFramesSeen = 0;
+uint32_t fcHeartbeatCount = 0;
+uint32_t lastFcHeartbeatMs = 0;
+uint32_t lastFcHeartbeatGapMs = 0;
+uint32_t maxFcHeartbeatGapMs = 0;
 uint32_t lastDiagnosticMs = 0;
 uint32_t discoveryCount = 0;
 uint32_t commandCandidates = 0;
@@ -218,6 +222,26 @@ void consumeFcByte(uint8_t b) {
   }
   if (serialExpected && serialSize == serialExpected) {
     serialFramesSeen++;
+
+    const bool v2 = serialFrame[0] == 0xfd;
+    const uint32_t msgId = v2
+        ? (uint32_t(serialFrame[7]) |
+           (uint32_t(serialFrame[8]) << 8) |
+           (uint32_t(serialFrame[9]) << 16))
+        : uint32_t(serialFrame[5]);
+    const uint8_t componentId = v2 ? serialFrame[6] : serialFrame[4];
+
+    if (msgId == 0 && componentId == 1) {
+      const uint32_t now = millis();
+      if (lastFcHeartbeatMs != 0) {
+        lastFcHeartbeatGapMs = now - lastFcHeartbeatMs;
+        if (lastFcHeartbeatGapMs > maxFcHeartbeatGapMs)
+          maxFcHeartbeatGapMs = lastFcHeartbeatGapMs;
+      }
+      lastFcHeartbeatMs = now;
+      ++fcHeartbeatCount;
+    }
+
     toPhone(serialFrame, serialSize);
     serialSize = 0;
     serialExpected = 0;
@@ -363,15 +387,18 @@ void loop() {
   if (millis() - lastDiagnosticMs >= 1000) {
     lastDiagnosticMs = millis();
     if (phone != IPAddress(0, 0, 0, 0) && millis() - lastPhonePacketMs < 5000) {
-      char report[144];
-      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu",
+      char report[176];
+      int length = snprintf(report, sizeof(report), "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%lu,%lu,%lu",
                             static_cast<unsigned long>(serialBytesSeen),
                             static_cast<unsigned long>(serialFramesSeen),
                             static_cast<unsigned long>(commandsAccepted),
                             static_cast<unsigned long>(commandsRejected),
                             static_cast<unsigned long>(uartCommandBytesWritten),
                             lastSteer, lastDrive, driveMin, driveMax,
-                            static_cast<unsigned long>(driveChangedCount));
+                            static_cast<unsigned long>(driveChangedCount),
+                            static_cast<unsigned long>(fcHeartbeatCount),
+                            static_cast<unsigned long>(lastFcHeartbeatGapMs),
+                            static_cast<unsigned long>(maxFcHeartbeatGapMs));
       if (length > 0 && length < int(sizeof(report)) && udp.beginPacket(phone, UDP_PORT)) {
         udp.write(reinterpret_cast<const uint8_t *>(report), size_t(length));
         udp.endPacket();
@@ -383,7 +410,7 @@ void loop() {
                   WiFi.softAPgetStationNum(), phone.toString().c_str());
     Serial.printf("Commands discovery=%lu received=%lu accepted=%lu rejected=%lu "
                   "UART_TX_bytes=%lu CH1=%u CH2=%u CH2_min=%u CH2_max=%u CH2_changed=%lu "
-                  "failsafe_count=%lu last_failsafe=%s reject=%s\n",
+                  "failsafe_count=%lu last_failsafe=%s FC_HB_count=%lu FC_HB_gap=%lums FC_HB_max=%lums reject=%s\n",
                   static_cast<unsigned long>(discoveryCount),
                   static_cast<unsigned long>(commandCandidates),
                   static_cast<unsigned long>(commandsAccepted),
@@ -392,7 +419,11 @@ void loop() {
                   lastSteer, lastDrive, driveMin, driveMax,
                   static_cast<unsigned long>(driveChangedCount),
                   static_cast<unsigned long>(failsafeCount),
-                  failsafeReasonName(lastFailsafeReason), lastReject);
+                  failsafeReasonName(lastFailsafeReason),
+                  static_cast<unsigned long>(fcHeartbeatCount),
+                  static_cast<unsigned long>(lastFcHeartbeatGapMs),
+                  static_cast<unsigned long>(maxFcHeartbeatGapMs),
+                  lastReject);
   }
   delay(1);
 }
