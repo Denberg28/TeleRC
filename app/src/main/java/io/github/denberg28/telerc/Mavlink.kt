@@ -2,6 +2,19 @@ package io.github.denberg28.telerc
 
 object Mavlink {
     data class Heartbeat(val system: Int, val armed: Boolean)
+    data class CommandAck(val system: Int, val command: Int, val result: Int) {
+        val resultText: String
+            get() = when (result) {
+                0 -> "ACCEPTED"
+                1 -> "TEMPORARILY REJECTED"
+                2 -> "DENIED"
+                3 -> "UNSUPPORTED"
+                4 -> "FAILED"
+                5 -> "IN PROGRESS"
+                6 -> "CANCELLED"
+                else -> "RESULT $result"
+            }
+    }
     data class GlobalPosition(val system: Int, val latitude: Double, val longitude: Double, val headingDegrees: Double?)
     fun frames(datagram: ByteArray): List<ByteArray> {
         val result = mutableListOf<ByteArray>()
@@ -75,10 +88,9 @@ object Mavlink {
         sequence: Int,
         targetSystem: Int,
         targetComponent: Int,
-        arm: Boolean,
-        confirmation: Int = 0
+        arm: Boolean
     ): ByteArray {
-        require(targetSystem in 1..254 && targetComponent in 1..255 && confirmation in 0..255)
+        require(targetSystem in 1..254 && targetComponent in 0..255)
         val payload = ByteArray(33)
         val armBits = java.lang.Float.floatToIntBits(if (arm) 1f else 0f)
         for (i in 0..3) payload[i] = (armBits ushr (8 * i)).toByte()
@@ -87,12 +99,35 @@ object Mavlink {
         payload[29] = 0x01
         payload[30] = targetSystem.toByte()
         payload[31] = targetComponent.toByte()
-        payload[32] = confirmation.toByte()
+        payload[32] = 0 // COMMAND_LONG confirmation = 0
         val frame = byteArrayOf(0xFE.toByte(), 33, sequence.toByte(), 255.toByte(), 190.toByte(), 76) + payload
         var crc = 0xffff
         for (b in frame.drop(1)) crc = accumulate(crc, b.toInt() and 255)
-        crc = accumulate(crc, 152) // COMMAND_LONG CRC extra
+        crc = accumulate(crc, 152)
         return frame + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+    }
+
+    fun commandAck(packet: ByteArray): CommandAck? {
+        if (packet.size < 11) return null
+        val v1 = (packet[0].toInt() and 255) == 0xFE
+        val v2 = (packet[0].toInt() and 255) == 0xFD
+        if (!v1 && !v2) return null
+        val offset = if (v1) 6 else 10
+        val length = packet[1].toInt() and 255
+        if (length < 3 || packet.size < offset + length + 2) return null
+        if (v2 && (packet[2].toInt() and 1) != 0) return null
+        val id = if (v1) packet[5].toInt() and 255 else
+            (packet[7].toInt() and 255) or ((packet[8].toInt() and 255) shl 8) or ((packet[9].toInt() and 255) shl 16)
+        if (id != 77) return null
+        var crc = 0xffff
+        for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
+        crc = accumulate(crc, 143) // COMMAND_ACK CRC extra
+        if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
+            (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
+        val command = (packet[offset].toInt() and 255) or ((packet[offset + 1].toInt() and 255) shl 8)
+        val result = packet[offset + 2].toInt() and 255
+        val system = packet[if (v1) 3 else 5].toInt() and 255
+        return CommandAck(system, command, result).takeIf { system in 1..254 }
     }
 
     /** Accept only complete, checksum-valid GLOBAL_POSITION_INT frames from the rover. */
