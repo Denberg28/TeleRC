@@ -59,8 +59,9 @@ class MainActivity : Activity() {
     @Volatile private var bridgeDriveMin = 1500
     @Volatile private var bridgeDriveMax = 1500
     @Volatile private var bridgeDriveChanged = -1L
-    @Volatile private var bridgeApRestarts = -1L
-    @Volatile private var bridgeStationDisconnects = -1L
+    @Volatile private var bridgeHeartbeatCount = -1L
+    @Volatile private var bridgeHeartbeatGapMs = -1L
+    @Volatile private var bridgeHeartbeatMaxGapMs = -1L
     @Volatile private var target = 0
     @Volatile private var vehicleArmed: Boolean? = null
     @Volatile private var steering = 1500
@@ -932,11 +933,11 @@ class MainActivity : Activity() {
                         "$bridgeDriveChanged non-neutral commands since bridge boot."
                     else "Drive history unavailable; update the bridge sketch.")
             } else " Bridge command counters unavailable; upload the current bridge sketch."
-            val wifiEvents = if (bridgeApRestarts >= 0 && bridgeStationDisconnects >= 0)
-                " Bridge Wi-Fi: AP restarts $bridgeApRestarts, phone disconnect events $bridgeStationDisconnects."
+            val heartbeatTiming = if (bridgeHeartbeatCount >= 0)
+                " FC heartbeat count $bridgeHeartbeatCount, latest gap $bridgeHeartbeatGapMs ms, max gap $bridgeHeartbeatMaxGapMs ms."
             else ""
             return "Rover heartbeat received. Link active. Control still requires Enable Control." + commands +
-                wifiEvents + " An accepted command does not prove the rover is armed or that its motor outputs are configured."
+                heartbeatTiming + " An accepted command does not prove the rover is armed or that its motor outputs are configured."
         }
         if (bridgeStatusAt == 0L || SystemClock.elapsedRealtime() - bridgeStatusAt > 7000)
             return "No recent reply from the ESP32 bridge over Wi-Fi. Verify that the updated bridge sketch " +
@@ -963,7 +964,6 @@ class MainActivity : Activity() {
             !connected.get() -> "DISCONNECTED"
             target == 0 -> "WAITING FOR HEARTBEAT"
             !HeartbeatHealth.isRecentlySeen(target, heartbeatAt, now) -> "SYSTEM $target  •  HEARTBEAT LOST"
-            !HeartbeatHealth.isFresh(target, heartbeatAt, now) -> "SYSTEM $target  •  HEARTBEAT DELAYED"
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
@@ -1031,7 +1031,7 @@ class MainActivity : Activity() {
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; vehicleArmed = null; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
-        bridgeApRestarts = -1; bridgeStationDisconnects = -1
+        bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
@@ -1059,7 +1059,7 @@ class MainActivity : Activity() {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size in listOf(3, 8, 11, 13) && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 8, 11, 14) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
@@ -1078,9 +1078,10 @@ class MainActivity : Activity() {
                                             bridgeDriveMax = counters[6]!!.toInt()
                                             bridgeDriveChanged = counters[7]!!
                                         }
-                                        if (fields.size == 13) {
-                                            bridgeApRestarts = counters[8]!!
-                                            bridgeStationDisconnects = counters[9]!!
+                                        if (fields.size == 14) {
+                                            bridgeHeartbeatCount = counters[8]!!
+                                            bridgeHeartbeatGapMs = counters[9]!!
+                                            bridgeHeartbeatMaxGapMs = counters[10]!!
                                         }
                                     }
                                 }
@@ -1178,7 +1179,7 @@ class MainActivity : Activity() {
         udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
-        bridgeApRestarts = -1; bridgeStationDisconnects = -1
+        bridgeHeartbeatCount = -1; bridgeHeartbeatGapMs = -1; bridgeHeartbeatMaxGapMs = -1
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
     }
     override fun onPause() { resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
