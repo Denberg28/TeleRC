@@ -1,3 +1,8 @@
+## Unreleased
+- Stop the LINK ACTIVE / HEARTBEAT DELAYED visual oscillation by removing the intermediate delayed banner; LINK ACTIVE remains until the verified heartbeat is genuinely lost.
+- Increase verified-heartbeat control freshness tolerance from 2.5 s to 4.0 s and lost-heartbeat UI grace from 6 s to 8 s, while retaining the independent 500 ms ESP32 control-packet watchdog and 10 Hz neutral-hold.
+- Measure FC-side autopilot HEARTBEAT cadence in the ESP32 bridge and expose heartbeat count, latest gap and maximum gap through Diagnose Link and USB diagnostics.
+
 ## 0.8.32
 - Simplify the ESP32-S3 bridge transport to the early stable model: start SoftAP and UDP once and do not restart/rebind them for normal phone association events.
 - Keep control safety independent from transport: tab changes and app backgrounding send neutral, and the bridge keeps the existing 500 ms watchdog plus 10 Hz neutral-hold.
