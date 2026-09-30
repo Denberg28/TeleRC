@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private var status: TextView? = null
     private var connect: Button? = null
     private var enable: Button? = null
+    private var armButton: Button? = null
     private val functionButtons = mutableMapOf<String, Button>()
     private var steeringStick: JoystickView? = null
     private var driveStick: JoystickView? = null
@@ -148,6 +149,15 @@ class MainActivity : Activity() {
                 route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() })
         } catch (_: Exception) {}
         updater = AppUpdater(this) { updateStatus?.text = it }
+        // Dedicated ARM/DISARM replaces the former Servo button. F1-F3 remain
+        // exclusively available for external servo output assignments.
+        val servoPrefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
+        servoPrefs.edit().apply {
+            remove("Servo")
+            for (label in listOf("F1", "F2", "F3")) {
+                if (servoPrefs.getInt(label, 0) < 0) putInt(label, 0)
+            }
+        }.apply()
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
@@ -219,6 +229,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        armButton = null
         functionButtons.clear()
         window.statusBarColor = pale
         window.navigationBarColor = pale
@@ -230,29 +241,35 @@ class MainActivity : Activity() {
         }
         refreshUi()
     }
+    private fun armCaption(): String = when (vehicleArmed) {
+        true -> "DISARM"
+        false -> "ARM"
+        null -> "ARM / DISARM"
+    }
+
+    private fun armDisarmButton(): Button = button(armCaption()) {
+        toggleArmDisarm()
+    }.apply {
+        textSize = 13f
+        armButton = this
+        contentDescription = "${armCaption()} rover"
+    }
+
     private fun functionCaption(label: String): String {
         val assignment = getSharedPreferences("servo_assignments", MODE_PRIVATE).getInt(label, 0)
-        return when (assignment) {
-            -1 -> when (vehicleArmed) {
-                true -> "DISARM"
-                false -> "ARM"
-                null -> "ARM / DISARM"
-            }
-            0 -> label
-            else -> "$label · $assignment"
-        }
+        return if (assignment == 0) label else "$label · $assignment"
     }
 
     private fun refreshFunctionButtons() {
+        armButton?.apply {
+            text = armCaption()
+            contentDescription = "${armCaption()} rover"
+        }
         functionButtons.forEach { (label, control) ->
             control.text = functionCaption(label)
-            val armControl = getSharedPreferences("servo_assignments", MODE_PRIVATE).getInt(label, 0) == -1
-            control.contentDescription = if (armControl)
-                "${functionCaption(label)} rover. Long press to change assignment."
-            else "Assign servo output or rover arm control to $label"
+            control.contentDescription = "Assign external servo output to $label"
         }
     }
-
     private fun toggleArmDisarm() {
         val armed = vehicleArmed
         val udp = socket
@@ -282,41 +299,32 @@ class MainActivity : Activity() {
     }
 
     private fun servoAssignmentButton(label: String): Button {
+        require(label in listOf("F1", "F2", "F3"))
         val prefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
         lateinit var control: Button
         fun showAssignment() {
-            val labels = listOf("Servo", "F1", "F2", "F3")
-            val available = listOf(0, -1) + (1..16).filter { output ->
+            val labels = listOf("F1", "F2", "F3")
+            val available = listOf(0) + (1..16).filter { output ->
                 output !in 5..8 && labels.none { it != label && prefs.getInt(it, 0) == output }
             }
-            val names = available.map {
-                when (it) {
-                    0 -> "Unassigned"
-                    -1 -> "ARM / DISARM"
-                    else -> "Servo output $it"
-                }
-            }.toTypedArray()
-            val selected = available.indexOf(prefs.getInt(label, 0)).coerceAtLeast(0)
-            AlertDialog.Builder(this).setTitle("$label function assignment")
-                .setSingleChoiceItems(names, selected) { dialog, index ->
+            val names = available.map { if (it == 0) "Unassigned" else "Servo output $it" }.toTypedArray()
+            val current = prefs.getInt(label, 0).takeIf { it in available } ?: 0
+            AlertDialog.Builder(this).setTitle("$label external servo assignment")
+                .setSingleChoiceItems(names, available.indexOf(current)) { dialog, index ->
                     prefs.edit().putInt(label, available[index]).apply()
                     refreshFunctionButtons()
                     dialog.dismiss()
                 }
-                .setView(text("ARM/DISARM uses MAVLink heartbeat state · M5–M8 reserved", 12f, muted)
+                .setView(text("External servo only · M5–M8 reserved for rover drive outputs", 12f, muted)
                     .apply { setPadding(dp(16), dp(8), dp(16), dp(8)) })
                 .setNegativeButton("Close", null).show()
         }
-        control = button(functionCaption(label)) {
-            if (prefs.getInt(label, 0) == -1) toggleArmDisarm() else showAssignment()
-        }
-        control.textSize = if (label == "Servo") 15f else 11f
-        control.setOnLongClickListener { showAssignment(); true }
+        control = button(functionCaption(label)) { showAssignment() }
+        control.textSize = 11f
         functionButtons[label] = control
         refreshFunctionButtons()
         return control
     }
-
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
@@ -447,7 +455,7 @@ class MainActivity : Activity() {
                 }
             }.show()
         }
-        val servo = servoAssignmentButton("Servo")
+        val arm = armDisarmButton()
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
@@ -522,7 +530,7 @@ class MainActivity : Activity() {
         }
         row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
         row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
-        row.addView(controlColumn(servo, drivePanel), LinearLayout.LayoutParams(0, -1, 1f))
+        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // Three-zone footer keeps link state centered and prevents control buttons from
@@ -734,8 +742,8 @@ class MainActivity : Activity() {
             stick.isEnabled = true
             addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        val servo = servoAssignmentButton("Servo")
-        row.addView(controlColumn(servo, right), LinearLayout.LayoutParams(0, -1, 1f))
+        val arm = armDisarmButton()
+        row.addView(controlColumn(arm, right), LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         // Match Controls: equal side zones + a fixed center status. The left tool
         // strip may scroll only on unusually narrow displays; it never overlaps status.
