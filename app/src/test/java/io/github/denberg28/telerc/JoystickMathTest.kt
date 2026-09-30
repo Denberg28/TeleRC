@@ -23,4 +23,10 @@ class JoystickMathTest {
         assertEquals(1000, stickChannel(limitStick(0f, 1f), vertical = true))
         assertEquals(1500, stickChannel(StickPosition(0f, 0f), vertical = true))
     }
+    @org.junit.Test fun sensitivityScalesOutputAndKeepsNeutral() {
+        org.junit.Assert.assertEquals(1625, stickChannel(StickPosition(1f, 0f), false, .25f))
+        org.junit.Assert.assertEquals(1375, stickChannel(StickPosition(0f, 1f), true, .25f))
+        org.junit.Assert.assertEquals(1500, stickChannel(StickPosition(0f, 0f), false, .25f))
+        org.junit.Assert.assertEquals(1500, stickChannel(StickPosition(0f, 1f), false, .25f))
+    }
 }

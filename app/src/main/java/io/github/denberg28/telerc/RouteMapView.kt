@@ -54,6 +54,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     internal var maxSpeedMetersPerSecond = 2.8
     private var lastPreviewDraw = 0L
     private var centered = false
+    private var requestedPhoneFix: LatLng? = null
 
     init {
         MapLibre.getInstance(context)
@@ -217,6 +218,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
             else locateHome()
             centered = true
         }
+        requestedPhoneFix?.let { applyPhoneLocate(it) }
         session.phone.lastOrNull()?.let {
             if (session.rover.isNotEmpty() || previewPose == null || session.home?.let { home ->
                     distanceMeters(coords(home), coords(it)) > 5.0 } == true)
@@ -248,8 +250,16 @@ class RouteMapView(context: Context, private val session: RouteSession) {
 
     /** Center on a newly verified phone GPS fix, independent of the fixed route Home. */
     fun locatePhoneFix(latitude: Double, longitude: Double) {
-        map?.cameraPosition = CameraPosition.Builder().target(LatLng(latitude, longitude))
-            .zoom(17.0).build()
+        requestedPhoneFix = LatLng(latitude, longitude)
+        applyPhoneLocate(requestedPhoneFix!!)
+    }
+
+    private fun applyPhoneLocate(target: LatLng) {
+        val ready = map ?: return
+        if (ready.style?.isFullyLoaded != true) return
+        ready.cameraPosition = CameraPosition.Builder().target(target).zoom(17.0).build()
+        centered = true
+        requestedPhoneFix = null
     }
 
     /** Recovery priority: measured rover GPS, then last RC estimate, then phone Home. */
@@ -268,7 +278,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     }
 
     fun reset() {
-        centered = false; previewOrigin = null; previewAnchor = null; previewPath.clear()
+        requestedPhoneFix = null; centered = false; previewOrigin = null; previewAnchor = null; previewPath.clear()
         previewLine?.let { map?.removePolyline(it) }; previewLine = null
         draw()
     }

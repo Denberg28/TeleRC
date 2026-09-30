@@ -1,3 +1,9 @@
+## 0.8.22
+- Add saved joystick sensitivity from 25 to 100 percent; retain neutral release and assigned axes.
+- Compact Setup with saved accent choices and a fixed non-scrolling layout.
+- Reacquire phone GPS after Test Reset, including stationary fixes.
+- Retain requested GPS recentering until the map style is ready; reject stale and invalid fixes.
+
 ## 0.8.21
 - Add a saved light/dark theme switch in Setup and blue application accents.
 - Make Setup landscape with dropdown navigation and a compact two-column layout.

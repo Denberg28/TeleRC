@@ -11,8 +11,8 @@ internal fun limitStick(x: Float, y: Float): StickPosition {
     return if (length > 1f) StickPosition(x / length, y / length) else StickPosition(x, y)
 }
 
-internal fun stickChannel(position: StickPosition, vertical: Boolean): Int {
+internal fun stickChannel(position: StickPosition, vertical: Boolean, sensitivity: Float = 1f): Int {
     val axis = if (vertical) -position.y else position.x
     return if (abs(axis) < .08f) 1500 else
-        (1500 + axis.coerceIn(-1f, 1f) * 500f).toInt().coerceIn(1000, 2000)
+        (1500 + axis.coerceIn(-1f, 1f) * 500f * sensitivity.coerceIn(.25f, 1f)).toInt().coerceIn(1000, 2000)
 }

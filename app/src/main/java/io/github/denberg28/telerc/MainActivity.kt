@@ -86,12 +86,12 @@ class MainActivity : Activity() {
     private val locationManager by lazy { getSystemService(LOCATION_SERVICE) as LocationManager }
     private val phoneListener = LocationListener { location: Location ->
         if (!mapActive || !location.hasAccuracy() ||
-            SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos > 10_000_000_000L) return@LocationListener
+            SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos !in 0L..10_000_000_000L) return@LocationListener
         if (route.addPhone(TrackPoint(location.latitude, location.longitude, location.time), location.accuracy)) {
             if (routeMap?.anchorToHomeIfWaiting() == true) deadReckoning.reset()
             updateRoute()
         }
-        if (pendingPhoneLocate && location.accuracy <= 50f &&
+        if (pendingPhoneLocate && location.accuracy.isFinite() && location.accuracy in 0f..50f &&
             location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0 &&
             (location.latitude != 0.0 || location.longitude != 0.0)) {
             pendingPhoneLocate = false
@@ -240,7 +240,7 @@ class MainActivity : Activity() {
         val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
         val connection = card().apply {
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             addView(text("CONNECTION", 12f, accent, true))
             host = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
@@ -259,9 +259,9 @@ class MainActivity : Activity() {
             val endpointRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
             host?.textSize = 15f; port?.textSize = 15f
             host?.contentDescription = "Bridge IPv4 address"; port?.contentDescription = "UDP port"
-            endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(40), 2f).apply { rightMargin = dp(6) })
-            endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(40), 1f))
-            addView(endpointRow, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
+            endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(36), 2f).apply { rightMargin = dp(6) })
+            endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(36), 1f))
+            addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
             connect = button("Connect") {
                 if (wantsLink) {
                     wantsLink = false
@@ -273,11 +273,11 @@ class MainActivity : Activity() {
                     start(); scheduleReconnect()
                 }
             }
-            addView(connect, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
+            addView(connect, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
         }
-        left.addView(connection, LinearLayout.LayoutParams(-1, 0, 1.15f).apply { bottomMargin = dp(8) })
+        left.addView(connection, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
         val colors = card().apply {
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             addView(text("COLOR THEME", 12f, accent, true))
             val choices = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
             val selected = getSharedPreferences("appearance", MODE_PRIVATE).getString("accent", "Blue")
@@ -286,10 +286,27 @@ class MainActivity : Activity() {
                     getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("accent", name).apply()
                     render()
                 }.apply { textSize = 12f; contentDescription = "$name accent${if (selected == name) ", selected" else ""}" },
-                    LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(4) })
+                    LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(4) })
             }
-            addView(choices, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
+            addView(choices, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
         }
+        val prefs = getSharedPreferences("appearance", MODE_PRIVATE)
+        val sensitivityLabel = text("Sensitivity · ${prefs.getInt("sensitivity", 100)}%", 11f, muted)
+        colors.addView(sensitivityLabel)
+        colors.addView(SeekBar(this).apply {
+            max = 75; progress = prefs.getInt("sensitivity", 100).coerceIn(25, 100) - 25
+            contentDescription = "Joystick sensitivity, 25 to 100 percent"
+            progressTintList = android.content.res.ColorStateList.valueOf(accent)
+            thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                    sensitivityLabel.text = "Sensitivity · ${value + 25}%"
+                    if (fromUser) prefs.edit().putInt("sensitivity", value + 25).apply()
+                }
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {}
+            })
+        }, LinearLayout.LayoutParams(-1, dp(28)))
         left.addView(colors, LinearLayout.LayoutParams(-1, 0, 1f))
         body.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
         val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -554,7 +571,7 @@ class MainActivity : Activity() {
             // The switch also exposes the offline simulator without sending commands.
             bottom.addView(viewMode, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(5) })
             val reset = button("Reset", false) {
-                route.reset(); map.reset(); updateRoute()
+                route.reset(); map.reset(); updateRoute(); locatePhone()
             }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
             bottom.addView(locate, LinearLayout.LayoutParams(dp(42), dp(36)))
             bottom.addView(reset, LinearLayout.LayoutParams(dp(68), dp(36)).apply { leftMargin = dp(5) })
@@ -736,7 +753,7 @@ class MainActivity : Activity() {
         for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
             try {
                 if (locationManager.isProviderEnabled(provider)) {
-                    locationManager.requestLocationUpdates(provider, 1000L, 2f, phoneListener)
+                    locationManager.requestLocationUpdates(provider, 1000L, 0f, phoneListener)
                     locationManager.getLastKnownLocation(provider)?.let(phoneListener::onLocationChanged)
                     subscribed = true
                 }
