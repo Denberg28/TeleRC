@@ -60,11 +60,13 @@ class MainActivity : Activity() {
     @Volatile private var bridgeDriveMax = 1500
     @Volatile private var bridgeDriveChanged = -1L
     @Volatile private var target = 0
+    @Volatile private var vehicleArmed: Boolean? = null
     @Volatile private var steering = 1500
     @Volatile private var drive = 1500
     private var status: TextView? = null
     private var connect: Button? = null
     private var enable: Button? = null
+    private val functionButtons = mutableMapOf<String, Button>()
     private var steeringStick: JoystickView? = null
     private var driveStick: JoystickView? = null
     private var testCourse: TestDriveView? = null
@@ -217,6 +219,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        functionButtons.clear()
         window.statusBarColor = pale
         window.navigationBarColor = pale
         window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
@@ -227,27 +230,90 @@ class MainActivity : Activity() {
         }
         refreshUi()
     }
+    private fun functionCaption(label: String): String {
+        val assignment = getSharedPreferences("servo_assignments", MODE_PRIVATE).getInt(label, 0)
+        return when (assignment) {
+            -1 -> when (vehicleArmed) {
+                true -> "DISARM"
+                false -> "ARM"
+                null -> "ARM / DISARM"
+            }
+            0 -> label
+            else -> "$label · $assignment"
+        }
+    }
+
+    private fun refreshFunctionButtons() {
+        functionButtons.forEach { (label, control) ->
+            control.text = functionCaption(label)
+            val armControl = getSharedPreferences("servo_assignments", MODE_PRIVATE).getInt(label, 0) == -1
+            control.contentDescription = if (armControl)
+                "${functionCaption(label)} rover. Long press to change assignment."
+            else "Assign servo output or rover arm control to $label"
+        }
+    }
+
+    private fun toggleArmDisarm() {
+        val armed = vehicleArmed
+        val udp = socket
+        val remote = endpoint
+        val system = target
+        if (!linkFresh() || armed == null || udp == null || remote == null || system == 0) {
+            android.widget.Toast.makeText(this, "ARM state unavailable · wait for a fresh rover heartbeat",
+                android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Arming and disarming always start from neutral and revoke live joystick authority.
+        disableControl()
+        try {
+            synchronized(commandLock) {
+                repeat(3) { attempt ->
+                    val command = Mavlink.armDisarm(200 + attempt, system, 1, !armed, attempt)
+                    udp.send(DatagramPacket(command, command.size, remote, endpointPort))
+                }
+            }
+            android.widget.Toast.makeText(this,
+                if (armed) "DISARM command sent · waiting for heartbeat" else "ARM command sent · waiting for heartbeat",
+                android.widget.Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(this, "ARM/DISARM command could not be sent",
+                android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun servoAssignmentButton(label: String): Button {
         val prefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
-        fun caption(): String = prefs.getInt(label, 0).let { if (it == 0) label else "$label · $it" }
-        val control = button(caption()) { }
-        control.textSize = if (label == "Servo") 15f else 11f
-        control.contentDescription = "Assign servo output to $label"
-        control.setOnClickListener {
+        lateinit var control: Button
+        fun showAssignment() {
             val labels = listOf("Servo", "F1", "F2", "F3")
-            val available = listOf(0) + (1..16).filter { output ->
+            val available = listOf(0, -1) + (1..16).filter { output ->
                 output !in 5..8 && labels.none { it != label && prefs.getInt(it, 0) == output }
             }
-            val names = available.map { if (it == 0) "Unassigned" else "Servo output $it" }.toTypedArray()
-            AlertDialog.Builder(this).setTitle("$label output assignment")
-                .setSingleChoiceItems(names, available.indexOf(prefs.getInt(label, 0))) { dialog, index ->
+            val names = available.map {
+                when (it) {
+                    0 -> "Unassigned"
+                    -1 -> "ARM / DISARM"
+                    else -> "Servo output $it"
+                }
+            }.toTypedArray()
+            val selected = available.indexOf(prefs.getInt(label, 0)).coerceAtLeast(0)
+            AlertDialog.Builder(this).setTitle("$label function assignment")
+                .setSingleChoiceItems(names, selected) { dialog, index ->
                     prefs.edit().putInt(label, available[index]).apply()
-                    control.text = caption()
+                    refreshFunctionButtons()
                     dialog.dismiss()
                 }
-                .setView(text("M5–M8 reserved · assignment only", 12f, muted).apply { setPadding(dp(16), dp(8), dp(16), dp(8)) })
+                .setView(text("ARM/DISARM uses MAVLink heartbeat state · M5–M8 reserved", 12f, muted)
+                    .apply { setPadding(dp(16), dp(8), dp(16), dp(8)) })
                 .setNegativeButton("Close", null).show()
         }
+        control = button(functionCaption(label)) {
+            if (prefs.getInt(label, 0) == -1) toggleArmDisarm() else showAssignment()
+        }
+        control.textSize = if (label == "Servo") 15f else 11f
+        control.setOnLongClickListener { showAssignment(); true }
+        functionButtons[label] = control
+        refreshFunctionButtons()
         return control
     }
 
@@ -891,6 +957,7 @@ class MainActivity : Activity() {
         connect?.text = if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get()
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
+        refreshFunctionButtons()
     }
     private fun disableControl() {
         // Safety invariant: leaving live control must command neutral, never release immediately
@@ -949,7 +1016,7 @@ class MainActivity : Activity() {
             }
         } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         socket = udp; endpoint = remote; endpointPort = number
-        target = 0; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
+        target = 0; vehicleArmed = null; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
@@ -999,9 +1066,11 @@ class MainActivity : Activity() {
                                 }
                             }
                         } else for (frame in Mavlink.frames(payload)) {
-                            val system = Mavlink.heartbeatSystem(frame)
-                            if (system != null && (target == 0 || target == system)) {
-                                target = system; heartbeatAt = SystemClock.elapsedRealtime()
+                            val heartbeat = Mavlink.heartbeat(frame)
+                            if (heartbeat != null && (target == 0 || target == heartbeat.system)) {
+                                target = heartbeat.system
+                                vehicleArmed = heartbeat.armed
+                                heartbeatAt = SystemClock.elapsedRealtime()
                             }
                             val position = Mavlink.globalPosition(frame)
                             if (position != null && position.system == target && target != 0 && linkFresh()) {
@@ -1072,7 +1141,7 @@ class MainActivity : Activity() {
     }
     private fun stop() {
         disableControl(); connected.set(false)
-        val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; heartbeatAt = 0
+        val udp = socket; udp?.close(); socket = null; endpoint = null; target = 0; vehicleArmed = null; heartbeatAt = 0
         bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1; bridgeDriveChanged = -1
         host?.isEnabled = true; port?.isEnabled = true; refreshUi()
