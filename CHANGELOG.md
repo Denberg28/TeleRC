@@ -1,3 +1,9 @@
+## 0.8.40
+- Refine Setup into a vertically symmetric 2x2 layout.
+- Match Theme & Control Feel height to Connection and App Update height to Link Status.
+- Reorder App Update content so Check for updates aligns with Diagnose Link.
+- Preserve v0.8.39 control, MAVLink, ARM/DISARM, connection, and fail-safe behavior unchanged.
+
 ## 0.8.39
 - Refine Setup layout only: keep the compact light/dark toggle in the upper-right header.
 - Move Theme & Control Feel above App Update in the right Setup column.
