@@ -336,8 +336,14 @@ class MainActivity : Activity() {
                 // current MAVLink override/session alive; STOP/DISCONNECT own handover.
                 sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = false)
                 synchronized(commandLock) {
-                    val command = Mavlink.armDisarm(200, system, 1, !armed)
-                    udp.send(DatagramPacket(command, command.size, remote, endpointPort))
+                    // Repeat the normal command with unique MAVLink sequence numbers.
+                    // This improves delivery over UDP without using force-arm or bypassing
+                    // any ArduRover pre-arm checks.
+                    repeat(3) { attempt ->
+                        val command = Mavlink.armDisarm(200 + attempt, system, 1, !armed)
+                        udp.send(DatagramPacket(command, command.size, remote, endpointPort))
+                        if (attempt < 2) Thread.sleep(40)
+                    }
                 }
                 runOnUiThread {
                     android.widget.Toast.makeText(this@MainActivity,
@@ -388,14 +394,12 @@ class MainActivity : Activity() {
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(120), dp(44)))
         header.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
-        header.addView(button(if (darkTheme) "☀" else "☾", false) {
-            disableControl()
-            getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark", !darkTheme).apply()
-            recreate()
-        }.apply { contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme" }, LinearLayout.LayoutParams(dp(48), dp(44)))
         root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(8) })
-        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
         val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
+        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
         val connection = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             addView(text("CONNECTION", 12f, accent, true))
@@ -403,19 +407,19 @@ class MainActivity : Activity() {
                 setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
                 inputType = InputType.TYPE_CLASS_TEXT
                 background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
-                setText(if (connected.get()) endpoint?.hostAddress else getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
-                isEnabled = !connected.get()
+                setText(if (connected.get()) endpoint?.hostAddress else
+                    getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
+                isEnabled = !connected.get(); textSize = 15f; contentDescription = "Bridge IPv4 address"
             }
             port = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "UDP port"; setTextColor(ink); setHintTextColor(muted)
                 inputType = InputType.TYPE_CLASS_NUMBER
                 background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
-                setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
-                isEnabled = !connected.get()
+                setText((if (connected.get()) endpointPort else
+                    getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
+                isEnabled = !connected.get(); textSize = 15f; contentDescription = "UDP port"
             }
             val endpointRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            host?.textSize = 15f; port?.textSize = 15f
-            host?.contentDescription = "Bridge IPv4 address"; port?.contentDescription = "UDP port"
             endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(36), 2f).apply { rightMargin = dp(6) })
             endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(36), 1f))
             addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
@@ -423,7 +427,8 @@ class MainActivity : Activity() {
                 if (wantsLink) {
                     wantsLink = false
                     getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
-                    reconnectHandler.removeCallbacks(reconnect); stop(explicitDisconnect = true)
+                    reconnectHandler.removeCallbacks(reconnect)
+                    stop(explicitDisconnect = true)
                 } else {
                     wantsLink = true
                     getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
@@ -433,65 +438,79 @@ class MainActivity : Activity() {
             addView(connect, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
         }
         left.addView(connection, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
-        val colors = card().apply {
+
+        val link = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(text("COLOR THEME", 12f, accent, true))
-            val choices = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            val selected = getSharedPreferences("appearance", MODE_PRIVATE).getString("accent", "Blue")
-            AppColors.names.forEach { name ->
-                choices.addView(button(if (selected == name) "✓ $name" else name, selected == name) {
-                    getSharedPreferences("appearance", MODE_PRIVATE).edit().putString("accent", name).apply()
-                    render()
-                }.apply { textSize = 12f; contentDescription = "$name accent${if (selected == name) ", selected" else ""}" },
-                    LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(4) })
-            }
-            addView(choices, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
-        }
-        val prefs = getSharedPreferences("appearance", MODE_PRIVATE)
-        val sensitivityLabel = text("Sensitivity · ${prefs.getInt("sensitivity", 100)}%", 11f, muted)
-        colors.addView(sensitivityLabel)
-        colors.addView(SeekBar(this).apply {
-            max = 75; progress = prefs.getInt("sensitivity", 100).coerceIn(25, 100) - 25
-            contentDescription = "Joystick sensitivity, 25 to 100 percent"
-            progressTintList = android.content.res.ColorStateList.valueOf(accent)
-            thumbTintList = android.content.res.ColorStateList.valueOf(accent)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
-                    sensitivityLabel.text = "Sensitivity · ${value + 25}%"
-                    if (fromUser) prefs.edit().putInt("sensitivity", value + 25).apply()
-                }
-                override fun onStartTrackingTouch(bar: SeekBar?) {}
-                override fun onStopTrackingTouch(bar: SeekBar?) {}
-            })
-        }, LinearLayout.LayoutParams(-1, dp(28)))
-        left.addView(colors, LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val info = card().apply {
-            setPadding(dp(14), dp(10), dp(14), dp(10))
             addView(text("LINK STATUS", 12f, accent, true))
-            status = text("DISCONNECTED", 15f, ink, true); addView(status)
-            status?.apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+            status = text("DISCONNECTED", 15f, ink, true).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            addView(status)
             addView(button("Diagnose link", false) {
                 AlertDialog.Builder(this@MainActivity).setTitle("Link diagnostics")
                     .setMessage(linkDiagnosis()).setPositiveButton("OK", null).show()
-            }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
+            }, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
         }
-        details.addView(info, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
+        left.addView(link, LinearLayout.LayoutParams(-1, 0, 1f))
+        body.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+
         val updates = card().apply {
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             addView(text("APP UPDATE", 12f, accent, true))
             addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 14f, ink, true))
-            updateStatus = text("Signed APK · manual check", 11f, muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+            updateStatus = text("Signed APK · manual check", 11f, muted).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }
             addView(updateStatus)
             addView(button("Check for updates", false) { updater.check() },
-                LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
+                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
         }
-        details.addView(updates, LinearLayout.LayoutParams(-1, 0, 1.15f))
-        body.addView(details, LinearLayout.LayoutParams(0, -1, 1f))
+        right.addView(updates, LinearLayout.LayoutParams(-1, 0, 0.85f).apply { bottomMargin = dp(8) })
+
+        val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
+        val theme = card().apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            addView(text("THEME & CONTROL FEEL", 12f, accent, true))
+            val modeRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            modeRow.addView(button(if (darkTheme) "☀  Light" else "☾  Dark", false) {
+                disableControl()
+                appearance.edit().putBoolean("dark", !darkTheme).apply()
+                recreate()
+            }, LinearLayout.LayoutParams(0, dp(36), 1f))
+            addView(modeRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+
+            val choices = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            val selected = appearance.getString("accent", "Blue")
+            AppColors.names.forEach { name ->
+                choices.addView(button(if (selected == name) "✓ $name" else name, selected == name) {
+                    appearance.edit().putString("accent", name).apply(); render()
+                }.apply { textSize = 12f },
+                    LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
+            }
+            addView(choices, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
+            val sensitivityLabel = text("Sensitivity · ${appearance.getInt("sensitivity", 100)}%", 11f, muted)
+            addView(sensitivityLabel)
+            addView(SeekBar(this@MainActivity).apply {
+                max = 75; progress = appearance.getInt("sensitivity", 100).coerceIn(25, 100) - 25
+                progressTintList = android.content.res.ColorStateList.valueOf(accent)
+                thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                        sensitivityLabel.text = "Sensitivity · ${value + 25}%"
+                        if (fromUser) appearance.edit().putInt("sensitivity", value + 25).apply()
+                    }
+                    override fun onStartTrackingTouch(bar: SeekBar?) {}
+                    override fun onStopTrackingTouch(bar: SeekBar?) {}
+                })
+            }, LinearLayout.LayoutParams(-1, dp(28)))
+        }
+        right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1.15f))
+        body.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
+
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
+
     private fun renderControls() {
         host = null; port = null; connect = null
         val root = shell()
