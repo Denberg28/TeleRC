@@ -1,3 +1,8 @@
+## Unreleased
+- Make deliberate STOP CONTROL and explicit Disconnect hand control back to the physical RC receiver: TeleRC sends neutral first, then MAVLink RC override release. Tab changes, app backgrounding, heartbeat loss and unexpected link loss still use neutral-hold.
+- Align TeleRC joystick output with the calibrated RC1/RC2 range (1100-1900 us instead of 1000-2000 us) to avoid early saturation and abrupt steering/throttle response.
+- Soften the checked-in Rover profile for bench driving with MOT_SLEWRATE=40 and MANUAL_STR_EXPO=0.3. RC_OVERRIDE_TIME remains 3 s as a fallback if MAVLink overrides disappear without an explicit release.
+
 ## 0.8.33
 - Stop the LINK ACTIVE / HEARTBEAT DELAYED visual oscillation by removing the intermediate delayed banner; LINK ACTIVE remains until the verified heartbeat is genuinely lost.
 - Increase verified-heartbeat control freshness tolerance from 2.5 s to 4.0 s and lost-heartbeat UI grace from 6 s to 8 s, while retaining the independent 500 ms ESP32 control-packet watchdog and 10 Hz neutral-hold.
