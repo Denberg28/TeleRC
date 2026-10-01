@@ -1,3 +1,9 @@
+## 0.8.44
+- Update the TeleRC launcher icon to the uploaded friendlier monochrome controller logo.
+- Preserve the two-color dark/white identity while using the softer lower smile-like curve from the approved artwork.
+- Keep the full controller mark inside the Android adaptive-icon safe area to avoid launcher-mask cropping.
+- Preserve v0.8.43 rover control, MAVLink, ARM/DISARM, diagnostics, updater, and fail-safe behavior unchanged.
+
 ## 0.8.43
 - Replace the TeleRC launcher icon with the approved monochrome RC transmitter mark.
 - Use only the dark transmitter color and white; remove Wi-Fi artwork, center antenna, lower horizontal bars, and the center joystick-connecting line.
