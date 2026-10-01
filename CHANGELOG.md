@@ -1,3 +1,8 @@
+## 0.8.45
+- Correct launcher-icon placement observed on the installed Android app by reducing the adaptive foreground artwork to 78% around its existing center.
+- Preserve the approved monochrome controller design and dark background while adding more visual breathing room across OEM launcher masks.
+- No rover control, MAVLink, UI, updater, diagnostics, or fail-safe behavior changes.
+
 ## 0.8.44
 - Update the TeleRC launcher icon to the uploaded friendlier monochrome controller logo.
 - Preserve the two-color dark/white identity while using the softer lower smile-like curve from the approved artwork.
