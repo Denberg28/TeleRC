@@ -1,3 +1,8 @@
+## 0.8.42
+- Replace the TeleRC launcher branding with the new text-free Wi-Fi signal + RC transmitter controller logo.
+- Place the Wi-Fi arcs behind the transmitter for a clean wireless-control identity.
+- Preserve v0.8.41 connection, control, MAVLink, ARM/DISARM, UI, and fail-safe behavior unchanged.
+
 ## 0.8.41
 - Refine Setup Theme & Control Feel spacing.
 - Move the sensitivity value below the adjustment slider while preserving the symmetric 2x2 Setup card layout.
