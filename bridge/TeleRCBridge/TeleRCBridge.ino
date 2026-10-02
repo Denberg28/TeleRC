@@ -61,6 +61,12 @@ bool pairedPhone(const IPAddress &ip) {
   return phone == IPAddress(0, 0, 0, 0) || phone == ip || millis() - lastPhoneMs >= 5000;
 }
 
+bool newSenderAfterTimeout(const IPAddress &ip) {
+  return phone != IPAddress(0, 0, 0, 0) &&
+         phone != ip &&
+         millis() - lastPhoneMs >= 5000;
+}
+
 bool validRcOverride(const uint8_t *p, size_t n) {
   if (n != 26 || p[0] != 0xfe || p[1] != 18 || p[3] != 255 ||
       p[4] != 190 || p[5] != 70 || p[22] == 0 || p[22] == 255 || p[23] != 1)
@@ -328,6 +334,8 @@ void loop() {
 
     if (sourceOk && packetSize == int(sizeof(DISCOVERY) - 1) && count == packetSize &&
         memcmp(p, DISCOVERY, sizeof(DISCOVERY) - 1) == 0) {
+      if (newSenderAfterTimeout(sender) && activeOverrideMask)
+        releaseReceiver();
       phone = sender;
       lastPhoneMs = millis();
     }
@@ -341,6 +349,9 @@ void loop() {
       ++acceptedCommands;
     }
     else if (sourceOk && packetSize == 26 && count == 26 && validRcOverride(p, count)) {
+      if (newSenderAfterTimeout(sender) && activeOverrideMask)
+        releaseReceiver();
+
       phone = sender;
       lastPhoneMs = millis();
       targetSystem = p[22];
@@ -372,6 +383,8 @@ void loop() {
       }
     }
     else if (sourceOk && packetSize == 41 && count == 41 && validArmCommand(p, count)) {
+      if (newSenderAfterTimeout(sender) && activeOverrideMask)
+        releaseReceiver();
       phone = sender;
       lastPhoneMs = millis();
       targetSystem = p[36];
