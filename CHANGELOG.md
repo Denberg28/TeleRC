@@ -1,3 +1,8 @@
+## 0.8.47
+- Rebuild the latest sanitized TeleRC control and ESP32-S3 bridge baseline after the final documentation correction.
+- Preserve v0.8.46 joystick, ARM/DISARM, heartbeat-pause, CH1 steering / CH2 drive, MAVLink validation, neutral-hold failsafe, and persistent TeleRC-Rover SoftAP behavior unchanged.
+- Release from the current main branch so the signed APK matches the latest reviewed repository state.
+
 ## 0.8.46
 - Final control-path and release sanitization after field testing.
 - Fix live joystick authority being silently disabled by ARM/DISARM; ARM/DISARM now neutralizes commanded axes while preserving the enabled control session.
