@@ -30,6 +30,9 @@ uint32_t lastNeutralMs = 0;
 bool controlActive = false;
 bool neutralHold = false;
 uint8_t targetSystem = 0;
+// Tracks which of CH1-CH4 the bridge has actively overridden.
+// Android TeleRC drives all four (0x0F). PC TeleRC may drive a sparse subset.
+uint8_t activeOverrideMask = 0;
 uint8_t sequence = 0;
 
 uint8_t frame[280];
@@ -68,21 +71,27 @@ bool validRcOverride(const uint8_t *p, size_t n) {
   const uint16_t received = uint16_t(p[24]) | (uint16_t(p[25]) << 8);
   if (received != crcByte(crc, 124)) return false;
 
-  bool release = true;
+  // CH1-CH4 accept standard MAVLink override semantics:
+  //   1000..2000 = override, 0 = release this channel, 65535 = ignore.
+  // Android TeleRC still sends four explicit 1000..2000 values (or four zeros
+  // on release), so its established packet format is unchanged.
+  bool touched = false;
   for (int ch = 0; ch < 4; ++ch) {
-    const uint16_t value = uint16_t(p[6 + ch * 2]) | (uint16_t(p[7 + ch * 2]) << 8);
-    if (value != 0) release = false;
+    const uint16_t value =
+        uint16_t(p[6 + ch * 2]) | (uint16_t(p[7 + ch * 2]) << 8);
+    if (value == 0xffff) continue;
+    touched = true;
     if (value != 0 && (value < 1000 || value > 2000)) return false;
   }
+
+  // Keep CH5-CH8 remote-inaccessible. These include auxiliary/takeover
+  // channels on the rover and must remain MAVLink "ignore".
   for (int ch = 4; ch < 8; ++ch) {
     if (p[6 + ch * 2] != 0xff || p[7 + ch * 2] != 0xff) return false;
   }
-  if (release) return true;
 
-  for (int ch = 0; ch < 4; ++ch) {
-    if (p[6 + ch * 2] == 0 && p[7 + ch * 2] == 0) return false;
-  }
-  return true;
+  // Reject an all-ignore no-op so it cannot claim/refresh the paired sender.
+  return touched;
 }
 
 bool validArmCommand(const uint8_t *p, size_t n) {
@@ -114,7 +123,74 @@ size_t writeRcOverride(uint8_t *p, size_t n) {
   return written;
 }
 
+uint16_t rcValue(const uint8_t *p, int ch) {
+  return uint16_t(p[6 + ch * 2]) |
+         (uint16_t(p[7 + ch * 2]) << 8);
+}
+
+bool legacyFullRelease(const uint8_t *p) {
+  for (int ch = 0; ch < 4; ++ch)
+    if (rcValue(p, ch) != 0) return false;
+  return true;
+}
+
+uint8_t nextActiveMask(const uint8_t *p, uint8_t previousMask) {
+  uint8_t mask = previousMask;
+  for (int ch = 0; ch < 4; ++ch) {
+    const uint16_t value = rcValue(p, ch);
+    const uint8_t bit = uint8_t(1u << ch);
+    if (value == 0)
+      mask &= ~bit;          // standard per-channel release
+    else if (value != 0xffff)
+      mask |= bit;           // explicit override 1000..2000
+    // 65535 means ignore: preserve previous state for that channel.
+  }
+  return mask;
+}
+
+bool packetLeavesAllActiveNeutral(const uint8_t *p, uint8_t previousMask) {
+  const uint8_t nextMask = nextActiveMask(p, previousMask);
+  if (!nextMask) return false;
+
+  // We can call it a neutral hold only when this packet explicitly refreshes
+  // every still-active channel to 1500. An ignored active channel has unknown
+  // current value, so conservatively keep the watchdog active.
+  for (int ch = 0; ch < 4; ++ch) {
+    const uint8_t bit = uint8_t(1u << ch);
+    if (!(nextMask & bit)) continue;
+    if (rcValue(p, ch) != 1500) return false;
+  }
+  return true;
+}
+
+size_t sendOverrideMasked(uint16_t value, uint8_t mask) {
+  if (!targetSystem || !mask) return 0;
+
+  uint8_t p[26] = {0xfe, 18, sequence++, 255, 190, 70};
+  for (int ch = 0; ch < 4; ++ch) {
+    const uint16_t channelValue = (mask & (1u << ch)) ? value : 0xffff;
+    p[6 + ch * 2] = uint8_t(channelValue);
+    p[7 + ch * 2] = uint8_t(channelValue >> 8);
+  }
+  for (int ch = 4; ch < 8; ++ch) {
+    p[6 + ch * 2] = 0xff;
+    p[7 + ch * 2] = 0xff;
+  }
+  p[22] = targetSystem;
+  p[23] = 1;
+
+  uint16_t crc = 0xffff;
+  for (size_t i = 1; i < 24; ++i) crc = crcByte(crc, p[i]);
+  crc = crcByte(crc, 124);
+  p[24] = uint8_t(crc);
+  p[25] = uint8_t(crc >> 8);
+  const size_t written = fc.write(p, sizeof(p));
+  uartCommandBytes += written;
+  return written;
+}
+
 size_t sendOverride(uint16_t value) {
+  // Legacy Android behavior: explicitly drive/release CH1-CH4 together.
   if (!targetSystem) return 0;
 
   uint8_t p[26] = {0xfe, 18, sequence++, 255, 190, 70};
@@ -140,8 +216,10 @@ size_t sendOverride(uint16_t value) {
 }
 
 void holdNeutral() {
-  if (!targetSystem) return;
-  sendOverride(1500);
+  if (!targetSystem || !activeOverrideMask) return;
+  // Android mask is 0x0F, preserving its existing all-four neutral behavior.
+  // Sparse PC control only neutralizes the channels it actually owns.
+  sendOverrideMasked(1500, activeOverrideMask);
   controlActive = false;
   neutralHold = true;
   lastNeutralMs = millis();
@@ -149,8 +227,10 @@ void holdNeutral() {
 
 void releaseReceiver() {
   if (!targetSystem) return;
+  // Preserve Android TeleRC's established neutral-then-release-all-four path.
   sendOverride(1500);
   sendOverride(0);
+  activeOverrideMask = 0;
   controlActive = false;
   neutralHold = false;
   Serial.println("RC override released.");
@@ -266,19 +346,29 @@ void loop() {
       targetSystem = p[22];
       ++acceptedCommands;
 
-      const bool release = p[6] == 0 && p[7] == 0;
-      const uint16_t ch1 = uint16_t(p[6]) | (uint16_t(p[7]) << 8);
-      const uint16_t ch2 = uint16_t(p[8]) | (uint16_t(p[9]) << 8);
-      const bool neutral = !release && ch1 == 1500 && ch2 == 1500;
-
-      if (release) {
+      // Keep the Android full-release path byte-for-byte compatible. Sparse
+      // standard releases from PC TeleRC are forwarded as received so only the
+      // PC-owned channels are released.
+      if (legacyFullRelease(p)) {
         releaseReceiver();
       } else {
+        const uint8_t previousMask = activeOverrideMask;
+        const uint8_t updatedMask = nextActiveMask(p, previousMask);
+        const bool neutral =
+            packetLeavesAllActiveNeutral(p, previousMask);
+
         writeRcOverride(p, count);
-        controlActive = !neutral;
-        neutralHold = neutral;
+        activeOverrideMask = updatedMask;
+        controlActive = updatedMask != 0 && !neutral;
+        neutralHold = updatedMask != 0 && neutral;
         lastControlMs = millis();
         if (neutral) lastNeutralMs = millis();
+
+        if (!updatedMask) {
+          controlActive = false;
+          neutralHold = false;
+          Serial.println("Sparse RC override released.");
+        }
       }
     }
     else if (sourceOk && packetSize == 41 && count == 41 && validArmCommand(p, count)) {
@@ -302,8 +392,9 @@ void loop() {
   if (controlActive && targetSystem && millis() - lastControlMs >= CONTROL_TIMEOUT_MS)
     holdNeutral();
 
-  if (neutralHold && targetSystem && millis() - lastNeutralMs >= NEUTRAL_REFRESH_MS) {
-    sendOverride(1500);
+  if (neutralHold && targetSystem && activeOverrideMask &&
+      millis() - lastNeutralMs >= NEUTRAL_REFRESH_MS) {
+    sendOverrideMasked(1500, activeOverrideMask);
     lastNeutralMs = millis();
   }
 
