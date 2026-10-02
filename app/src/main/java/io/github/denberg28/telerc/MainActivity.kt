@@ -60,6 +60,7 @@ class MainActivity : Activity() {
     @Volatile private var bridgeCommandBytes = -1L
     @Volatile private var target = 0
     @Volatile private var vehicleArmed: Boolean? = null
+    @Volatile private var pendingArmState: Boolean? = null
     @Volatile private var lastArmAck = ""
     @Volatile private var lastLinkError = ""
     @Volatile private var steering = 1500
@@ -309,8 +310,13 @@ class MainActivity : Activity() {
             return
         }
 
-        // UI state changes immediately. Network I/O is serialized off the main thread.
-        disableControlState()
+        // Keep the live control session intact. Neutralize both axes before sending
+        // ARM/DISARM so a stale joystick value cannot resume motion after the command.
+        steering = 1500
+        drive = 1500
+        steeringStick?.reset()
+        driveStick?.reset()
+        pendingArmState = !armed
         lastArmAck = "WAITING FOR ACK"
 
         txExecutor.execute {
@@ -330,8 +336,8 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     android.widget.Toast.makeText(this@MainActivity,
-                        if (armed) "DISARM sent · waiting for COMMAND_ACK"
-                        else "ARM sent · waiting for COMMAND_ACK",
+                        if (armed) "DISARM command sent · awaiting rover confirmation"
+                        else "ARM command sent · awaiting rover confirmation",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -1094,7 +1100,7 @@ class MainActivity : Activity() {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()
                             val frames = fields.getOrNull(2)?.toLongOrNull()
-                            if (fields.size in listOf(3, 7) && bytes != null && frames != null &&
+                            if (fields.size in listOf(3, 4, 7) && bytes != null && frames != null &&
                                 bytes >= 0 && frames >= 0 && frames <= bytes) {
                                 bridgeRxBytes = bytes; bridgeFrames = frames
                                 bridgeStatusAt = SystemClock.elapsedRealtime()
@@ -1116,12 +1122,26 @@ class MainActivity : Activity() {
                                 target = heartbeat.system
                                 vehicleArmed = heartbeat.armed
                                 heartbeatAt = SystemClock.elapsedRealtime()
-                                // Heartbeat is authoritative for armed state. Refresh the
-                                // ARM/DISARM caption immediately when that state changes,
-                                // rather than waiting for the periodic link UI refresh.
-                                if (previousSystem != heartbeat.system || previousArmed != heartbeat.armed) {
+                                val requestedArmState = pendingArmState
+                                val armStateConfirmed = requestedArmState != null && heartbeat.armed == requestedArmState
+                                if (armStateConfirmed) {
+                                    pendingArmState = null
+                                    lastArmAck = if (heartbeat.armed) "ARMED CONFIRMED" else "DISARMED CONFIRMED"
+                                }
+                                // Heartbeat is authoritative for the final armed state.
+                                if (previousSystem != heartbeat.system || previousArmed != heartbeat.armed || armStateConfirmed) {
                                     runOnUiThread {
-                                        if (socket === udp) refreshUi()
+                                        if (socket === udp) {
+                                            if (armStateConfirmed) {
+                                                android.widget.Toast.makeText(
+                                                    this@MainActivity,
+                                                    if (heartbeat.armed) "Rover ARMED · confirmed by heartbeat"
+                                                    else "Rover DISARMED · confirmed by heartbeat",
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                            refreshUi()
+                                        }
                                     }
                                 }
                             }
@@ -1130,9 +1150,16 @@ class MainActivity : Activity() {
                                 lastArmAck = ack.resultText
                                 runOnUiThread {
                                     if (socket === udp) {
-                                        android.widget.Toast.makeText(this@MainActivity,
-                                            "ARM/DISARM: ${ack.resultText}",
-                                            android.widget.Toast.LENGTH_SHORT).show()
+                                        val message = if (ack.result == 0)
+                                            "ARM/DISARM command accepted · waiting for rover state"
+                                        else
+                                            "ARM/DISARM " + ack.resultText
+                                        android.widget.Toast.makeText(
+                                            this@MainActivity,
+                                            message,
+                                            if (ack.result == 0) android.widget.Toast.LENGTH_SHORT
+                                            else android.widget.Toast.LENGTH_LONG
+                                        ).show()
                                         refreshUi()
                                     }
                                 }
@@ -1226,6 +1253,7 @@ class MainActivity : Activity() {
         endpoint = null
         target = 0
         vehicleArmed = null
+        pendingArmState = null
         lastArmAck = ""
         heartbeatAt = 0
         bridgeStatusAt = 0
