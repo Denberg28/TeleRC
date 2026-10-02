@@ -1015,6 +1015,8 @@ class MainActivity : Activity() {
             !connected.get() && wantsLink -> "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
             target == 0 -> "WAITING FOR HEARTBEAT"
+            controlEnabled.get() && !HeartbeatHealth.isFresh(target, heartbeatAt, now) ->
+                "SYSTEM $target  •  CONTROL PAUSED"
             !HeartbeatHealth.isRecentlySeen(target, heartbeatAt, now) -> "SYSTEM $target  •  HEARTBEAT LOST"
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
@@ -1229,8 +1231,17 @@ class MainActivity : Activity() {
                     lastUiRefresh = now
                     runOnUiThread {
                         if (socket === udp && connected.get()) {
-                            // Recheck at execution time: another heartbeat may have arrived.
-                            if (!linkFresh() && controlEnabled.get()) disableControl()
+                            // Heartbeat loss must stop command transmission, but it must not
+                            // disable the joystick Views. Disabling the Views causes Android
+                            // to stop delivering touch events and makes control appear dead.
+                            // The TX path is already gated by HeartbeatHealth.isFresh().
+                            // Keep the user's control session latched so it can resume
+                            // automatically as soon as a verified heartbeat returns.
+                            if (!linkFresh() && controlEnabled.get()) {
+                                steering = 1500
+                                drive = 1500
+                                controlsEstimate?.text = "RC PAUSED · waiting for heartbeat"
+                            }
                             refreshUi()
                         }
                     }
