@@ -204,73 +204,35 @@ void makeBoardPassword(char *out, size_t size) {
            static_cast<unsigned long>(chipId & 0xFFFFFFFFUL));
 }
 
-bool startAccessPoint(const char *password) {
-  // Keep AP startup independent from MAVLink, UART, NVS and phone state.
-  WiFi.persistent(false);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
-  WiFi.mode(WIFI_AP);
-  delay(100);
-
-  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0))) {
-    Serial.println("ERROR: softAPConfig failed.");
-    return false;
-  }
-
-  // Channel 6, visible SSID, max 4 stations.
-  if (!WiFi.softAP(AP_SSID, password, 6, false, 4)) {
-    Serial.println("ERROR: softAP start failed.");
-    return false;
-  }
-
-  delay(250);
-  return WiFi.getMode() == WIFI_AP &&
-         WiFi.softAPIP() == AP_IP;
-}
-
 void setup() {
   Serial.begin(115200);
-  delay(1200);
+  delay(1000);
   Serial.println();
   Serial.println("=== TeleRC ESP32-S3 bridge boot ===");
 
   char password[32] = {};
   makeBoardPassword(password, sizeof(password));
 
-  bool apStarted = false;
-  for (int attempt = 1; attempt <= 3 && !apStarted; ++attempt) {
-    Serial.printf("Starting TeleRC-Rover Wi-Fi, attempt %d/3...\\n", attempt);
-    apStarted = startAccessPoint(password);
-    if (!apStarted) {
-      WiFi.softAPdisconnect(true);
-      WiFi.mode(WIFI_OFF);
-      delay(500);
-    }
-  }
-
-  if (!apStarted) {
-    Serial.println("FATAL: Wi-Fi AP did not start.");
-    Serial.println("Check ESP32-S3 board selection, power, flash, and Arduino-ESP32 installation.");
-    while (true) delay(1000);
-  }
-
-  Serial.printf("SSID: %s\\n", AP_SSID);
-  Serial.printf("Password: %s\\n", password);
-  Serial.printf("AP IP: %s\\n", WiFi.softAPIP().toString().c_str());
-  Serial.printf("BSSID: %s\\n", WiFi.softAPmacAddress().c_str());
-  Serial.printf("Channel: %d\\n", WiFi.channel());
-  Serial.println("Wi-Fi AP is running. Starting MAVLink bridge...");
-
   fc.setRxBufferSize(4096);
   fc.begin(FC_BAUD, SERIAL_8N1, FC_RX_GPIO, FC_TX_GPIO);
 
-  if (!udp.begin(UDP_PORT)) {
-    Serial.println("FATAL: UDP port 14550 failed to open.");
+  // Known-good ESP32-S3 AP startup. Keep transport startup simple: do not cycle
+  // WIFI_OFF, restart the AP, or tie Wi-Fi lifetime to phone/control state.
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_AP);
+
+  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0)) ||
+      !WiFi.softAP(AP_SSID, password) ||
+      !udp.begin(UDP_PORT)) {
+    Serial.println("FATAL: TeleRC bridge startup failed.");
     while (true) delay(1000);
   }
 
   Serial.printf("TeleRC bridge ready: %s @ %s:%u\\n",
                 AP_SSID, WiFi.softAPIP().toString().c_str(), UDP_PORT);
+  Serial.printf("Wi-Fi password: %s\\n", password);
+  Serial.printf("FC UART: RX GPIO%d / TX GPIO%d / %lu baud\\n",
+                FC_RX_GPIO, FC_TX_GPIO, static_cast<unsigned long>(FC_BAUD));
 }
 
 void loop() {
