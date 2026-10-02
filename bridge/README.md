@@ -19,3 +19,14 @@ For TeleRC's purple measured rover track, the FC also needs a valid GPS and to e
 If the app says **CONTROL ON** but Mission Planner Radio Calibration does not respond to the phone, use the three-second `Commands` Serial Monitor line. Hold a stick for several seconds and compare two lines: `received=0` means the bridge sees no phone commands; rising `rejected` and its `reject=` reason identify bridge filtering; rising `accepted` and `UART_TX_bytes` with changing `CH1` or `CH3` mean valid commands were handed to ESP32 UART TX, but do not prove F405 acceptance. Then check ESP GPIO17 → F405 R3, common ground, `RC_OPTIONS` bit 1 clear, `MAV_GCS_SYSID=255` if enforced, and `RC_OVERRIDE_TIME`. Keep motor power disconnected during this test.
 
 TeleRC 0.8.8 and the matching ESP32 sketch add **Setup → Diagnose link**. Every three seconds after discovery, the bridge sends its UART byte and complete-frame counters directly to the paired phone; this report never enters the FC and cannot enable control. Tap Diagnose link at least four seconds after Connect to distinguish no bridge response, zero UART bytes, incomplete frames, and missing valid heartbeat. Older bridge firmware does not send this report and will show no bridge response even if it broadcasts MAVLink telemetry.
+
+
+## PC TeleRC compatibility
+
+The bridge accepts two RC_CHANNELS_OVERRIDE styles without changing the Android TeleRC packet format:
+
+- **Android TeleRC:** CH1-CH4 are explicit 1000-2000 us values; full release is CH1-CH4 = 0. This remains the established compatibility baseline.
+- **PC TeleRC:** commanded channels may be 1000-2000 us while unused CH1-CH4 fields are 65535 (MAVLink ignore). Per-channel 0 release is accepted.
+- **CH5-CH8:** must remain 65535 and are never accepted as remote override inputs.
+
+The bridge tracks only channels actively owned by the current sender. Its watchdog neutralizes those owned channels. If control moves from Android to PC, or PC to Android, after the pairing timeout, the previous sender's overrides are released before the new sender is accepted. This avoids stale channel ownership while preserving normal Android behavior.
