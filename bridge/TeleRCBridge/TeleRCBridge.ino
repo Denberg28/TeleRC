@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <Preferences.h>
 #include <esp_system.h>
 #include <cstring>
 
@@ -15,7 +14,6 @@ constexpr uint32_t CONTROL_TIMEOUT_MS = 500;
 constexpr uint32_t NEUTRAL_REFRESH_MS = 100;
 
 const char AP_SSID[] = "TeleRC-Rover";
-const char PERSONAL_AP_PASSWORD[] = ""; // optional 12-63 chars; leave blank to auto-generate
 const char DISCOVERY[] = "TELERC_DISCOVER_V1";
 const char DISCONNECT[] = "TELERC_DISCONNECT_V1";
 
@@ -24,7 +22,6 @@ const IPAddress AP_BROADCAST(192, 168, 4, 255);
 
 HardwareSerial fc(1);
 WiFiUDP udp;
-Preferences prefs;
 
 IPAddress phone;
 uint32_t lastPhoneMs = 0;
@@ -200,97 +197,80 @@ void consumeFcByte(uint8_t b) {
   }
 }
 
-void generatePassword(char *out, size_t size) {
-  snprintf(out, size, "%08lX%08lX",
-           static_cast<unsigned long>(esp_random()),
-           static_cast<unsigned long>(esp_random()));
+void makeBoardPassword(char *out, size_t size) {
+  const uint64_t chipId = ESP.getEfuseMac();
+  snprintf(out, size, "TR-%04lX-%08lX",
+           static_cast<unsigned long>((chipId >> 32) & 0xFFFFUL),
+           static_cast<unsigned long>(chipId & 0xFFFFFFFFUL));
 }
 
-bool loadPassword(char *out, size_t size) {
-  const size_t customLength = strlen(PERSONAL_AP_PASSWORD);
-  if (customLength) {
-    if (customLength >= 12 && customLength <= 63) {
-      strlcpy(out, PERSONAL_AP_PASSWORD, size);
-      return true;
-    }
-    Serial.println("WARNING: PERSONAL_AP_PASSWORD must be 12-63 characters; using generated password.");
+bool startAccessPoint(const char *password) {
+  // Keep AP startup independent from MAVLink, UART, NVS and phone state.
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  WiFi.mode(WIFI_AP);
+  delay(100);
+
+  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0))) {
+    Serial.println("ERROR: softAPConfig failed.");
+    return false;
   }
 
-  if (prefs.begin("telerc-ap", false)) {
-    String saved = prefs.getString("password", "");
-    if (saved.length() == 16) {
-      prefs.end();
-      saved.toCharArray(out, size);
-      return true;
-    }
-
-    char generated[17] = {};
-    generatePassword(generated, sizeof(generated));
-    saved = generated;
-
-    if (prefs.putString("password", saved) != saved.length()) {
-      Serial.println("WARNING: could not persist Wi-Fi password; using temporary password for this boot.");
-    }
-    prefs.end();
-    saved.toCharArray(out, size);
-    return true;
+  // Channel 6, visible SSID, max 4 stations.
+  if (!WiFi.softAP(AP_SSID, password, 6, false, 4)) {
+    Serial.println("ERROR: softAP start failed.");
+    return false;
   }
 
-  // Wi-Fi availability must not depend on NVS/Preferences.
-  Serial.println("WARNING: password storage unavailable; using temporary password for this boot.");
-  generatePassword(out, size);
-  return true;
+  delay(250);
+  return WiFi.getMode() == WIFI_AP &&
+         WiFi.softAPIP() == AP_IP;
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
-  Serial.println("TeleRC bridge starting...");
+  delay(1200);
+  Serial.println();
+  Serial.println("=== TeleRC ESP32-S3 bridge boot ===");
 
-  char password[64] = {};
-  loadPassword(password, sizeof(password));
+  char password[32] = {};
+  makeBoardPassword(password, sizeof(password));
+
+  bool apStarted = false;
+  for (int attempt = 1; attempt <= 3 && !apStarted; ++attempt) {
+    Serial.printf("Starting TeleRC-Rover Wi-Fi, attempt %d/3...\\n", attempt);
+    apStarted = startAccessPoint(password);
+    if (!apStarted) {
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_OFF);
+      delay(500);
+    }
+  }
+
+  if (!apStarted) {
+    Serial.println("FATAL: Wi-Fi AP did not start.");
+    Serial.println("Check ESP32-S3 board selection, power, flash, and Arduino-ESP32 installation.");
+    while (true) delay(1000);
+  }
+
+  Serial.printf("SSID: %s\\n", AP_SSID);
+  Serial.printf("Password: %s\\n", password);
+  Serial.printf("AP IP: %s\\n", WiFi.softAPIP().toString().c_str());
+  Serial.printf("BSSID: %s\\n", WiFi.softAPmacAddress().c_str());
+  Serial.printf("Channel: %d\\n", WiFi.channel());
+  Serial.println("Wi-Fi AP is running. Starting MAVLink bridge...");
 
   fc.setRxBufferSize(4096);
   fc.begin(FC_BAUD, SERIAL_8N1, FC_RX_GPIO, FC_TX_GPIO);
 
-  // Start a visible 2.4 GHz access point. Retry independently of NVS state.
-  bool apStarted = false;
-  for (int attempt = 1; attempt <= 3 && !apStarted; ++attempt) {
-    WiFi.mode(WIFI_AP);
-    WiFi.setSleep(false);
-    delay(100);
-
-    const bool ipOk =
-        WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0));
-    const bool apOk =
-        ipOk && WiFi.softAP(AP_SSID, password, 6, false, 4);
-
-    if (apOk) {
-      apStarted = true;
-      break;
-    }
-
-    Serial.printf("Wi-Fi AP start attempt %d failed; retrying...\n", attempt);
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(250);
-  }
-
-  if (!apStarted) {
-    Serial.println("ERROR: TeleRC-Rover Wi-Fi AP failed after 3 attempts.");
-    while (true) delay(1000);
-  }
-
   if (!udp.begin(UDP_PORT)) {
-    Serial.println("ERROR: UDP port 14550 failed to open.");
+    Serial.println("FATAL: UDP port 14550 failed to open.");
     while (true) delay(1000);
   }
 
-  Serial.printf("TeleRC bridge ready: %s @ %s:%u\n",
+  Serial.printf("TeleRC bridge ready: %s @ %s:%u\\n",
                 AP_SSID, WiFi.softAPIP().toString().c_str(), UDP_PORT);
-  Serial.printf("Wi-Fi password: %s\n", password);
-  Serial.printf("Wi-Fi channel: %d, clients: %d\n",
-                WiFi.channel(), WiFi.softAPgetStationNum());
 }
 
 void loop() {
