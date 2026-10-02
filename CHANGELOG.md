@@ -1,3 +1,14 @@
+## 0.8.46
+- Final control-path and release sanitization after field testing.
+- Fix live joystick authority being silently disabled by ARM/DISARM; ARM/DISARM now neutralizes commanded axes while preserving the enabled control session.
+- Improve ARM/DISARM feedback: distinguish COMMAND_ACK acceptance from final ARMED/DISARMED state confirmed by autopilot HEARTBEAT.
+- Keep joystick Views interactive during transient heartbeat gaps; transmission is paused and axes are neutralized until a fresh verified heartbeat returns.
+- Accept the compact four-field bridge status format while retaining compatibility with the established three- and seven-field diagnostic formats.
+- Preserve Rover mapping CH1 steering / CH2 bidirectional throttle and the 1100–1900 calibrated joystick range.
+- Restore the field-proven ESP32-S3 SoftAP startup path: persistent WIFI_AP mode with no WIFI_OFF cycling, AP recreation loop, or control-state-driven Wi-Fi restart.
+- Retain the independent bridge safety layers: 500 ms live-control watchdog, 10 Hz neutral hold, explicit Disconnect receiver handover, strict MAVLink CRC/source filtering, and standard non-forced ARM/DISARM.
+- Update documentation to reflect heartbeat-gap behavior: controls pause safely without destroying joystick touch authority.
+
 ## 0.8.45
 - Correct launcher-icon placement observed on the installed Android app by reducing the adaptive foreground artwork to 78% around its existing center.
 - Preserve the approved monochrome controller design and dark background while adding more visual breathing room across OEM launcher masks.
