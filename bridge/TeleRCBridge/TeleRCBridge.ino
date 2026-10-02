@@ -200,56 +200,97 @@ void consumeFcByte(uint8_t b) {
   }
 }
 
+void generatePassword(char *out, size_t size) {
+  snprintf(out, size, "%08lX%08lX",
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()));
+}
+
 bool loadPassword(char *out, size_t size) {
   const size_t customLength = strlen(PERSONAL_AP_PASSWORD);
   if (customLength) {
-    if (customLength < 12 || customLength > 63) return false;
-    strlcpy(out, PERSONAL_AP_PASSWORD, size);
+    if (customLength >= 12 && customLength <= 63) {
+      strlcpy(out, PERSONAL_AP_PASSWORD, size);
+      return true;
+    }
+    Serial.println("WARNING: PERSONAL_AP_PASSWORD must be 12-63 characters; using generated password.");
+  }
+
+  if (prefs.begin("telerc-ap", false)) {
+    String saved = prefs.getString("password", "");
+    if (saved.length() == 16) {
+      prefs.end();
+      saved.toCharArray(out, size);
+      return true;
+    }
+
+    char generated[17] = {};
+    generatePassword(generated, sizeof(generated));
+    saved = generated;
+
+    if (prefs.putString("password", saved) != saved.length()) {
+      Serial.println("WARNING: could not persist Wi-Fi password; using temporary password for this boot.");
+    }
+    prefs.end();
+    saved.toCharArray(out, size);
     return true;
   }
 
-  if (!prefs.begin("telerc-ap", false)) return false;
-  String saved = prefs.getString("password", "");
-  if (saved.length() != 16) {
-    char generated[17];
-    snprintf(generated, sizeof(generated), "%08lX%08lX",
-             static_cast<unsigned long>(esp_random()),
-             static_cast<unsigned long>(esp_random()));
-    saved = generated;
-    if (prefs.putString("password", saved) != saved.length()) {
-      prefs.end();
-      return false;
-    }
-  }
-  prefs.end();
-  saved.toCharArray(out, size);
+  // Wi-Fi availability must not depend on NVS/Preferences.
+  Serial.println("WARNING: password storage unavailable; using temporary password for this boot.");
+  generatePassword(out, size);
   return true;
 }
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
+  Serial.println("TeleRC bridge starting...");
 
   char password[64] = {};
-  if (!loadPassword(password, sizeof(password))) {
-    Serial.println("Wi-Fi password setup failed.");
-    while (true) delay(1000);
-  }
+  loadPassword(password, sizeof(password));
 
   fc.setRxBufferSize(4096);
   fc.begin(FC_BAUD, SERIAL_8N1, FC_RX_GPIO, FC_TX_GPIO);
 
-  WiFi.mode(WIFI_AP);
-  if (!WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0)) ||
-      !WiFi.softAP(AP_SSID, password) ||
-      !udp.begin(UDP_PORT)) {
-    Serial.println("Bridge startup failed.");
+  // Start a visible 2.4 GHz access point. Retry independently of NVS state.
+  bool apStarted = false;
+  for (int attempt = 1; attempt <= 3 && !apStarted; ++attempt) {
+    WiFi.mode(WIFI_AP);
+    WiFi.setSleep(false);
+    delay(100);
+
+    const bool ipOk =
+        WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255, 255, 255, 0));
+    const bool apOk =
+        ipOk && WiFi.softAP(AP_SSID, password, 6, false, 4);
+
+    if (apOk) {
+      apStarted = true;
+      break;
+    }
+
+    Serial.printf("Wi-Fi AP start attempt %d failed; retrying...\n", attempt);
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(250);
+  }
+
+  if (!apStarted) {
+    Serial.println("ERROR: TeleRC-Rover Wi-Fi AP failed after 3 attempts.");
+    while (true) delay(1000);
+  }
+
+  if (!udp.begin(UDP_PORT)) {
+    Serial.println("ERROR: UDP port 14550 failed to open.");
     while (true) delay(1000);
   }
 
   Serial.printf("TeleRC bridge ready: %s @ %s:%u\n",
                 AP_SSID, WiFi.softAPIP().toString().c_str(), UDP_PORT);
   Serial.printf("Wi-Fi password: %s\n", password);
+  Serial.printf("Wi-Fi channel: %d, clients: %d\n",
+                WiFi.channel(), WiFi.softAPgetStationNum());
 }
 
 void loop() {
