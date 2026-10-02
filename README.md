@@ -34,7 +34,7 @@ The first build uses local Wi-Fi UDP to an ESP32/Raspberry Pi MAVLink bridge. Di
 - Invalid IPv4 address and port are rejected; valid endpoint persists locally.
 - No override is sent until a checksum-valid heartbeat arrives from the configured IP and source port **and** the user enables control.
 - Default rover mapping sends CH1 steering, CH2 bidirectional drive, CH3/CH4 neutral; CH5–8 ignored; at most 10 Hz.
-- Both joysticks center on touch release. Tab change, app pause, heartbeat loss, and live-control timeout revoke joystick authority into neutral hold. STOP CONTROL deliberately hands authority back to the receiver. Explicit Disconnect neutralizes first and lets the bridge own the final receiver-release transition.
+- Both joysticks center on touch release. Tab change and app pause revoke joystick authority into neutral hold. A transient heartbeat gap pauses command transmission and neutralizes the commanded axes while keeping the joystick UI responsive; transmission resumes only after a fresh verified heartbeat. The bridge's 500 ms live-control timeout independently enters neutral hold. STOP CONTROL deliberately hands authority back to the receiver. Explicit Disconnect neutralizes first and lets the bridge own the final receiver-release transition.
 - Other craft profiles cannot be selected or operated. The Test map and offline test course cannot send vehicle commands; only actual transmitted controls enter the CSV command stream.
 
 ## Build and status
