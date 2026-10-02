@@ -1,3 +1,10 @@
+# Bridge compatibility maintenance — 2026-10-02
+- ESP32 bridge now accepts standard sparse PC TeleRC RC_CHANNELS_OVERRIDE packets using 65535 for ignored CH1-CH4 fields.
+- Android TeleRC MAVLink generation is unchanged.
+- CH5-CH8 remain protected and must be 65535.
+- Added active-channel ownership tracking so sparse watchdog neutralization affects only controlled channels.
+- Added deterministic stale-sender release before Android/PC handover.
+
 ## 0.8.47
 - Rebuild the latest sanitized TeleRC control and ESP32-S3 bridge baseline after the final documentation correction.
 - Preserve v0.8.46 joystick, ARM/DISARM, heartbeat-pause, CH1 steering / CH2 drive, MAVLink validation, neutral-hold failsafe, and persistent TeleRC-Rover SoftAP behavior unchanged.
