@@ -129,7 +129,7 @@ DIRECT preserves the existing TeleRC protocol:
 
 The rover enters DIRECT only after the TeleRC source is connected and neutral/stable.
 
-After DIRECT becomes active, motor motion still requires an explicit TeleRC ARM.
+After DIRECT becomes active, motor motion requires an explicit TeleRC ARM with fresh neutral CH1 and CH2 packets (both less than 500 ms old). Android sends neutral before ARM. With current PC TeleRC, enable control with the wheel and pedals centered, then ARM; an ARM sent before any neutral override is rejected. Releasing either owned channel stops and disarms DIRECT.
 
 ## AUTOPILOT mode behavior
 
@@ -154,7 +154,7 @@ The ESP32 local TeleRC ARM state applies only to DIRECT mode.
 
 In AUTOPILOT mode, the flight controller remains responsible for its own arming logic and output state.
 
-The hybrid firmware intentionally does not claim that the F405 is armed because it receives only PWM motor outputs, not the F405 arm-state telemetry.
+The ESP32 motor arbiter does not use the FC armed state as an input. In AUTOPILOT, TeleRC receives actual FC arm-state telemetry over UART; the FC must suppress motor PWM appropriately when disarmed.
 
 ## Source transition examples
 
@@ -215,7 +215,7 @@ DIRECT arm = false
 DIRECT ownership cleared
 ```
 
-A source cannot automatically resume motion after a failsafe.
+DIRECT requires a new ARM after a failsafe. AUTOPILOT PWM-loss recovery requires valid neutral PWM for 300 ms; it may then resume following new FC output. Explicit disconnect and UART congestion latch motor authority off until a selector change; DIRECT discovery can also clear the disconnect latch.
 
 ## First bench test
 
@@ -363,3 +363,19 @@ Loss of required F405 PWM still forces FAILSAFE and all BTS7960 outputs to zero.
 | F405 MAVLink RX <- ESP TX | GPIO17 |
 
 This remains a one-ESP32 architecture.
+
+## Reviewed safety and communication behavior
+
+- Each DIRECT axis has its own 500 ms freshness deadline; refreshing steering cannot preserve stale drive.
+- Current Android/PC MAVLink v1 RC overrides are tracked in AUTOPILOT. After 500 ms without a fresh update to any owned channel, motors stop and the ESP32 refreshes neutral on owned FC channels at 10 Hz. Explicit channel release clears ownership and allows the receiver to take over. GCS heartbeats do not extend the control deadline.
+- Wi-Fi loss during receiver control or an autonomous mission is governed by FC failsafes; the ESP32 does not seize RC ownership if TeleRC owns no channels.
+- Selector edges stop motors immediately; source grant waits for 50 ms debounce and 300 ms neutral dwell.
+- Explicit disconnect latches off AUTOPILOT authority. Toggle the selector to reset it, then provide neutral PWM. Reconnecting telemetry alone does not clear that latch.
+- PWM captures use a critical-section snapshot. Invalid pulse widths invalidate that input; orphan falling edges are rejected.
+- UART writes use a 1024-byte transmit buffer and require enough capacity for a complete datagram. Congestion stops/latches motors rather than blocking the motor loop.
+- UDP datagrams are limited to 280 bytes. Oversized, short, fragmented, or structurally malformed datagrams are rejected, never routed as a truncated valid prefix.
+- DIRECT accepts current apps' MAVLink v1 override and arm commands. The AUTOPILOT transport carries MAVLink v1/v2; generic FC CRC validation remains at ArduPilot. The override watchdog tracks the current apps' v1 format only. MAVLink v2 control from other clients needs an extended watchdog parser before use.
+- IP leasing, sysid/component checks, and CRC are filters, not cryptographic authentication. Signed frames can be transported to the FC, but this sketch neither verifies signatures nor blocks replay.
+- Successful LEDC setup is required before granting motor authority. Use external RPWM/LPWM pulldowns so reset/boot GPIO float cannot drive a motor; the software cannot stop a latched PWM peripheral if execution freezes. A hardware cutoff is required for that fault.
+
+Host regression tests compile the actual sketch against peripheral stubs for Arduino core API branches 2 and 3. They verify control freshness, release/disarm, PWM invalidation/loss, immediate selector stops, neutral watchdog frames, UART congestion, and oversized UDP rejection. They do not validate ESP32 timing, power electronics, or the FC configuration.

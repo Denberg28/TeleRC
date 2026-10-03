@@ -139,6 +139,12 @@ enum class ControlMode : uint8_t {
   AUTOPILOT = 2
 };
 
+// Explicit declarations keep Arduino prototype generation from placing custom
+// enum signatures before the enum definition.
+const char *modeName(ControlMode mode);
+ControlMode rawRequestedMode();
+bool sourceSafeForTransfer(ControlMode mode, uint32_t nowUs);
+
 ControlMode activeMode = ControlMode::FAILSAFE;
 ControlMode requestedMode = ControlMode::DIRECT;
 ControlMode lastRawRequestedMode = ControlMode::DIRECT;
@@ -149,13 +155,24 @@ uint32_t failsafeCount = 0;
 
 IPAddress controllerIp;
 uint32_t lastControllerMs = 0;
-uint32_t lastDirectControlMs = 0;
+uint32_t axisUpdatedMs[2] = {0, 0};
+bool motorPwmReady = false;
+bool disconnectLatched = false;
+uint8_t fcOverrideOwnedMask = 0;
+uint32_t fcOverrideUpdatedMs[4] = {};
+uint32_t lastFcNeutralMs = 0;
+bool fcNeutralHold = false;
 
 uint8_t mavSequence = 0;
 uint8_t directOwnedMask = 0;  // bit0=CH1 steering, bit1=CH2 drive
 uint16_t steeringUs = RC_CENTER_US;
 uint16_t driveUs = RC_CENTER_US;
 bool directArmed = false;
+
+portMUX_TYPE fcCaptureMux = portMUX_INITIALIZER_UNLOCKED;
+volatile bool fcRiseSeen[4] = {false, false, false, false};
+uint32_t fcSnapshotLastUs[4] = {};
+uint16_t fcSnapshotPulseUs[4] = {};
 
 volatile uint32_t fcRiseUs[4] = {0, 0, 0, 0};
 volatile uint32_t fcLastValidUs[4] = {0, 0, 0, 0};
@@ -328,13 +345,14 @@ bool validGcsHeartbeat(const uint8_t *p, size_t n) {
 
 // Generic router validation is deliberately structural rather than checksum
 // aware because MAVLink CRC-extra depends on message ID. The F405 remains the
-// final MAVLink checksum validator. Pairing + source sysid/compid prevent
-// unrelated Wi-Fi traffic from being routed into the flight controller.
+// final MAVLink checksum validator. IP leasing and source IDs filter accidental
+// traffic; they are not authentication and do not prevent spoofing/replay.
 size_t mavlinkFrameLengthAt(const uint8_t *p, size_t n, size_t offset) {
   if (offset >= n) return 0;
 
   const uint8_t magic = p[offset];
   if (magic != 0xfe && magic != 0xfd) return 0;
+  if (magic == 0xfd && n - offset >= 3 && (p[offset + 2] & ~0x01)) return 0;
 
   const size_t header = magic == 0xfd ? 10 : 6;
   if (n - offset < header) return 0;
@@ -529,9 +547,81 @@ bool routeControllerMavlinkToFc(const uint8_t *data, size_t length) {
     return false;
   }
 
+  // Refuse whole frames rather than blocking behind a saturated UART.
+  if (fcMav.availableForWrite() < int(length)) return false;
   const size_t written = fcMav.write(data, length);
   fcMavTxBytes += written;
   return written == length;
+}
+
+void enterFailsafe(const char *reason, bool countTrip);
+
+// Track only the RC override protocol emitted by current Android/PC apps.
+void observeFcOverride(const uint8_t *data, size_t length) {
+  size_t offset = 0;
+  while (offset < length) {
+    const size_t n = mavlinkFrameLengthAt(data, length, offset);
+    if (!n) return;
+    const uint8_t *p = data + offset;
+    if (validRcOverride(p, n)) {
+      for (uint8_t ch = 0; ch < 4; ++ch) {
+        const uint16_t value = rcValue(p, ch);
+        if (value == 0) fcOverrideOwnedMask &= ~(1 << ch);
+        else if (value != 0xffff) {
+          fcOverrideOwnedMask |= (1 << ch);
+          fcOverrideUpdatedMs[ch] = millis();
+        }
+      }
+      fcNeutralHold = false;
+    }
+    offset += n;
+  }
+}
+
+bool sendFcNeutral() {
+  if (!fcOverrideOwnedMask) return true;
+  uint8_t payload[18] = {};
+  for (uint8_t ch = 0; ch < 8; ++ch) {
+    const uint16_t value = (fcOverrideOwnedMask & (1 << ch)) ? RC_CENTER_US : 0xffff;
+    payload[2 * ch] = uint8_t(value);
+    payload[2 * ch + 1] = uint8_t(value >> 8);
+  }
+  payload[16] = VEHICLE_SYSID;
+  payload[17] = VEHICLE_COMPID;
+  uint8_t frame[26];
+  makeMavlinkV1(70, payload, sizeof(payload), 124, frame, sizeof(frame));
+  frame[3] = 255;
+  frame[4] = 190;
+  uint16_t crc = 0xffff;
+  for (size_t i = 1; i < 24; ++i) crc = crcByte(crc, frame[i]);
+  crc = crcByte(crc, 124);
+  frame[24] = uint8_t(crc);
+  frame[25] = uint8_t(crc >> 8);
+  if (fcMav.availableForWrite() < int(sizeof(frame))) return false;
+  const size_t written = fcMav.write(frame, sizeof(frame));
+  fcMavTxBytes += written;
+  return written == sizeof(frame);
+}
+
+void serviceFcOverrideSafety() {
+  if (!fcOverrideOwnedMask) return;
+  const uint32_t now = millis();
+  bool stale = !controllerLeaseFresh() || requestedMode != ControlMode::AUTOPILOT;
+  for (uint8_t ch = 0; ch < 4; ++ch) {
+    if ((fcOverrideOwnedMask & (1 << ch)) &&
+        uint32_t(now - fcOverrideUpdatedMs[ch]) >= DIRECT_CONTROL_TIMEOUT_MS) stale = true;
+  }
+  if (stale && !fcNeutralHold) {
+    fcNeutralHold = true;
+    enterFailsafe("AUTOPILOT TeleRC override timeout", true);
+  }
+  if (fcNeutralHold && uint32_t(now - lastFcNeutralMs) >= 100) {
+    lastFcNeutralMs = now;
+    if (!sendFcNeutral()) {
+      enterFailsafe("AUTOPILOT neutral UART send failed", true);
+      disconnectLatched = true;
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -541,15 +631,30 @@ bool routeControllerMavlinkToFc(const uint8_t *data, size_t length) {
 static inline void IRAM_ATTR captureFcEdge(uint8_t ch) {
   const uint32_t now = micros();
 
+  portENTER_CRITICAL_ISR(&fcCaptureMux);
   if (digitalRead(FC_PWM_PIN[ch])) {
+    fcRiseSeen[ch] = true;
     fcRiseUs[ch] = now;
   } else {
     const uint32_t width = now - fcRiseUs[ch];
-    if (width >= RC_VALID_MIN_US && width <= RC_VALID_MAX_US) {
+    if (fcRiseSeen[ch] && width >= RC_VALID_MIN_US && width <= RC_VALID_MAX_US) {
       fcPulseUs[ch] = static_cast<uint16_t>(width);
       fcLastValidUs[ch] = now;
+    } else {
+      fcLastValidUs[ch] = 0;
     }
+    fcRiseSeen[ch] = false;
   }
+  portEXIT_CRITICAL_ISR(&fcCaptureMux);
+}
+
+void snapshotFcInputs() {
+  portENTER_CRITICAL(&fcCaptureMux);
+  for (uint8_t i = 0; i < 4; ++i) {
+    fcSnapshotLastUs[i] = fcLastValidUs[i];
+    fcSnapshotPulseUs[i] = fcPulseUs[i];
+  }
+  portEXIT_CRITICAL(&fcCaptureMux);
 }
 
 void IRAM_ATTR fc0ISR() { captureFcEdge(0); }
@@ -558,7 +663,7 @@ void IRAM_ATTR fc2ISR() { captureFcEdge(2); }
 void IRAM_ATTR fc3ISR() { captureFcEdge(3); }
 
 bool fcChannelFresh(uint8_t ch, uint32_t nowUs) {
-  const uint32_t last = fcLastValidUs[ch];
+  const uint32_t last = fcSnapshotLastUs[ch];
   return last != 0 &&
          uint32_t(nowUs - last) <= FC_PWM_TIMEOUT_US;
 }
@@ -582,11 +687,11 @@ bool autopilotSourceNeutral(uint32_t nowUs) {
   if (!autopilotSourceFresh(nowUs)) return false;
 
   if (AUTOPILOT_PAIRED_SKID_STEER) {
-    return pulseNeutral(fcPulseUs[0]) && pulseNeutral(fcPulseUs[1]);
+    return pulseNeutral(fcSnapshotPulseUs[0]) && pulseNeutral(fcSnapshotPulseUs[1]);
   }
 
   for (uint8_t i = 0; i < 4; ++i) {
-    if (!pulseNeutral(fcPulseUs[i])) return false;
+    if (!pulseNeutral(fcSnapshotPulseUs[i])) return false;
   }
   return true;
 }
@@ -600,18 +705,20 @@ constexpr uint8_t RPWM_CH[4] = {0, 2, 4, 6};
 constexpr uint8_t LPWM_CH[4] = {1, 3, 5, 7};
 #endif
 
-void attachMotorPwm() {
+bool attachMotorPwm() {
+  bool ok = true;
   for (uint8_t i = 0; i < 4; ++i) {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcAttach(RPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS);
-    ledcAttach(LPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS);
+    ok = ledcAttach(RPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS) && ok;
+    ok = ledcAttach(LPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS) && ok;
 #else
-    ledcSetup(RPWM_CH[i], PWM_FREQ_HZ, PWM_BITS);
-    ledcSetup(LPWM_CH[i], PWM_FREQ_HZ, PWM_BITS);
+    ok = (ledcSetup(RPWM_CH[i], PWM_FREQ_HZ, PWM_BITS) > 0) && ok;
+    ok = (ledcSetup(LPWM_CH[i], PWM_FREQ_HZ, PWM_BITS) > 0) && ok;
     ledcAttachPin(RPWM_PIN[i], RPWM_CH[i]);
     ledcAttachPin(LPWM_PIN[i], LPWM_CH[i]);
 #endif
   }
+  return ok;
 }
 
 void pwmWritePin(uint8_t motor, bool rpwm, uint8_t duty) {
@@ -713,12 +820,19 @@ void clearDirectOwnership() {
   directOwnedMask = 0;
   steeringUs = RC_CENTER_US;
   driveUs = RC_CENTER_US;
-  lastDirectControlMs = 0;
+  axisUpdatedMs[0] = axisUpdatedMs[1] = 0;
+}
+
+bool directAxesFresh() {
+  const uint32_t now = millis();
+  return directControlsOwned() &&
+      uint32_t(now - axisUpdatedMs[0]) < DIRECT_CONTROL_TIMEOUT_MS &&
+      uint32_t(now - axisUpdatedMs[1]) < DIRECT_CONTROL_TIMEOUT_MS;
 }
 
 bool safeToDirectArm() {
   if (activeMode != ControlMode::DIRECT) return false;
-  if (directControlsOwned() && !directControlsNeutral()) return false;
+  if (!directAxesFresh() || !directControlsNeutral()) return false;
 
   for (uint8_t i = 0; i < 4; ++i) {
     if (currentCmd[i] != 0) return false;
@@ -736,6 +850,7 @@ void applyRcOverride(const uint8_t *p) {
   } else if (ch1 != 0xffff) {
     directOwnedMask |= 0x01;
     steeringUs = ch1;
+    axisUpdatedMs[0] = millis();
   }
 
   if (ch2 == 0) {
@@ -744,13 +859,11 @@ void applyRcOverride(const uint8_t *p) {
   } else if (ch2 != 0xffff) {
     directOwnedMask |= 0x02;
     driveUs = ch2;
-  }
-
-  if (ch1 != 0xffff || ch2 != 0xffff) {
-    lastDirectControlMs = millis();
+    axisUpdatedMs[1] = millis();
   }
 
   if (!directControlsOwned()) {
+    directArmed = false;
     hardStopMotors();
   }
 }
@@ -828,11 +941,13 @@ void updateRequestedMode() {
   if (raw != lastRawRequestedMode) {
     lastRawRequestedMode = raw;
     rawModeChangedMs = now;
+    enterFailsafe("selector edge; waiting for debounce", false);
   }
 
   if (raw != requestedMode &&
       now - rawModeChangedMs >= MODE_DEBOUNCE_MS) {
     requestedMode = raw;
+    disconnectLatched = false;
     enterFailsafe(
         requestedMode == ControlMode::DIRECT
             ? "mode switch requested DIRECT"
@@ -843,6 +958,10 @@ void updateRequestedMode() {
 
 void updateModeArbiter(uint32_t nowUs) {
   updateRequestedMode();
+  if (!motorPwmReady || disconnectLatched || rawRequestedMode() != requestedMode) {
+    hardStopMotors();
+    return;
+  }
 
   if (activeMode != ControlMode::FAILSAFE &&
       activeMode != requestedMode) {
@@ -855,9 +974,7 @@ void updateModeArbiter(uint32_t nowUs) {
       return;
     }
 
-    if (directControlsOwned() &&
-        lastDirectControlMs != 0 &&
-        millis() - lastDirectControlMs >= DIRECT_CONTROL_TIMEOUT_MS) {
+    if (directControlsOwned() && !directAxesFresh()) {
       enterFailsafe("DIRECT control packet timeout");
       return;
     }
@@ -908,7 +1025,7 @@ void updateModeArbiter(uint32_t nowUs) {
 // -----------------------------------------------------------------------------
 
 void computeDirectTargets() {
-  if (!directArmed || !directControlsOwned()) {
+  if (!directArmed || !directAxesFresh()) {
     zeroTargets();
     return;
   }
@@ -946,8 +1063,8 @@ void computeAutopilotTargets(uint32_t nowUs) {
   }
 
   if (AUTOPILOT_PAIRED_SKID_STEER) {
-    const int left = pulseToMotorCommand(fcPulseUs[0]);
-    const int right = pulseToMotorCommand(fcPulseUs[1]);
+    const int left = pulseToMotorCommand(fcSnapshotPulseUs[0]);
+    const int right = pulseToMotorCommand(fcSnapshotPulseUs[1]);
 
     targetCmd[0] = left;
     targetCmd[1] = left;
@@ -957,7 +1074,7 @@ void computeAutopilotTargets(uint32_t nowUs) {
   }
 
   for (uint8_t i = 0; i < 4; ++i) {
-    targetCmd[i] = pulseToMotorCommand(fcPulseUs[i]);
+    targetCmd[i] = pulseToMotorCommand(fcSnapshotPulseUs[i]);
   }
 }
 
@@ -1053,6 +1170,11 @@ void handleUdpPacket() {
   const int count = udp.read(p, sizeof(p));
   while (udp.available()) udp.read();
 
+  if (packetSize > int(sizeof(p)) || count != packetSize) {
+    ++rejectedCommands;
+    return;
+  }
+
   if (count > 0) udpRxBytes += uint32_t(count);
 
   const bool sourceOk =
@@ -1069,6 +1191,8 @@ void handleUdpPacket() {
     }
     controllerIp = sender;
     lastControllerMs = millis();
+    // DIRECT reconnect may clear the latch; AUTOPILOT needs selector reset.
+    if (requestedMode == ControlMode::DIRECT) disconnectLatched = false;
     return;
   }
 
@@ -1076,7 +1200,12 @@ void handleUdpPacket() {
       packetSize == int(sizeof(DISCONNECT) - 1) &&
       count == packetSize &&
       memcmp(p, DISCONNECT, sizeof(DISCONNECT) - 1) == 0) {
+    if (fcOverrideOwnedMask) {
+      fcNeutralHold = true;
+      sendFcNeutral();
+    }
     enterFailsafe("explicit TeleRC disconnect");
+    disconnectLatched = true;
     controllerIp = IPAddress(0, 0, 0, 0);
     lastControllerMs = 0;
     ++acceptedCommands;
@@ -1089,6 +1218,7 @@ void handleUdpPacket() {
   // ESP32 mode/failsafe arbiter.
   if (sourceOk &&
       requestedMode == ControlMode::AUTOPILOT &&
+      !disconnectLatched &&
       count > 0 &&
       validControllerMavlinkDatagram(p, size_t(count))) {
     if (newControllerAfterTimeout(sender)) {
@@ -1105,14 +1235,17 @@ void handleUdpPacket() {
     }
 
     if (routeControllerMavlinkToFc(p, size_t(count))) {
+      observeFcOverride(p, size_t(count));
       ++acceptedCommands;
     } else {
       ++rejectedCommands;
+      enterFailsafe("UART TX congested or incomplete");
+      disconnectLatched = true;
     }
     return;
   }
 
-  if (sourceOk && count == 26 && validRcOverride(p, count)) {
+  if (sourceOk && requestedMode == ControlMode::DIRECT && !disconnectLatched && count == 26 && validRcOverride(p, count)) {
     if (newControllerAfterTimeout(sender)) {
       enterFailsafe("RC sender handover");
     }
@@ -1129,7 +1262,7 @@ void handleUdpPacket() {
   }
 
   bool requestArm = false;
-  if (sourceOk && count == 41 && validArmCommand(p, count, requestArm)) {
+  if (sourceOk && requestedMode == ControlMode::DIRECT && !disconnectLatched && count == 41 && validArmCommand(p, count, requestArm)) {
     if (newControllerAfterTimeout(sender)) {
       enterFailsafe("arm sender handover");
     }
@@ -1143,6 +1276,7 @@ void handleUdpPacket() {
   }
 
   if (sourceOk && count == 17 && validGcsHeartbeat(p, count)) {
+    if (newControllerAfterTimeout(sender)) enterFailsafe("heartbeat sender handover");
     controllerIp = sender;
     lastControllerMs = millis();
     ++mavRxFrames;
@@ -1163,7 +1297,8 @@ void printDiagnostics(uint32_t nowUs) {
   if (nowMs - lastDiagMs < DIAG_PERIOD_MS) return;
   lastDiagMs = nowMs;
 
-  Serial.printf(
+  char diagnostic[384];
+  const int length = snprintf(diagnostic, sizeof(diagnostic),
       "MODE=%s REQ=%s DIRECT_ARM=%s pair=%s own=%02X "
       "CH1=%u CH2=%u | FC=%u%c %u%c %u%c %u%c | "
       "CMD=%d %d %d %d | MAV=%luB/%luF TX=%luB | fs=%lu clients=%u\n",
@@ -1175,16 +1310,20 @@ void printDiagnostics(uint32_t nowUs) {
       directOwnedMask,
       steeringUs,
       driveUs,
-      fcPulseUs[0], fcChannelFresh(0, nowUs) ? '*' : '!',
-      fcPulseUs[1], fcChannelFresh(1, nowUs) ? '*' : '!',
-      fcPulseUs[2], fcChannelFresh(2, nowUs) ? '*' : '!',
-      fcPulseUs[3], fcChannelFresh(3, nowUs) ? '*' : '!',
+      fcSnapshotPulseUs[0], fcChannelFresh(0, nowUs) ? '*' : '!',
+      fcSnapshotPulseUs[1], fcChannelFresh(1, nowUs) ? '*' : '!',
+      fcSnapshotPulseUs[2], fcChannelFresh(2, nowUs) ? '*' : '!',
+      fcSnapshotPulseUs[3], fcChannelFresh(3, nowUs) ? '*' : '!',
       currentCmd[0], currentCmd[1], currentCmd[2], currentCmd[3],
       static_cast<unsigned long>(fcMavRxBytes),
       static_cast<unsigned long>(fcMavRxFrames),
       static_cast<unsigned long>(fcMavTxBytes),
       static_cast<unsigned long>(failsafeCount),
       WiFi.softAPgetStationNum());
+  if (length > 0 && length < int(sizeof(diagnostic)) &&
+      Serial.availableForWrite() >= length) {
+    Serial.write(reinterpret_cast<const uint8_t *>(diagnostic), size_t(length));
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -1203,6 +1342,8 @@ void setup() {
     pinMode(FC_PWM_PIN[i], INPUT_PULLDOWN);
     pinMode(RPWM_PIN[i], OUTPUT);
     pinMode(LPWM_PIN[i], OUTPUT);
+    digitalWrite(RPWM_PIN[i], LOW);
+    digitalWrite(LPWM_PIN[i], LOW);
   }
 
   attachInterrupt(digitalPinToInterrupt(FC_PWM_PIN[0]), fc0ISR, CHANGE);
@@ -1212,10 +1353,12 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(FC_PWM_PIN[3]), fc3ISR, CHANGE);
   }
 
-  attachMotorPwm();
+  motorPwmReady = attachMotorPwm();
+  if (!motorPwmReady) Serial.println("FATAL: motor PWM attachment failed; authority disabled.");
   hardStopMotors();
 
   fcMav.setRxBufferSize(4096);
+  fcMav.setTxBufferSize(1024);
   fcMav.begin(FC_MAV_BAUD, SERIAL_8N1, FC_MAV_RX_GPIO, FC_MAV_TX_GPIO);
 
   requestedMode = rawRequestedMode();
@@ -1253,7 +1396,11 @@ void setup() {
 }
 
 void loop() {
+  snapshotFcInputs();
+  updateModeArbiter(micros());
+  serviceFcOverrideSafety();
   handleUdpPacket();
+  serviceFcOverrideSafety();
   serviceFcMavlink();
 
   const uint8_t stations = WiFi.softAPgetStationNum();
@@ -1267,6 +1414,7 @@ void loop() {
   }
   previousStationCount = stations;
 
+  snapshotFcInputs();
   const uint32_t nowUs = micros();
   updateModeArbiter(nowUs);
 
