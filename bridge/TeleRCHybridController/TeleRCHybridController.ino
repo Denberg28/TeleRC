@@ -1,6 +1,7 @@
 /*
   TeleRC Hybrid Rover Controller
   ESP32-S3 -> 4x BTS7960 with optional SpeedyBee/Pixhawk PWM authority
+  and mode-gated bidirectional MAVLink UART routing
 
   MODES
   -----
@@ -8,6 +9,7 @@
     TeleRC Android / PC TeleRC -> Wi-Fi UDP -> ESP32-S3 -> BTS7960
 
   AUTOPILOT:
+    TeleRC <-> Wi-Fi UDP <-> ESP32-S3 <-> MAVLink UART <-> F405/Pixhawk
     F405/Pixhawk M5-M8 PWM -> ESP32-S3 -> BTS7960
 
   FAILSAFE:
@@ -60,6 +62,12 @@
 constexpr uint16_t UDP_PORT = 14550;
 constexpr uint8_t VEHICLE_SYSID = 1;
 constexpr uint8_t VEHICLE_COMPID = 1;
+
+// F405/Pixhawk MAVLink UART. SpeedyBee F405 V4 example:
+// FC T3 -> ESP GPIO18 (RX), FC R3 <- ESP GPIO17 (TX), common GND.
+constexpr int FC_MAV_RX_GPIO = 18;
+constexpr int FC_MAV_TX_GPIO = 17;
+constexpr uint32_t FC_MAV_BAUD = 115200;
 
 constexpr uint32_t DIRECT_CONTROL_TIMEOUT_MS = 500;
 constexpr uint32_t CONTROLLER_LEASE_MS = 5000;
@@ -119,6 +127,7 @@ const IPAddress AP_BROADCAST(192, 168, 4, 255);
 
 WiFiUDP udp;
 Preferences preferences;
+HardwareSerial fcMav(1);
 
 // -----------------------------------------------------------------------------
 // MODE / STATE
@@ -169,6 +178,15 @@ uint32_t acceptedCommands = 0;
 uint32_t rejectedCommands = 0;
 uint32_t motorUpdateCycles = 0;
 uint32_t armCommands = 0;
+
+// F405 MAVLink UART framing/diagnostics.
+uint8_t fcMavFrame[280];
+uint16_t fcMavFrameSize = 0;
+uint16_t fcMavFrameExpected = 0;
+uint32_t fcMavLastByteMs = 0;
+uint32_t fcMavRxBytes = 0;
+uint32_t fcMavRxFrames = 0;
+uint32_t fcMavTxBytes = 0;
 
 // -----------------------------------------------------------------------------
 // HELPERS
@@ -308,6 +326,51 @@ bool validGcsHeartbeat(const uint8_t *p, size_t n) {
          p[3] == 255 && p[4] == 190;
 }
 
+// Generic router validation is deliberately structural rather than checksum
+// aware because MAVLink CRC-extra depends on message ID. The F405 remains the
+// final MAVLink checksum validator. Pairing + source sysid/compid prevent
+// unrelated Wi-Fi traffic from being routed into the flight controller.
+size_t mavlinkFrameLengthAt(const uint8_t *p, size_t n, size_t offset) {
+  if (offset >= n) return 0;
+
+  const uint8_t magic = p[offset];
+  if (magic != 0xfe && magic != 0xfd) return 0;
+
+  const size_t header = magic == 0xfd ? 10 : 6;
+  if (n - offset < header) return 0;
+
+  const size_t payload = p[offset + 1];
+  const bool signedV2 =
+      magic == 0xfd && (p[offset + 2] & 0x01) != 0;
+  const size_t total =
+      header + payload + 2 + (signedV2 ? 13 : 0);
+
+  return (n - offset >= total) ? total : 0;
+}
+
+bool validControllerMavlinkDatagram(const uint8_t *p, size_t n) {
+  if (!n) return false;
+
+  size_t offset = 0;
+  bool sawFrame = false;
+
+  while (offset < n) {
+    const size_t frameLen = mavlinkFrameLengthAt(p, n, offset);
+    if (!frameLen) return false;
+
+    const bool v2 = p[offset] == 0xfd;
+    const uint8_t sysid = p[offset + (v2 ? 5 : 3)];
+    const uint8_t compid = p[offset + (v2 ? 6 : 4)];
+
+    if (sysid != 255 || compid != 190) return false;
+
+    sawFrame = true;
+    offset += frameLen;
+  }
+
+  return sawFrame && offset == n;
+}
+
 // -----------------------------------------------------------------------------
 // UDP / TELEMETRY
 // -----------------------------------------------------------------------------
@@ -377,15 +440,18 @@ void sendCommandAck(uint8_t result) {
 void sendCompatibilityStatus() {
   if (!controllerLeaseFresh()) return;
 
+  // Keep the existing Android diagnostics wire format. With Hybrid firmware,
+  // fields 1/2 are the F405 MAVLink UART RX byte/frame counters and field 5
+  // is bytes routed from TeleRC to the F405 UART.
   char status[160];
   const int n = snprintf(
       status, sizeof(status),
       "TELERC_STATUS_V1,%lu,%lu,%lu,%lu,%lu,%lu",
-      static_cast<unsigned long>(udpRxBytes),
-      static_cast<unsigned long>(mavRxFrames),
+      static_cast<unsigned long>(fcMavRxBytes),
+      static_cast<unsigned long>(fcMavRxFrames),
       static_cast<unsigned long>(acceptedCommands),
       static_cast<unsigned long>(rejectedCommands),
-      static_cast<unsigned long>(motorUpdateCycles),
+      static_cast<unsigned long>(fcMavTxBytes),
       static_cast<unsigned long>(armCommands));
 
   if (n > 0 && n < int(sizeof(status)) &&
@@ -393,6 +459,79 @@ void sendCompatibilityStatus() {
     udp.write(reinterpret_cast<const uint8_t *>(status), size_t(n));
     udp.endPacket();
   }
+}
+
+// -----------------------------------------------------------------------------
+// F405 MAVLINK UART ROUTER
+// -----------------------------------------------------------------------------
+
+bool routeAutopilotTelemetry() {
+  // requestedMode is used instead of only activeMode so the F405 heartbeat is
+  // available while FAILSAFE is validating the AUTOPILOT neutral handover.
+  return requestedMode == ControlMode::AUTOPILOT;
+}
+
+void consumeFcMavByte(uint8_t b) {
+  ++fcMavRxBytes;
+
+  if (fcMavFrameSize && millis() - fcMavLastByteMs > 100) {
+    fcMavFrameSize = 0;
+    fcMavFrameExpected = 0;
+  }
+  fcMavLastByteMs = millis();
+
+  if (!fcMavFrameSize && b != 0xfe && b != 0xfd) return;
+
+  if (fcMavFrameSize >= sizeof(fcMavFrame)) {
+    fcMavFrameSize = 0;
+    fcMavFrameExpected = 0;
+    return;
+  }
+
+  fcMavFrame[fcMavFrameSize++] = b;
+
+  if (fcMavFrameSize == 3) {
+    const bool v2 = fcMavFrame[0] == 0xfd;
+    fcMavFrameExpected =
+        (v2 ? 10 : 6) + fcMavFrame[1] + 2 +
+        ((v2 && (fcMavFrame[2] & 1)) ? 13 : 0);
+
+    if (fcMavFrameExpected > sizeof(fcMavFrame)) {
+      fcMavFrameSize = 0;
+      fcMavFrameExpected = 0;
+      return;
+    }
+  }
+
+  if (fcMavFrameExpected &&
+      fcMavFrameSize == fcMavFrameExpected) {
+    ++fcMavRxFrames;
+
+    if (routeAutopilotTelemetry()) {
+      sendToController(fcMavFrame, fcMavFrameSize);
+    }
+
+    fcMavFrameSize = 0;
+    fcMavFrameExpected = 0;
+  }
+}
+
+void serviceFcMavlink() {
+  // Bound UART work per loop so telemetry bursts cannot starve motor safety.
+  for (int i = 0; i < 512 && fcMav.available(); ++i) {
+    consumeFcMavByte(uint8_t(fcMav.read()));
+  }
+}
+
+bool routeControllerMavlinkToFc(const uint8_t *data, size_t length) {
+  if (requestedMode != ControlMode::AUTOPILOT ||
+      !validControllerMavlinkDatagram(data, length)) {
+    return false;
+  }
+
+  const size_t written = fcMav.write(data, length);
+  fcMavTxBytes += written;
+  return written == length;
 }
 
 // -----------------------------------------------------------------------------
@@ -944,6 +1083,35 @@ void handleUdpPacket() {
     return;
   }
 
+  // In AUTOPILOT selection, the ESP32 becomes a transparent MAVLink transport
+  // for complete TeleRC MAVLink datagrams. The F405 validates each frame's
+  // MAVLink checksum. Motor authority still remains gated by M5-M8 PWM and the
+  // ESP32 mode/failsafe arbiter.
+  if (sourceOk &&
+      requestedMode == ControlMode::AUTOPILOT &&
+      count > 0 &&
+      validControllerMavlinkDatagram(p, size_t(count))) {
+    if (newControllerAfterTimeout(sender)) {
+      enterFailsafe("MAVLink sender handover");
+    }
+
+    controllerIp = sender;
+    lastControllerMs = millis();
+    ++mavRxFrames;
+
+    bool requestedArm = false;
+    if (count == 41 && validArmCommand(p, count, requestedArm)) {
+      ++armCommands;
+    }
+
+    if (routeControllerMavlinkToFc(p, size_t(count))) {
+      ++acceptedCommands;
+    } else {
+      ++rejectedCommands;
+    }
+    return;
+  }
+
   if (sourceOk && count == 26 && validRcOverride(p, count)) {
     if (newControllerAfterTimeout(sender)) {
       enterFailsafe("RC sender handover");
@@ -954,8 +1122,8 @@ void handleUdpPacket() {
     ++mavRxFrames;
     ++acceptedCommands;
 
-    // Commands can be received while AUTOPILOT is selected, but they never
-    // reach motors unless DIRECT is the active arbiter mode.
+    // DIRECT only: consume TeleRC steering/drive locally. This packet is never
+    // forwarded to the F405 while DIRECT is selected.
     applyRcOverride(p);
     return;
   }
@@ -998,7 +1166,7 @@ void printDiagnostics(uint32_t nowUs) {
   Serial.printf(
       "MODE=%s REQ=%s DIRECT_ARM=%s pair=%s own=%02X "
       "CH1=%u CH2=%u | FC=%u%c %u%c %u%c %u%c | "
-      "CMD=%d %d %d %d | fs=%lu clients=%u\n",
+      "CMD=%d %d %d %d | MAV=%luB/%luF TX=%luB | fs=%lu clients=%u\n",
       modeName(activeMode),
       modeName(requestedMode),
       directArmed ? "YES" : "NO",
@@ -1012,6 +1180,9 @@ void printDiagnostics(uint32_t nowUs) {
       fcPulseUs[2], fcChannelFresh(2, nowUs) ? '*' : '!',
       fcPulseUs[3], fcChannelFresh(3, nowUs) ? '*' : '!',
       currentCmd[0], currentCmd[1], currentCmd[2], currentCmd[3],
+      static_cast<unsigned long>(fcMavRxBytes),
+      static_cast<unsigned long>(fcMavRxFrames),
+      static_cast<unsigned long>(fcMavTxBytes),
       static_cast<unsigned long>(failsafeCount),
       WiFi.softAPgetStationNum());
 }
@@ -1044,6 +1215,9 @@ void setup() {
   attachMotorPwm();
   hardStopMotors();
 
+  fcMav.setRxBufferSize(4096);
+  fcMav.begin(FC_MAV_BAUD, SERIAL_8N1, FC_MAV_RX_GPIO, FC_MAV_TX_GPIO);
+
   requestedMode = rawRequestedMode();
   lastRawRequestedMode = requestedMode;
   rawModeChangedMs = millis();
@@ -1070,13 +1244,17 @@ void setup() {
   Serial.printf("Wi-Fi password: %s\n", password.c_str());
   Serial.printf("Requested mode at boot: %s\n", modeName(requestedMode));
   Serial.println("GPIO16 LOW=DIRECT, HIGH=AUTOPILOT.");
-  Serial.println("F405: M5->4, M6->5, M7->6, M8->7.");
+  Serial.println("F405 PWM: M5->4, M6->5, M7->6, M8->7.");
+  Serial.printf("F405 MAVLink: T3->GPIO%d RX, R3<-GPIO%d TX @ %lu baud\n",
+                FC_MAV_RX_GPIO, FC_MAV_TX_GPIO,
+                static_cast<unsigned long>(FC_MAV_BAUD));
   Serial.println("BTS: FL 8/9, RL 10/11, FR 12/13, RR 14/15.");
   Serial.println("Boot state: FAILSAFE; selected source must become neutral/stable.");
 }
 
 void loop() {
   handleUdpPacket();
+  serviceFcMavlink();
 
   const uint8_t stations = WiFi.softAPgetStationNum();
   if (activeMode == ControlMode::DIRECT &&
@@ -1099,7 +1277,8 @@ void loop() {
 
   const uint32_t nowMs = millis();
 
-  if (nowMs - lastHeartbeatMs >= HEARTBEAT_PERIOD_MS) {
+  if (requestedMode == ControlMode::DIRECT &&
+      nowMs - lastHeartbeatMs >= HEARTBEAT_PERIOD_MS) {
     lastHeartbeatMs = nowMs;
     sendHeartbeat();
   }
