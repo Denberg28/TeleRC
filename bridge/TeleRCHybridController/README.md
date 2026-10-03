@@ -262,3 +262,104 @@ TeleRC <-> ESP32-S3 <-> ArduPilot
 ```
 
 The hybrid controller keeps the ESP32 as the final motor-safety and source-arbitration layer while allowing the F405 to remain the navigation/autonomy controller.
+
+
+## MAVLink UART integration
+
+The same ESP32-S3 now also carries a bidirectional MAVLink UART link to the optional F405/Pixhawk.
+
+### UART wiring
+
+For SpeedyBee F405 V4 UART3:
+
+```
+F405 T3  -> ESP32 GPIO18 (RX)
+F405 R3  <- ESP32 GPIO17 (TX)
+F405 GND -> ESP32 GND
+```
+
+Set ArduRover:
+
+```
+SERIAL3_PROTOCOL = 2
+SERIAL3_BAUD     = 115
+```
+
+The UART runs at 115200 baud.
+
+### Mode-gated MAVLink behavior
+
+In DIRECT mode:
+
+```
+TeleRC -> Wi-Fi -> ESP32 local controller -> BTS7960
+```
+
+TeleRC steering/drive and local ARM/DISARM terminate at the ESP32. They are not forwarded to the F405.
+
+In AUTOPILOT mode:
+
+```
+TeleRC <-> Wi-Fi UDP <-> ESP32 <-> UART MAVLink <-> F405
+                                      |
+                                   M5-M8
+                                      |
+                                   ESP32
+                                      |
+                                  BTS7960
+```
+
+The ESP32 forwards complete MAVLink datagrams from the paired TeleRC endpoint to the F405 and forwards complete F405 MAVLink frames back to TeleRC.
+
+This allows the optional F405 to provide:
+
+- actual ArduRover heartbeat
+- arm/disarm state
+- GPS / GLOBAL_POSITION_INT
+- mission/navigation telemetry
+- other MAVLink telemetry supported by the current TeleRC apps
+
+The motor path remains separate: F405 M5-M8 are still the AUTOPILOT motor command source, and the ESP32 continues to apply the PWM freshness checks, source arbitration, motor conversion and hard failsafe.
+
+### Identity handling
+
+The ESP32 sends its own minimal rover heartbeat only while DIRECT is selected.
+
+When AUTOPILOT is selected, the local heartbeat is suppressed and TeleRC sees the F405 heartbeat forwarded over UART. This avoids two competing rover identities on the same TeleRC session.
+
+### Safety boundary
+
+MAVLink routing does not bypass the motor arbiter.
+
+Even if TeleRC can communicate with the F405 over UART:
+
+```
+MAVLink traffic != motor authority
+```
+
+AUTOPILOT motor output is accepted only when:
+
+- GPIO16 selects AUTOPILOT
+- the required M5-M8 PWM inputs are valid
+- those PWM inputs remain fresh
+- the neutral-transfer dwell has completed
+
+Loss of required F405 PWM still forces FAILSAFE and all BTS7960 outputs to zero.
+
+### Combined pin map
+
+| Function | ESP32-S3 |
+|---|---:|
+| F405 M5 PWM | GPIO4 |
+| F405 M6 PWM | GPIO5 |
+| F405 M7 PWM | GPIO6 |
+| F405 M8 PWM | GPIO7 |
+| BTS FL RPWM / LPWM | GPIO8 / GPIO9 |
+| BTS RL RPWM / LPWM | GPIO10 / GPIO11 |
+| BTS FR RPWM / LPWM | GPIO12 / GPIO13 |
+| BTS RR RPWM / LPWM | GPIO14 / GPIO15 |
+| DIRECT/AUTOPILOT selector | GPIO16 |
+| F405 MAVLink TX -> ESP RX | GPIO18 |
+| F405 MAVLink RX <- ESP TX | GPIO17 |
+
+This remains a one-ESP32 architecture.
