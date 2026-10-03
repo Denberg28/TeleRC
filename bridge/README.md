@@ -4,8 +4,9 @@ TeleRC now has two ESP32-S3 rover firmware paths:
 
 - **TeleRCBridge/** — Wi-Fi/MAVLink bridge for a SpeedyBee/Pixhawk running ArduRover.
 - **TeleRCDirectDrive/** — ESP32-S3-only basic rover controller that drives 4x BTS7960 directly from the existing Android/PC TeleRC CH1 steering / CH2 drive protocol.
+- **TeleRCHybridController/** — unified ESP32-S3 motor controller with DIRECT TeleRC control, optional F405/Pixhawk M5-M8 AUTOPILOT PWM input, and priority FAILSAFE arbitration.
 
-Use Direct Drive when you only need manual Android/PC control. Use TeleRCBridge + ArduRover when you need EKF, waypoint navigation, geofencing, RTL, or other autopilot functions.
+Use Direct Drive when you only need manual Android/PC control. Use Hybrid when the same BTS7960 motor stage must accept either TeleRC or an optional F405/Pixhawk autopilot source. Use TeleRCBridge + ArduRover when the ESP32 is only a MAVLink transport bridge and ArduPilot owns the vehicle outputs.
 
 See `TeleRCDirectDrive/README.md` for wiring, safety behavior, and the raised-wheel bench-test procedure.
 
