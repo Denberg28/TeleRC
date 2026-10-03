@@ -14,6 +14,7 @@ constexpr uint32_t CONTROL_TIMEOUT_MS = 500;
 constexpr uint32_t NEUTRAL_REFRESH_MS = 100;
 
 const char AP_SSID[] = "TeleRC-Rover";
+const char PERSONAL_AP_PASSWORD[] = "alongwayhome";
 const char DISCOVERY[] = "TELERC_DISCOVER_V1";
 const char DISCONNECT[] = "TELERC_DISCONNECT_V1";
 
