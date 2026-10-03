@@ -57,7 +57,7 @@ Actual sketch compiled and executed against host peripheral stubs with C++17, -W
 - MAVLink v2 structural incompatible-flag rejection;
 - millisecond counter rollover.
 
-`git diff --check` passed. The ESP32 GitHub workflow now compiles bridge, direct and hybrid sketches and runs both host regression branches.
+`git diff --check` passed. Only bridge-folder changes were published. The existing ESP32 GitHub workflow compiles TeleRCBridge, not this hybrid sketch; the proposed workflow expansion remains local and unpublished. Host regressions for both API branches passed locally.
 
 Attempted required Android checks: `./gradlew :app:assembleDebug :app:testDebugUnitTest`. They could not start because the environment cannot download Gradle from services.gradle.org (Network is unreachable). This is not a passing Android build/test result. No Arduino CLI or ESP32 board package is installed locally; a genuine target build must be verified through CI.
 
