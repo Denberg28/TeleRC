@@ -17,11 +17,21 @@ jobs:
       - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
       - run: ./scripts/check-android-env.sh
       - uses: arduino/setup-arduino-cli@v2
-      - name: Compile matching ESP32-S3 fail-safe bridge
+      - name: Validate dedicated controller and gateway safety
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+      - name: Compile matching dedicated ESP32-S3 sketches
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli compile --fqbn esp32:esp32:esp32s3 bridge/TeleRCBridge
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install RadioLib@7.2.1
+          for sketch in TeleRCBridge TeleRCHybridController TeleRCMotorController TeleRCWiFiGateway TeleRCLoRaBase TeleRCLoRaRover; do
+            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries "bridge/$sketch"
+          done
+          for sketch in TeleRCLoRaBase TeleRCLoRaRover; do
+            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries --build-property 'compiler.cpp.extra_flags=-DTELERC_RADIO_VARIANT=1276 -DTELERC_BASE_WIFI=0' "bridge/$sketch"
+          done
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
@@ -47,6 +57,8 @@ jobs:
           awk -v release="## $version" '$0 == release {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md > release-notes.md
           test -s release-notes.md
           cp app/build/outputs/apk/release/app-release.apk "TeleRC-v${version}.apk"
-          gh release create "v${version}" "TeleRC-v${version}.apk" --title "TeleRC v${version}" --notes-file release-notes.md --latest
+          zip -qr "TeleRC-bridge-v${version}.zip" bridge
+          sha256sum "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" > SHA256SUMS.txt
+          gh release create "v${version}" "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" SHA256SUMS.txt --title "TeleRC v${version}" --notes-file release-notes.md --latest
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

@@ -5,6 +5,13 @@
 - Added active-channel ownership tracking so sparse watchdog neutralization affects only controlled channels.
 - Added deterministic stale-sender release before Android/PC handover.
 
+## 0.8.50
+
+- Sanitize release validation: run controller synchronization and host safety regressions before signing; compile the dedicated motor controller, Wi-Fi gateway and both LoRa roles, including both supported radio variants.
+- Pin the release ESP32 core and RadioLib versions to the bridge CI versions to prevent release-only dependency drift.
+- Include matching dedicated sketches, shared libraries, wiring and setup guides in a bridge ZIP with APK/ZIP SHA-256 checksums.
+- Preserve existing control mapping, authority, watchdog and USB provisioning behavior. Physical link and stop timing remain bench-unverified.
+
 ## 0.8.49
 
 - Add a dedicated LoRa setup tab for native USB board information, frequency/power validation, masked shared pairing keys and blank-board NVS provisioning. Settings activate after restart; active radios reject configuration changes.
