@@ -38,10 +38,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS, TEST_DRIVE }
+    private enum class Page { SETUP, CONTROLS, TEST_DRIVE, LORA }
     private var page = Page.SETUP
     private var socket: LinkTransport? = null
-    private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "lora_usb") == "lora_usb"
+    private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
+    private var loraStatus: TextView? = null
+    private var loraInfo = "Attach one T3-S3 by native USB, connect, then read board settings."
     private var usbPermissionPending = false
     private var usbPermissionReceiver: BroadcastReceiver? = null
     private val connected = AtomicBoolean(false)
@@ -172,6 +174,7 @@ class MainActivity : Activity() {
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
             "TEST_DRIVE" -> Page.TEST_DRIVE
+            "LORA" -> Page.LORA
             else -> Page.SETUP
         }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -215,8 +218,9 @@ class MainActivity : Activity() {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
                 menu.add(0, 3, 2, "Test drive")
+                menu.add(0, 4, 3, "LoRa setup")
                 setOnMenuItemClickListener { item ->
-                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; else -> Page.TEST_DRIVE })
+                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; 4 -> Page.LORA; else -> Page.TEST_DRIVE })
                     true
                 }
             }.show()
@@ -230,6 +234,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        loraStatus = null
         armButton = null
         functionButtons.clear()
         window.statusBarColor = pale
@@ -239,6 +244,7 @@ class MainActivity : Activity() {
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
             Page.TEST_DRIVE -> renderTestDrive()
+            Page.LORA -> renderLoRa()
         }
         refreshUi()
     }
@@ -385,6 +391,75 @@ class MainActivity : Activity() {
         refreshFunctionButtons()
         return control
     }
+    private fun sendLoRaAdmin(message: String) {
+        val link = socket
+        if (!usbMode || link == null || !connected.get()) {
+            loraStatus?.text = "Connect a T3-S3 via native USB first."; return
+        }
+        disableControl()
+        txExecutor.execute {
+            try {
+                synchronized(commandLock) {
+                    if (socket !== link) return@execute
+                    val bytes = message.toByteArray(Charsets.US_ASCII)
+                    link.send(DatagramPacket(bytes, bytes.size, InetAddress.getByName("127.0.0.1"), 14550))
+                }
+            } catch (_: Exception) {
+                runOnUiThread { if (socket === link) loraStatus?.text = "USB request failed; read again before retrying." }
+            }
+        }
+    }
+
+    private fun renderLoRa() {
+        host = null; port = null; enable = null; steeringStick = null; driveStick = null
+        val root = shell()
+        root.addView(pageDropdown("LoRa setup"), LinearLayout.LayoutParams(dp(160), dp(44)))
+        status = text("DISCONNECTED", 12f, accent, true)
+        root.addView(status)
+        val scroll = ScrollView(this)
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(body)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        body.addView(text("Joystick → USB base → direct LoRa → rover gateway → PWM ESP32-S3. Pair two matching radio boards; this is a direct link with no mesh routing.", 14f, ink))
+        connect = button(if (connected.get()) "Disconnect USB" else "Connect USB board") {
+            if (wantsLink) {
+                wantsLink = false
+                getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                reconnectHandler.removeCallbacks(reconnect); stop(explicitDisconnect = true)
+            } else {
+                getSharedPreferences("link", MODE_PRIVATE).edit().putString("transport", "lora_usb").apply()
+                wantsLink = true; start(); scheduleReconnect()
+            }
+        }
+        body.addView(connect, LinearLayout.LayoutParams(-1, dp(48)))
+        loraStatus = text(loraInfo, 13f, ink)
+        body.addView(loraStatus)
+        body.addView(button("Read board settings") { sendLoRaAdmin("TELERC_LORA_GET_V1") })
+        val prefs = getSharedPreferences("lora_pair", MODE_PRIVATE)
+        fun field(label: String, value: String, type: Int) = EditText(this).apply {
+            hint = label; setSingleLine(); setText(value); inputType = type; setTextColor(ink); setHintTextColor(muted)
+            body.addView(this, LinearLayout.LayoutParams(-1, dp(48)))
+        }
+        val frequency = field("Permitted frequency (MHz)", prefs.getString("mhz", "").orEmpty(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        val power = field("Power (2–17 dBm)", prefs.getString("power", "2").orEmpty(), InputType.TYPE_CLASS_NUMBER)
+        val key = field("Shared pairing key (64 hex digits)", prefs.getString("key", "").orEmpty(), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        body.addView(button("Generate new pairing key") {
+            val bytes = ByteArray(32); java.security.SecureRandom().nextBytes(bytes)
+            key.setText(bytes.joinToString("") { "%02x".format(it.toInt() and 255) })
+        })
+        body.addView(text("Initial profile: SF7 / 500 kHz / CR4:5. Choose a frequency and power permitted locally. Provision each blank board separately over USB using the same key and settings. Saving requires a board restart. Active radios reject changes; erase their NVS and reflash to re-pair. Raise wheels and disconnect motor power during setup.", 13f, muted))
+        body.addView(button("Save pairing to inactive board") {
+            if (vehicleArmed == true) { loraStatus?.text = "Disarm and disconnect the rover before setup."; return@button }
+            val request = LoRaSetup.request(frequency.text.toString(), power.text.toString(), key.text.toString())
+            if (request == null) { loraStatus?.text = "Enter 150–960 MHz (three decimal places), 2–17 dBm and a nonzero 64-digit hex key."; return@button }
+            if (!usbMode || !connected.get()) { loraStatus?.text = "Connect a USB board first."; return@button }
+            prefs.edit().putString("mhz", frequency.text.toString()).putString("power", power.text.toString()).putString("key", key.text.toString()).apply()
+            loraStatus?.text = "Waiting for the board save result…"
+            sendLoRaAdmin(request)
+        })
+        setContentView(root)
+    }
+
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
@@ -525,11 +600,13 @@ class MainActivity : Activity() {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
                 menu.add(0, 3, 2, "Test drive")
+                menu.add(0, 4, 3, "LoRa setup")
                 setOnMenuItemClickListener { item ->
                     when (item.itemId) {
                         1 -> switchTo(Page.SETUP)
                         2 -> Unit
                         3 -> switchTo(Page.TEST_DRIVE)
+                        4 -> switchTo(Page.LORA)
                     }
                     true
                 }
@@ -687,10 +764,12 @@ class MainActivity : Activity() {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
                 menu.add(0, 3, 2, "Test drive")
+                menu.add(0, 4, 3, "LoRa setup")
                 setOnMenuItemClickListener { item ->
                     when (item.itemId) {
                         1 -> switchTo(Page.SETUP)
                         2 -> switchTo(Page.CONTROLS)
+                        4 -> switchTo(Page.LORA)
                     }
                     true
                 }
@@ -1155,7 +1234,15 @@ class MainActivity : Activity() {
                     udp.receive(packet)
                     if (packet.address == remote && packet.port == number) {
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
-                        if (payload.size in 20..160 && payload.take(17).toByteArray()
+                        if (usbMode && payload.size <= 280 && String(payload, Charsets.US_ASCII).startsWith("TELERC_LORA_")) {
+                            val reply = String(payload, Charsets.US_ASCII)
+                            runOnUiThread {
+                                if (socket === udp) {
+                                    loraInfo = LoRaSetup.describe(reply)
+                                    loraStatus?.text = loraInfo
+                                }
+                            }
+                        } else if (payload.size in 20..160 && payload.take(17).toByteArray()
                                 .contentEquals("TELERC_STATUS_V1,".toByteArray(Charsets.US_ASCII))) {
                             val fields = String(payload, Charsets.US_ASCII).split(',')
                             val bytes = fields.getOrNull(1)?.toLongOrNull()

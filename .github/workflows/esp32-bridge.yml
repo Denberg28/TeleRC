@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sketch: [TeleRCBridge, TeleRCHybridController, TeleRCMotorController, TeleRCLoRaBase, TeleRCLoRaRover]
+        sketch: [TeleRCBridge, TeleRCHybridController, TeleRCMotorController, TeleRCWiFiGateway, TeleRCLoRaBase, TeleRCLoRaRover]
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2

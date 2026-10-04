@@ -3,6 +3,8 @@
 #include <SPI.h>
 #include <RadioLib.h>
 #include <esp_system.h>
+#include <Preferences.h>
+#include <cstdio>
 #include <TeleRCLoRaConfig.h>
 #include <TeleRCRadioAuth.h>
 #if TELERC_LORA_BASE && TELERC_BASE_WIFI
@@ -18,7 +20,16 @@ SX1276 radio = new Module(7,9,8,33);
 #else
 #error Unsupported radio: use the exact SX1262 or SX1276 board; SX1278/SX1280 need a separate profile.
 #endif
-const uint8_t radioKey[32]=TELERC_RADIO_KEY;
+uint8_t radioKey[32]=TELERC_RADIO_KEY;
+struct RadioSettings { uint32_t magic; uint32_t khz; int32_t power; uint8_t key[32]; };
+RadioSettings settings={0x544c5231,uint32_t(TELERC_RADIO_FREQUENCY*1000),TELERC_RADIO_POWER,TELERC_RADIO_KEY};
+bool radioActive=false;
+bool validSettings(const RadioSettings &v){
+  uint8_t nonzero=0;for(auto b:v.key)nonzero|=b;
+  // Device capability bounds, not permission to use a frequency in your country.
+  return v.magic==0x544c5231 && v.khz>=150000 && v.khz<=960000 && v.power>=2 && v.power<=17 && nonzero;
+}
+telerc::UartParser adminParser;
 volatile bool radioPacketReady=false;
 void IRAM_ATTR radioInterrupt(){radioPacketReady=true;}
 uint32_t radioRx=0,radioReject=0,radioTxFail=0,uartDrop=0;
@@ -60,6 +71,42 @@ bool transmitRadio(uint8_t kind,uint64_t token,const uint8_t*p,size_t n){
   radioPacketReady=false;int result=radio.transmit(f,k);radio.startReceive();
   if(result!=RADIOLIB_ERR_NONE){++radioTxFail;return false;}return true;
 }
+void adminReply(const char *message){writeSerialFrame(Serial,reinterpret_cast<const uint8_t*>(message),strlen(message),Serial.availableForWrite());}
+bool adminCommand(const uint8_t *p,size_t n){
+  if(n<15 || memcmp(p,"TELERC_LORA_",12)!=0)return false;
+  if(telerc::textEquals(p,n,"TELERC_LORA_GET_V1")){
+    char info[180];
+    // Only a non-secret CRC fingerprint is exposed, never the pairing key.
+    snprintf(info,sizeof(info),"TELERC_LORA_INFO_V1,%s,%d,%d,%lu,%ld,%04x,%lu,%lu,%lu,%lu",
+      TELERC_LORA_BASE?"BASE":"ROVER",TELERC_RADIO_VARIANT,radioActive?1:0,
+      (unsigned long)settings.khz,(long)settings.power,telerc::crc16(settings.key,32),
+      (unsigned long)radioRx,(unsigned long)radioReject,(unsigned long)radioTxFail,(unsigned long)uartDrop);
+    adminReply(info);return true;
+  }
+  // Provision only an inactive radio. Active links must be disconnected and boards restarted
+  // with a local blank configuration before re-pairing; USB cannot silently change a running link.
+  if(radioActive){adminReply("TELERC_LORA_RESULT_V1,ACTIVE_DISCONNECT_AND_ERASE_NVS_FIRST");return true;}
+  char request[telerc::UART_MAX+1];memcpy(request,p,n);request[n]=0;
+  unsigned long khz=0;int power=0;char key[65]={};int end=0;
+  RadioSettings next={};next.magic=0x544c5231;
+  if(sscanf(request,"TELERC_LORA_SET_V1,%lu,%d,%64[0123456789abcdefABCDEF]%n",&khz,&power,key,&end)!=3 ||
+      size_t(end)!=n || strlen(key)!=64 || khz>960000){adminReply("TELERC_LORA_RESULT_V1,INVALID");return true;}
+  next.khz=uint32_t(khz);next.power=power;
+  for(size_t i=0;i<32;++i){unsigned int b=0;char pair[3]={key[2*i],key[2*i+1],0};sscanf(pair,"%x",&b);next.key[i]=uint8_t(b);}
+  if(!validSettings(next)){adminReply("TELERC_LORA_RESULT_V1,INVALID");return true;}
+  Preferences prefs;
+  if(!prefs.begin("telerc-radio",false)){adminReply("TELERC_LORA_RESULT_V1,STORAGE_FAILED");return true;}
+  bool ok=prefs.putBytes("settings",&next,sizeof(next))==sizeof(next);prefs.end();
+  if(ok)settings=next;
+  adminReply(ok?"TELERC_LORA_RESULT_V1,SAVED_RESTART_BOARD":"TELERC_LORA_RESULT_V1,STORAGE_FAILED");
+  return true;
+}
+#if !TELERC_LORA_BASE
+void serviceAdmin(){
+  for(size_t i=0;i<320&&Serial.available();++i)if(adminParser.feed(uint8_t(Serial.read()),millis()))
+    adminCommand(adminParser.data+4,adminParser.length());
+}
+#endif
 #if TELERC_LORA_BASE
 bool acceptHost(const uint8_t*p,size_t n,uint8_t source){
 #if TELERC_BASE_WIFI
@@ -72,7 +119,7 @@ bool acceptHost(const uint8_t*p,size_t n,uint8_t source){
 }
 void serviceHost(){
   for(size_t i=0;i<320&&Serial.available();++i)if(hostParser.feed(uint8_t(Serial.read()),millis()))
-    acceptHost(hostParser.data+4,hostParser.length(),1);
+    {if(!adminCommand(hostParser.data+4,hostParser.length()) && radioActive)acceptHost(hostParser.data+4,hostParser.length(),1);}
 #if TELERC_BASE_WIFI
   int size=baseUdp.parsePacket();if(size<=0)return;
   uint8_t p[telerc::UART_MAX];int n=baseUdp.read(p,sizeof(p));while(baseUdp.available())baseUdp.read();
@@ -129,21 +176,27 @@ void setup(){
 #if !TELERC_LORA_BASE
   motorPort.setRxBufferSize(1024);motorPort.setTxBufferSize(1024);motorPort.begin(115200,SERIAL_8N1,44,43);
 #endif
-  uint8_t keyPresent=0;for(auto b:radioKey)keyPresent|=b;
-  if(!TELERC_RADIO_PROVISIONED||TELERC_RADIO_FREQUENCY<=0||!keyPresent){
-    Serial.println("LoRa transmission disabled: configure board, permitted frequency and random pairing key.");
-    while(true)delay(1000);
+  Preferences config;
+  bool provisioned=TELERC_RADIO_PROVISIONED;
+  if(config.begin("telerc-radio",true)){
+    RadioSettings stored={};
+    if(config.getBytesLength("settings")==sizeof(stored) && config.getBytes("settings",&stored,sizeof(stored))==sizeof(stored) && validSettings(stored)){
+      settings=stored;provisioned=true;
+    }
+    config.end();
   }
+  if(!provisioned || !validSettings(settings))return; // USB setup stays available on a blank board.
+  memcpy(radioKey,settings.key,32);
   SPI.begin(5,3,6,7);
   // SF7/BW500/CR4:5 is an initial low-latency test profile, not a validated range claim.
-  int state=radio.begin(TELERC_RADIO_FREQUENCY,500.0,7,5,0x12,TELERC_RADIO_POWER,8);
-  if(state!=RADIOLIB_ERR_NONE){Serial.println("Radio initialization failed; no control link.");while(true)delay(1000);}
+  int state=radio.begin(settings.khz/1000.0f,500.0,7,5,0x12,settings.power,8);
+  if(state!=RADIOLIB_ERR_NONE){return;}
 #if TELERC_RADIO_VARIANT == 1262
   radio.setDio1Action(radioInterrupt);
 #else
   radio.setDio0Action(radioInterrupt, RISING);
 #endif
-  radio.startReceive();
+  radioActive=radio.startReceive()==RADIOLIB_ERR_NONE;
 #if TELERC_LORA_BASE && TELERC_BASE_WIFI
   Preferences prefs;String password=TELERC_BASE_PASSWORD;
   if(password.length()<12||password.length()>63){
@@ -164,6 +217,7 @@ void loop(){
   uint8_t buffer[telerc::AUTH_MAX];uint64_t token=0;const uint8_t*body=nullptr;size_t n=0;
 #if TELERC_LORA_BASE
   serviceHost();
+  if(!radioActive){delay(1);return;}
   if(uint32_t(millis()-lastValidPollAt)>250)commands.clear();
   if(receiveRadio(1,token,body,n,buffer)&&token!=lastBaseToken){
     lastBaseToken=token;lastValidPollAt=millis();forwardTelemetry(body,n);
@@ -171,7 +225,9 @@ void loop(){
     transmitRadio(2,token,command,count);
   }
 #else
+  serviceAdmin();
   serviceMotorTelemetry();
+  if(!radioActive){delay(1);return;}
   if(receiveRadio(2,token,body,n,buffer)){
     if(telerc::validBundle(body,n)&&challenge.consume(token,millis()))forwardCommands(body,n);
     else ++radioReject;

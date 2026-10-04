@@ -1,3 +1,5 @@
+> Update: blank boards can now be provisioned in the APK LoRa setup tab. See [swappable gateways](SWAPPABLE_GATEWAYS.md). The compile-time private configuration remains supported, but an existing valid NVS radio profile takes precedence.
+
 # TeleRC dedicated motor + LoRa integration
 
 Status: implementation for bench validation, not a field-qualified release. Android v0.8.48 adds native USB OTG input to the LoRa base; PC uses the included USB relay. The original Wi-Fi hybrid .ino remains independently available.
