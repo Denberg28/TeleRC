@@ -73,6 +73,7 @@ bool transmitRadio(uint8_t kind,uint64_t token,const uint8_t*p,size_t n){
 }
 void adminReply(const char *message){writeSerialFrame(Serial,reinterpret_cast<const uint8_t*>(message),strlen(message),Serial.availableForWrite());}
 bool adminCommand(const uint8_t *p,size_t n){
+  if(n>telerc::UART_MAX)return false;
   if(n<15 || memcmp(p,"TELERC_LORA_",12)!=0)return false;
   if(telerc::textEquals(p,n,"TELERC_LORA_GET_V1")){
     char info[180];

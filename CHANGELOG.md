@@ -5,6 +5,13 @@
 - Added active-channel ownership tracking so sparse watchdog neutralization affects only controlled channels.
 - Added deterministic stale-sender release before Android/PC handover.
 
+## 0.8.49
+
+- Add a dedicated LoRa setup tab for native USB board information, frequency/power validation, masked shared pairing keys and blank-board NVS provisioning. Settings activate after restart; active radios reject configuration changes.
+- Add a dedicated ESP32-S3 Wi-Fi gateway sharing the rover T3-S3's framed UART interface to the fixed PWM controller. Keep existing motor failsafes and Wi-Fi controls; fresh app installations default to Wi-Fi.
+- Document the common keyed connector, power-off module swap, and T3-S3 adapter requirement for the pictured 44-pin ESP32-S3 carrier. LoRa remains a direct authenticated motor-control link, with no mesh routing or queued joystick history.
+- Add provisioning, restart, controller-lease and validation regression checks. Hardware USB, range, brownout and stopping tests remain required.
+
 ## 0.8.48
 - Add native ESP32-S3 USB CDC OTG transport for Android joystick commands, ARM/DISARM and telemetry through the paired LoRa base/rover gateways.
 - Default the LoRa base to USB input with Wi-Fi disabled; retain legacy Android UDP as an explicit Setup option.

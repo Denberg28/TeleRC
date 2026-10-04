@@ -1110,6 +1110,7 @@ class MainActivity : Activity() {
         status?.text = when {
             !connected.get() && wantsLink -> if (usbMode) "CONNECT USB LoRa BASE" else "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
+            page == Page.LORA && usbMode && target == 0 -> "USB CONNECTED · LOCAL SETUP"
             target == 0 -> "WAITING FOR HEARTBEAT"
             controlEnabled.get() && !HeartbeatHealth.isFresh(target, heartbeatAt, now) ->
                 "SYSTEM $target  •  CONTROL PAUSED"
@@ -1117,7 +1118,9 @@ class MainActivity : Activity() {
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
-        connect?.text = if (wantsLink) "Disconnect" else "Connect"
+        connect?.text = if (page == Page.LORA) {
+            if (wantsLink) { if (usbMode) "Disconnect USB" else "Disconnect Wi-Fi" } else "Connect USB board"
+        } else if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get()
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
         refreshFunctionButtons()
