@@ -25,3 +25,8 @@ for role in TEST_BASE_GATEWAY TEST_ROVER_GATEWAY; do
   done
 done
 python -m unittest discover -s bridge/tests -p 'test_*.py'
+
+for test in lora_setup wifi_gateway; do
+  g++ -std=c++17 -Wall -Wextra -Werror -Ibridge/tests/stubs -Ibridge/libraries/TeleRCLink/src "bridge/tests/${test}_test.cpp" -lcrypto -o "$build_dir/$test"
+  "$build_dir/$test"
+done

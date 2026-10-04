@@ -33,3 +33,7 @@ Only the current apps' v1 controls/ARM/DISARM and selected small telemetry are s
 ## USB joystick control update
 
 Default base configuration is `TELERC_BASE_WIFI=0`. Android uses native ESP32-S3 CDC ACM via USB OTG with permission/endpoint validation; PC uses the USB relay. Radio polling carries the unchanged joystick MAVLink datagrams to the rover T3-S3 and dedicated motor ESP32-S3. Legacy UDP remains an explicit optional app transport. Android USB endpoint writes are serialized and bounded; partial write or device detach closes the link, while the motor watchdog remains independent. Physical Android USB enumeration and phone OTG supply tests remain pending.
+
+## 0.8.49 changes
+
+Host regression tests additionally cover blank-board USB availability, invalid/zero/trailing key rejection, NVS save followed by restart, active-radio configuration rejection, and Wi-Fi gateway controller leases/backpressure. Physical USB provisioning and keyed-harness swaps remain untested on hardware.

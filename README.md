@@ -1,4 +1,4 @@
-# TeleRC 0.8.48 — rover joystick private test
+# TeleRC 0.8.49 — rover joystick private test
 
 Offline Android rover controller using a native USB OTG LoRa base link or a legacy bidirectional MAVLink UDP bridge. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls. The large control above DRIVE is a dedicated **ARM / DISARM** button whose label follows the armed state reported by MAVLink HEARTBEAT. F1/F2/F3 are reserved for external servo output assignments.
 
@@ -50,3 +50,7 @@ The wrapper needs access to `services.gradle.org` and its GitHub release redirec
 Setup & Config has a manual Check for updates button. It reads public GitHub release metadata without a credential, verifies the downloaded APK digest, package, increasing version and installed signing certificate, then opens the system installer. Play Protect may recommend scanning an APK distributed outside Google Play; accept the scan and review its verdict. The map tile provider receives tile requests for the displayed area when internet is available, even though routes remain local. See [UPDATES.md](UPDATES.md) for signing secrets and first-install constraints. Signed releases are published by the repository workflow using existing signing secrets.
 
 Setup includes a saved 25–100% joystick sensitivity slider for Controls and Test. It scales channel displacement around 1500 µs; at 100% the live rover command range is 1100–1900 µs to match the checked-in RC calibration. Reset clears route history and immediately requests a fresh phone GPS fix to establish Home again; stationary fixes are eligible. Recenter requests wait for map readiness. Map panning remains manual after recentering; measured rover GPS and phone Home remain separate.
+
+## Swappable control link and LoRa setup
+
+The dedicated **LoRa setup** tab provisions blank BASE/ROVER boards over native USB, reads their real local radio settings and counters, and retains a masked pairing key for the second board. Saving requires restart; active radios reject configuration changes. New installations retain Wi-Fi as their initial transport. The new `TeleRCWiFiGateway` lets a command ESP32-S3 use the same framed UART connector as the rover T3-S3 while the dedicated PWM ESP32-S3 remains fixed. See [the swappable gateway guide](bridge/SWAPPABLE_GATEWAYS.md) for the keyed harness, carrier compatibility, provisioning and bench checks.
