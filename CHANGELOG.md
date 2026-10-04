@@ -5,6 +5,13 @@
 - Added active-channel ownership tracking so sparse watchdog neutralization affects only controlled channels.
 - Added deterministic stale-sender release before Android/PC handover.
 
+## 0.8.48
+- Add native ESP32-S3 USB CDC OTG transport for Android joystick commands, ARM/DISARM and telemetry through the paired LoRa base/rover gateways.
+- Default the LoRa base to USB input with Wi-Fi disabled; retain legacy Android UDP as an explicit Setup option.
+- Separate rover T3-S3 communications from dedicated ESP32-S3 four-BTS7960 motor PWM, preserving independent motor watchdogs and neutral-only transfer/arming.
+- Add authenticated short-lived LoRa challenge responses, bounded latest-command mailboxes, UART CRC framing, PC USB relay, wiring/provisioning guide and expanded firmware checks.
+- Hardware OTG, radio range and motor timing require bench validation; no field reliability claim.
+
 ## 0.8.47
 - Rebuild the latest sanitized TeleRC control and ESP32-S3 bridge baseline after the final documentation correction.
 - Preserve v0.8.46 joystick, ARM/DISARM, heartbeat-pause, CH1 steering / CH2 drive, MAVLink validation, neutral-hold failsafe, and persistent TeleRC-Rover SoftAP behavior unchanged.

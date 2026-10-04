@@ -1,6 +1,6 @@
-# TeleRC 0.8.38 — rover joystick private test
+# TeleRC 0.8.48 — rover joystick private test
 
-Offline Android controller for an ArduRover using a bidirectional MAVLink UDP bridge on the same local Wi-Fi network. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls. The large control above DRIVE is a dedicated **ARM / DISARM** button whose label follows the armed state reported by MAVLink HEARTBEAT. F1/F2/F3 are reserved for external servo output assignments.
+Offline Android rover controller using a native USB OTG LoRa base link or a legacy bidirectional MAVLink UDP bridge. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls. The large control above DRIVE is a dedicated **ARM / DISARM** button whose label follows the armed state reported by MAVLink HEARTBEAT. F1/F2/F3 are reserved for external servo output assignments.
 
 Setup and Controls share compact navigation and cards. Setup uses rounded connection inputs; Controls centers Enable/Stop between equal-width Steer and Drive panels. When live control is enabled, that center card shows a MapLibre dead reckoning map. Its cyan path estimates motion using only CH1/CH2 frames actually sent to the rover and the Test vehicle maximum speed and pivot turn rate. Purple marks measured rover GPS. The overlay reports estimated displacement from its anchor, heading, and speed. A current rover fix anchors the estimate once, and later GPS exposes model drift without silently correcting it. Before GPS, the map clearly labels its sample start; a precise phone fix establishes fixed Home. Stop, heartbeat loss, or app pause freezes the estimate and leaves the recovery map available; leaving Controls still stops command output. On reopening Controls, the last measured GPS and saved estimated path remain visible. The recenter button prioritizes the last measured rover GPS, then estimated position, then Home. Last GPS age is shown; an old fix is not a current rover location. It does not change MAVLink command output. The estimated path is saved separately from measured GPS telemetry and is cleared by Test Reset or when a new measured rover fix replaces an unconfirmed anchor.
 
@@ -25,9 +25,11 @@ The Controls page records CH1/CH2 **frames actually sent** while live control is
 
 ## Architecture and future craft profiles
 
-`CraftProfile` identifies available profiles. `RoverControls` owns the rover RC channel mapping and neutral values. `Mavlink` frames the transport-independent channel output; `MainActivity` owns UDP lifecycle and UI. Each future craft requires its own mapping, neutral/failsafe behavior, interaction design, and bench/SITL evidence before enabling. Rocket control requires a separate safety design and is explicitly unavailable.
+`CraftProfile` identifies available profiles. `RoverControls` owns the rover RC channel mapping and neutral values. `Mavlink` frames the transport-independent channel output; `MainActivity` owns transport lifecycle and UI. Each future craft requires its own mapping, neutral/failsafe behavior, interaction design, and bench/SITL evidence before enabling. Rocket control requires a separate safety design and is explicitly unavailable.
 
-The first build uses local Wi-Fi UDP to an ESP32/Raspberry Pi MAVLink bridge. Direct USB serial, Bluetooth, ELRS hardware integration, and other transport layers are outside this build. ELRS itself is not a phone transport.
+The LoRa architecture uses **phone joystick → USB OTG → base LILYGO T3-S3 → LoRa → rover T3-S3 → UART → dedicated motor ESP32-S3 → four BTS7960 drivers**. In Setup, select **LoRa via USB base** and grant USB permission. Both base and rover Wi-Fi are disabled in the default LoRa configuration. Native ESP32-S3 CDC ACM is supported; USB-UART adapters and BLE are not. PC TeleRC uses the included local USB relay. Read [the wiring/provisioning guide](bridge/LORA_INTEGRATION.md) before flashing. This is a bench-test integration; range and stopping performance are unverified.
+
+Legacy Wi-Fi UDP remains selectable for existing bridge installations. ELRS itself is not a phone transport.
 
 ## Acceptance criteria
 

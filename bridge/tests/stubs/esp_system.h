@@ -1,2 +1,3 @@
 #pragma once
-inline unsigned esp_random(){return 42;}
+inline unsigned testRandom=42;
+inline unsigned esp_random(){return ++testRandom;}

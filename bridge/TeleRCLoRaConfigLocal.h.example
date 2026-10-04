@@ -1,0 +1,9 @@
+#pragma once
+// Copy into BOTH gateway sketch folders as TeleRCLoRaConfigLocal.h (ignored by Git).
+#define TELERC_RADIO_VARIANT 1262 // choose exact T3-S3 SX1262 or SX1276 (=1276)
+#define TELERC_RADIO_PROVISIONED 0 // set 1 only after key, antennas, frequency/power/profile are confirmed
+#define TELERC_RADIO_FREQUENCY 0.0f // MHz; set a locally permitted frequency matching BOTH radios/antennas
+#define TELERC_RADIO_POWER 2 // dBm, low-power starting point
+#define TELERC_RADIO_KEY {0} // replace with 32 random bytes; same on BOTH gateways
+#define TELERC_BASE_WIFI 0 // Android USB OTG or PC USB input; LoRa carries joystick control
+#define TELERC_BASE_PASSWORD "" // optional 12-63 characters; otherwise generated/stored in NVS

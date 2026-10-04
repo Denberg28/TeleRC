@@ -5,6 +5,11 @@ import android.app.AlertDialog
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.app.PendingIntent
+import android.hardware.usb.UsbManager
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
@@ -35,7 +40,10 @@ import kotlin.concurrent.thread
 class MainActivity : Activity() {
     private enum class Page { SETUP, CONTROLS, TEST_DRIVE }
     private var page = Page.SETUP
-    private var socket: DatagramSocket? = null
+    private var socket: LinkTransport? = null
+    private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "lora_usb") == "lora_usb"
+    private var usbPermissionPending = false
+    private var usbPermissionReceiver: BroadcastReceiver? = null
     private val connected = AtomicBoolean(false)
     private val reconnectHandler = Handler(Looper.getMainLooper())
     private var wantsLink = false
@@ -264,7 +272,7 @@ class MainActivity : Activity() {
         }
     }
     private fun sendControlHandoverBlocking(
-        udp: DatagramSocket,
+        udp: LinkTransport,
         remote: InetAddress,
         system: Int,
         releaseToReceiver: Boolean
@@ -398,7 +406,14 @@ class MainActivity : Activity() {
 
         val connection = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(text("CONNECTION", 12f, accent, true))
+            addView(button(if (usbMode) "LoRa USB ▾" else "Wi-Fi UDP ▾", true) {
+                if (!wantsLink) AlertDialog.Builder(this@MainActivity).setTitle("Control link")
+                    .setItems(arrayOf("LoRa via USB base", "Legacy Wi-Fi UDP")) { _, choice ->
+                        getSharedPreferences("link", MODE_PRIVATE).edit()
+                            .putString("transport", if (choice == 0) "lora_usb" else "wifi").apply()
+                        render()
+                    }.show()
+            }, LinearLayout.LayoutParams(-1, dp(30)))
             host = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
                 inputType = InputType.TYPE_CLASS_TEXT
@@ -418,7 +433,9 @@ class MainActivity : Activity() {
             val endpointRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
             endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(36), 2f).apply { rightMargin = dp(6) })
             endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(36), 1f))
-            addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+            if (usbMode) addView(text("USB OTG → T3-S3 base → LoRa", 12f, muted),
+                LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+            else addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
             connect = button("Connect") {
                 if (wantsLink) {
                     wantsLink = false
@@ -1012,7 +1029,7 @@ class MainActivity : Activity() {
     private fun refreshUi() {
         val now = SystemClock.elapsedRealtime()
         status?.text = when {
-            !connected.get() && wantsLink -> "RECONNECTING · CHECK ROVER WI-FI"
+            !connected.get() && wantsLink -> if (usbMode) "CONNECT USB LoRa BASE" else "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
             target == 0 -> "WAITING FOR HEARTBEAT"
             controlEnabled.get() && !HeartbeatHealth.isFresh(target, heartbeatAt, now) ->
@@ -1042,33 +1059,74 @@ class MainActivity : Activity() {
             }
         }
     }
+    private fun requestUsbPermission(manager: UsbManager, device: android.hardware.usb.UsbDevice) {
+        if (usbPermissionPending) return
+        usbPermissionPending = true
+        val action = "$packageName.USB_LORA_PERMISSION"
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action != action) return
+                unregisterReceiver(this); usbPermissionReceiver = null; usbPermissionPending = false
+                if (!wantsLink || !usbMode) return
+                if (manager.hasPermission(device)) start()
+                else {
+                    wantsLink = false
+                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                    refreshUi(); status?.text = "USB PERMISSION DENIED"
+                }
+            }
+        }
+        usbPermissionReceiver = receiver
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, IntentFilter(action), Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(receiver, IntentFilter(action))
+        try {
+            manager.requestPermission(device, PendingIntent.getBroadcast(this, 0,
+                Intent(action).setPackage(packageName), PendingIntent.FLAG_IMMUTABLE))
+        } catch (error: Exception) {
+            unregisterReceiver(receiver); usbPermissionReceiver = null; usbPermissionPending = false
+            status?.text = "USB PERMISSION REQUEST FAILED"
+        }
+    }
     private fun start() {
         if (connected.get()) return
         val saved = getSharedPreferences("link", MODE_PRIVATE)
-        val address = (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
+        val address = if (usbMode) "127.0.0.1" else
+            (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
         val valid = Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$").matches(address) &&
             address.split('.').all { it.toInt() in 0..255 }
-        val number = (port?.text?.toString() ?: saved.getInt("port", 14550).toString()).toIntOrNull()
+        val number = if (usbMode) 14550 else
+            (port?.text?.toString() ?: saved.getInt("port", 14550).toString()).toIntOrNull()
         if (!valid || number == null || number !in 1..65535) {
             wantsLink = false
             saved.edit().putBoolean("auto_connect", false).apply()
             refreshUi(); status?.text = "INVALID ADDRESS OR PORT"; return
         }
         val remote = InetAddress.getByName(address)
-        saved.edit().putString("host", address).putInt("port", number).apply()
-        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-        val wifi = connectivity.allNetworks.firstOrNull {
-            connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-        }
-        if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
-        val udp = try {
-            DatagramSocket(number).also { socket ->
-                try {
-                    wifi.bindSocket(socket) // keep UDP on the rover AP even if mobile data is the default
-                    socket.soTimeout = 50
-                } catch (e: Exception) { socket.close(); throw e }
+        val udp: LinkTransport = if (usbMode) {
+            val manager = getSystemService(USB_SERVICE) as UsbManager
+            val devices = UsbLoRaTransport.candidates(manager)
+            if (devices.size != 1) {
+                status?.text = if (devices.isEmpty()) "CONNECT NATIVE T3-S3 USB OTG BASE" else "CONNECT ONLY ONE LoRa USB BASE"
+                return
             }
-        } catch (e: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
+            val device = devices.single()
+            if (!manager.hasPermission(device)) { requestUsbPermission(manager, device); return }
+            try { UsbLoRaTransport.open(manager, device) }
+            catch (error: Exception) { lastLinkError = error.message.orEmpty(); status?.text = "USB LoRa OPEN FAILED"; return }
+        } else {
+            saved.edit().putString("host", address).putInt("port", number).apply()
+            val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            val wifi = connectivity.allNetworks.firstOrNull {
+                connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            }
+            if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
+            try {
+                UdpTransport(DatagramSocket(number).also { transport ->
+                    try { wifi.bindSocket(transport); transport.soTimeout = 50 }
+                    catch (error: Exception) { transport.close(); throw error }
+                })
+            } catch (error: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
+        }
         socket = udp; endpoint = remote; endpointPort = number
         target = 0; vehicleArmed = null; lastArmAck = ""; lastLinkError = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
@@ -1302,5 +1360,5 @@ class MainActivity : Activity() {
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); txExecutor.shutdown(); super.onDestroy() }
 }

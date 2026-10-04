@@ -9,16 +9,33 @@ on:
       - 'bridge/**'
       - '.github/workflows/esp32-bridge.yml'
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libssl-dev
+      - run: python bridge/sync_motor_core.py --check
+      - run: bridge/tests/run.sh
   compile:
     runs-on: ubuntu-latest
-    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        sketch: [TeleRCBridge, TeleRCHybridController, TeleRCMotorController, TeleRCLoRaBase, TeleRCLoRaRover]
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2
-      - name: Install Espressif board support
+      - name: Install pinned board and radio dependencies
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      - name: Compile ESP32-S3 sketch
-        run: arduino-cli compile --fqbn esp32:esp32:esp32s3 bridge/TeleRCBridge
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install RadioLib@7.2.1
+      - name: Compile actual ESP32-S3 target
+        run: arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries bridge/${{ matrix.sketch }}
+      - name: Compile alternate supported radio and USB-only base
+        if: matrix.sketch == 'TeleRCLoRaBase' || matrix.sketch == 'TeleRCLoRaRover'
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries --build-property 'compiler.cpp.extra_flags=-DTELERC_RADIO_VARIANT=1276 -DTELERC_BASE_WIFI=0' bridge/${{ matrix.sketch }}
