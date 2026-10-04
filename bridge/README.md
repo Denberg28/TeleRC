@@ -44,3 +44,7 @@ The bridge accepts two RC_CHANNELS_OVERRIDE styles without changing the Android 
 - **CH5-CH8:** must remain 65535 and are never accepted as remote override inputs.
 
 The bridge tracks only channels actively owned by the current sender. Its watchdog neutralizes those owned channels. If control moves from Android to PC, or PC to Android, after the pairing timeout, the previous sender's overrides are released before the new sender is accepted. This avoids stale channel ownership while preserving normal Android behavior.
+
+## Dedicated motor controller with LoRa communications
+
+The separated architecture uses one ESP32-S3 for four BTS7960 drivers and a paired LILYGO T3-S3 base/rover link. See [LoRa integration and wiring](LORA_INTEGRATION.md), [motor firmware](TeleRCMotorController), [base gateway](TeleRCLoRaBase), and [rover gateway](TeleRCLoRaRover). These new sketches need the included `libraries/TeleRCLink` Arduino library. The original standalone Wi-Fi sketches remain available.

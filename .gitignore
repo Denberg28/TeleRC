@@ -6,3 +6,8 @@ local.properties
 .env
 .idea/
 *.iml
+
+# Per-installation LoRa authentication keys and local credentials.
+TeleRCLoRaConfigLocal.h
+__pycache__/
+*.pyc
