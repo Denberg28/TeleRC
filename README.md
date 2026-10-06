@@ -1,6 +1,6 @@
-# TeleRC 0.8.51 — signed test candidate
+# TeleRC 0.8.52 — signed test candidate
 
-This increment adopts the repository QA workflow and requires explicit Enable Control after a heartbeat timeout. The release workflow gates signing/publication on Android, host and actual-board checks and verifies signing continuity against 0.8.50. Download the APK, matching bridge ZIP, checksums and `BUILD_INFO.txt` from the versioned release; final build evidence identifies the exact commit. Device/HIL tests remain required. See [testing and evidence](docs/TESTING.md), [control/compatibility architecture](docs/ARCHITECTURE.md), and [known limitations](docs/KNOWN_ISSUES.md).
+This release rebuilds the reviewed 0.8.51 baseline with versionCode 70; control and firmware behavior are unchanged. Download the signed APK, matching bridge ZIP, checksums and `BUILD_INFO.txt` from the versioned release. Required automated checks run again on the new source commit; hardware, installed-device and PC tests remain pending. Install manually because the updater ignores prereleases. See [testing and evidence](docs/TESTING.md), [control/compatibility architecture](docs/ARCHITECTURE.md), and [known limitations](docs/KNOWN_ISSUES.md).
 
 Offline Android rover controller using a native USB OTG LoRa base link or a legacy bidirectional MAVLink UDP bridge. Android 8+, IPv4. The app contains no cloud service or account. The first enabled craft profile is **Rover**; multirotor, fixed wing, watercraft, and rocket are named future profiles and have no active controls. The large control above DRIVE is a dedicated **ARM / DISARM** button whose label follows the armed state reported by MAVLink HEARTBEAT. F1/F2/F3 are reserved for external servo output assignments.
 

@@ -5,6 +5,13 @@
 - Added active-channel ownership tracking so sparse watchdog neutralization affects only controlled channels.
 - Added deterministic stale-sender release before Android/PC handover.
 
+## 0.8.52
+
+- Rebuild the reviewed 0.8.51 baseline as a new signed test candidate with Android versionCode 70 and matching bridge sketches.
+- Preserve joystick mapping, heartbeat recovery, ARM cancellation, transport protocols, pins, pairing settings and motor watchdogs unchanged.
+- Rerun Android tests/lint/build, host regressions with full sanitizers, eight actual ESP32 builds and signing-continuity verification before publication. Include commit-bound build information and SHA-256 checksums.
+- Hardware-in-the-loop, installed-device upgrade and PC interoperability remain pending; install manually and validate on restrained wheels before stable promotion.
+
 ## 0.8.51
 
 - Signed test candidate with matching dedicated sketches. Required Android unit/lint/build, host sanitizer, actual-board compile and signing-continuity gates run before publication; installed-device and hardware tests remain pending.

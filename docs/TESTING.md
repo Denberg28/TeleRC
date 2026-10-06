@@ -1,6 +1,6 @@
 # TeleRC QA gates and bench procedure
 
-## Acceptance criteria for 0.8.51
+## Acceptance criteria for 0.8.52
 
 1. CH1 steering and CH2 drive retain 1500 µs neutral and existing sensitivity/range. No output before fresh verified heartbeat and explicit Enable Control.
 2. Heartbeat jitter under 4 seconds does not revoke driving. At 4 seconds of heartbeat age, revoke authority and clear commanded axes before accepting recovery telemetry. A new heartbeat must not resume commands without another Enable Control press.
@@ -23,6 +23,12 @@ SANITIZE=1 bridge/tests/run.sh
 For release packaging also run `:app:lintRelease :app:assembleRelease` with the existing signing identity, actual ESP32 CI builds, artifact identity/version/signature/checksum checks, and device installation/upgrade. Dependencies: JDK 17, Gradle 8.11.1, AGP 8.9.2, Kotlin 2.1.20, SDK/build tools 35; ESP32 core 3.3.2 and RadioLib 7.2.1. Use the pinned workflows for actual target configurations; host macros for Arduino API 2/3 are not target builds.
 
 Record command, source commit, configuration/toolchain, expected/actual results, status and evidence location. Later source changes require rerunning affected checks. Call code inspection self-review, host tests stub-tested, actual compilation build verified, physical tests hardware tested; do not substitute one for another.
+
+## 0.8.52 rebuild evidence
+
+Baseline: published 0.8.51 commit `a8e6ed7bab4948ab221aeb639b3ca1ea617e0e21`, verified APK/signing identity and matching sketches. Only version and documentation metadata change. Baseline software checks passed: 48 JVM tests, debug/release lint without errors, full host sanitizers and eight actual ESP32 builds. These are baseline evidence, not results of the new build.
+
+Rebuild gates A–C and software parts of D/F require a fresh successful workflow on the final 0.8.52 source; its `BUILD_INFO.txt` and SHA256SUMS record completion. Gate E/HIL and installed-device, PC and physical integration remain BLOCKED/NOT TESTED. Next concrete check: install the signed candidate over 0.8.51 with settings retained, then execute the restrained-wheel tests below. Stable promotion remains blocked.
 
 ## Initial local source-review gate status — 7 October 2026
 
@@ -67,4 +73,4 @@ Stop on uncontrolled output, ineffective required failsafe or a broken core path
 
 Do not trigger release automation during source review. After required automated and packaging checks pass, authorized publishing can produce a clearly labeled prerelease. The manual updater ignores prereleases, so install candidates explicitly. Stable promotion requires every applicable gate, measured installed safe states, and recorded device/PC compatibility.
 
-Keep previous APK, matching firmware and secret-free configuration backups. Source rollback: retain baseline `777c04e5` and branch independently; do not overwrite user work. Installed Android normally blocks version-code downgrade: restoring code 68 may require uninstalling code 69, which deletes app data. Export routes/settings first; never switch signing identity to force an upgrade. Do not erase motor/gateway NVS or replace pairing keys for an app-only rollback.
+Keep previous APK, matching firmware and secret-free configuration backups. Source rollback: retain baseline `777c04e5` and branch independently; do not overwrite user work. Installed Android normally blocks version-code downgrade: restoring code 69 may require uninstalling code 70, which deletes app data. Export routes/settings first; never switch signing identity to force an upgrade. Do not erase motor/gateway NVS or replace pairing keys for an app-only rollback.

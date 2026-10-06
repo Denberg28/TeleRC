@@ -2,7 +2,7 @@
 
 ## Scope and baseline
 
-Current development: 0.8.51 / code 69. Remote baseline: `777c04e5ed8a32be9cb999b7c39761157e4099c4` (0.8.50), tree `6cf43eae85915881b049bed874d97693a1eac77d`. The recovered local source tree was byte-identical to that remote tree. Published 0.8.49 (`35152c4`) is a retained release baseline, not a claim of validated physical operation. Earlier October 6 review commits were unavailable; this branch redoes the unfinished work from the verified baseline.
+Current release candidate: 0.8.52 / code 70. Rebuild baseline: published 0.8.51 commit `a8e6ed7bab4948ab221aeb639b3ca1ea617e0e21`, tree `3c7016a39f3ab295b4d0c68f76bcf5fe11c1fdb5`. Android/firmware behavior is unchanged; the new build reruns the automated gates. The retained baseline passed 48 JVM tests, debug/release lint with no errors, host/sanitizer checks and eight actual firmware builds. Physical operation remains unverified.
 
 ## Signal paths
 
@@ -36,10 +36,10 @@ LoRa: 200 ms host command mailbox freshness, 90 ms one-use challenge window, bou
 
 | Pair | Protocol/source review | Software/hardware status |
 | --- | --- | --- |
-| Android 0.8.51 ↔ 0.8.50 dedicated Wi-Fi gateway/motor firmware | Wire format unchanged; CH1/CH2 and release semantics retained | Firmware host tests PASS; Android build and end-to-end tests BLOCKED |
-| Android 0.8.51 ↔ 0.8.50 LoRa BASE/ROVER/motor firmware | UART framing, provisioning, HMAC/key/profile unchanged | Host authentication/provisioning tests PASS; actual USB/radio integration BLOCKED |
-| Android 0.8.51 ↔ legacy TeleRCBridge/hybrid | Existing UDP discovery, override, arm/disarm/disconnect messages retained | Hybrid host tests PASS; legacy actual-target/device tests BLOCKED |
+| Android 0.8.52 ↔ 0.8.50 dedicated Wi-Fi gateway/motor firmware | Wire format unchanged; CH1/CH2 and release semantics retained | Baseline software gates PASS; rebuild gates required; end-to-end hardware BLOCKED |
+| Android 0.8.52 ↔ 0.8.50 LoRa BASE/ROVER/motor firmware | UART framing, provisioning, HMAC/key/profile unchanged | Host authentication/provisioning tests PASS; actual USB/radio integration BLOCKED |
+| Android 0.8.52 ↔ legacy TeleRCBridge/hybrid | Existing UDP discovery, override, arm/disarm/disconnect messages retained | Baseline host/actual-target builds PASS; rebuild gates required; device tests BLOCKED |
 | Existing PC TeleRC ↔ dedicated/legacy firmware | Firmware unchanged; sparse CH1/CH2 ignore values retained | Actual PC client/version interoperability NOT TESTED in this session |
 | F405 ArduRover 4.6.3 ↔ motor MCU | Existing M5–M8 inputs, GPIO16 selector, 115200 UART retained | Parameter/electrical/HIL verification BLOCKED |
 
-No paired firmware upgrade is required by the 0.8.51 wire format. The matching 0.8.51 LoRa core uses a statically owned radio module instead of an unowned boot allocation; packets, keys, profile and pins are unchanged. Use the included LoRa sketches to carry that memory-ownership fix. Reflash only the intended sketch, retain board-specific configuration and credentials, and revalidate physical behavior after a firmware/configuration change.
+No paired firmware upgrade is required by the unchanged 0.8.52 wire format. The matching 0.8.51 LoRa core uses a statically owned radio module instead of an unowned boot allocation; packets, keys, profile and pins are unchanged. Use the included LoRa sketches to carry that memory-ownership fix. Reflash only the intended sketch, retain board-specific configuration and credentials, and revalidate physical behavior after a firmware/configuration change.
