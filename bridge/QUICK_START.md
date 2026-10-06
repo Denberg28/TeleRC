@@ -1,4 +1,4 @@
-# TeleRC 0.8.51 sketch bundle
+# TeleRC 0.8.52 sketch bundle
 
 This ZIP contains matching source sketches, shared libraries and wiring guides. Select the sketch for each physical board; the dedicated motor sketch requires the included TeleRCLink library. The APK and sketch bundle share a release commit recorded in `BUILD_INFO.txt`.
 
