@@ -1,6 +1,7 @@
 name: ESP32-S3 bridge compile
 on:
   push:
+    branches: [main]
     paths:
       - 'bridge/**'
       - '.github/workflows/esp32-bridge.yml'

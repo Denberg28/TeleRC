@@ -12,6 +12,7 @@
 - Cancel expired/invalidated queued ARM requests; recheck between retries. Capture each session's endpoint port for handover/disconnect packets and synchronize stop state against control transmission.
 - Use the API 26+ receiver registration overload with explicit flags for system update and package-scoped USB permission broadcasts; register the updater receiver before enqueueing its download.
 - Adopt QA/compatibility/HIL documentation, lint gates, host sanitizer checks, and prerelease-only automated publication pending measured hardware evidence.
+- Give the LoRa radio module static lifetime, removing an unowned boot-time allocation identified by the new leak-sanitizer gate while retaining its pins/profile.
 
 ## 0.8.50
 
