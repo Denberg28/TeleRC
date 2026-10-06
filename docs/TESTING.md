@@ -24,9 +24,9 @@ For release packaging also run `:app:lintRelease :app:assembleRelease` with the 
 
 Record command, source commit, configuration/toolchain, expected/actual results, status and evidence location. Later source changes require rerunning affected checks. Call code inspection self-review, host tests stub-tested, actual compilation build verified, physical tests hardware tested; do not substitute one for another.
 
-## Gate status from this session — 7 October 2026
+## Initial local source-review gate status — 7 October 2026
 
-Baseline `777c04e5`; final implementation commit and source checksums are recorded in the delivered bundle's `SOURCE_MANIFEST.md`. Logs are under `docs/evidence/2026-10-07/`.
+Baseline `777c04e5`; the initial source-review commit is `4418be3`. Logs below describe local verification before the authorized GitHub release build. The release's `BUILD_INFO.txt` identifies the final release commit and supersedes these local software-build blockers when the required cloud checks pass. HIL and installed-device gates remain pending until separately measured.
 
 | Gate | Status | Actual evidence / missing checks |
 | --- | --- | --- |
