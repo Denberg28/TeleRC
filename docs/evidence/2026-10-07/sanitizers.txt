@@ -1,0 +1,4 @@
+==111==Can't open /proc/110/task for reading.
+==110==LeakSanitizer has encountered a fatal error.
+==110==HINT: For debugging, try setting environment variable LSAN_OPTIONS=verbosity=1:log_threads=1
+==110==HINT: LeakSanitizer does not work under ptrace (strace, gdb, etc)

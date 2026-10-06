@@ -40,7 +40,7 @@ import kotlin.concurrent.thread
 class MainActivity : Activity() {
     private enum class Page { SETUP, CONTROLS, TEST_DRIVE, LORA }
     private var page = Page.SETUP
-    private var socket: LinkTransport? = null
+    @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
     private var loraStatus: TextView? = null
     private var loraInfo = "Attach one T3-S3 by native USB, connect, then read board settings."
@@ -56,8 +56,9 @@ class MainActivity : Activity() {
             reconnectHandler.postDelayed(this, 2000)
         }
     }
-    private val controlEnabled = AtomicBoolean(false)
+    private val controlEnabled = LiveControlGate()
     private val commandLock = Any()
+    private var commandEpoch = 0L // Guarded by commandLock; cancels queued ARM after stop/lifecycle loss.
     private val txExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "telerc-tx").apply { isDaemon = true }
     }
@@ -97,7 +98,7 @@ class MainActivity : Activity() {
     private var locationPermissionRequested = false
     private var pendingPhoneLocate = false
     private var started = false
-    private var resumed = false
+    @Volatile private var resumed = false
     private val locationManager by lazy { getSystemService(LOCATION_SERVICE) as LocationManager }
     private val phoneListener = LocationListener { location: Location ->
         if (!mapActive || !location.hasAccuracy() ||
@@ -281,26 +282,30 @@ class MainActivity : Activity() {
         udp: LinkTransport,
         remote: InetAddress,
         system: Int,
+        remotePort: Int,
         releaseToReceiver: Boolean
     ) {
         synchronized(commandLock) {
             repeat(3) { sequence ->
                 val neutral = Mavlink.override(sequence, system, 1, 1500, 1500, 1500, 1500)
-                udp.send(DatagramPacket(neutral, neutral.size, remote, endpointPort))
+                udp.send(DatagramPacket(neutral, neutral.size, remote, remotePort))
             }
             if (releaseToReceiver) {
                 repeat(3) { sequence ->
                     val release = Mavlink.release(100 + sequence, system, 1)
-                    udp.send(DatagramPacket(release, release.size, remote, endpointPort))
+                    udp.send(DatagramPacket(release, release.size, remote, remotePort))
                 }
             }
         }
     }
 
     private fun disableControlState() {
-        controlEnabled.set(false)
-        steering = 1500
-        drive = 1500
+        synchronized(commandLock) {
+            commandEpoch++
+            controlEnabled.disable()
+            steering = 1500
+            drive = 1500
+        }
         if (page == Page.CONTROLS && mapActive) {
             deadReckoning.hold()
             controlsEstimate?.text = "RC STOPPED · last estimate frozen"
@@ -318,6 +323,7 @@ class MainActivity : Activity() {
         val udp = socket
         val remote = endpoint
         val system = target
+        val remotePort = endpointPort
         if (!linkFresh() || armed == null || udp == null || remote == null || system == 0) {
             android.widget.Toast.makeText(this, "ARM state unavailable · wait for a fresh rover heartbeat",
                 android.widget.Toast.LENGTH_SHORT).show()
@@ -332,21 +338,37 @@ class MainActivity : Activity() {
         driveStick?.reset()
         pendingArmState = !armed
         lastArmAck = "WAITING FOR ACK"
+        val epoch = synchronized(commandLock) { commandEpoch }
+        val requestedAt = SystemClock.elapsedRealtime()
 
         txExecutor.execute {
             try {
                 // ARM/DISARM must not switch RC source. Hold neutral but keep the
                 // current MAVLink override/session alive; STOP/DISCONNECT own handover.
-                sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = false)
-                synchronized(commandLock) {
-                    // Repeat the normal command with unique MAVLink sequence numbers.
-                    // This improves delivery over UDP without using force-arm or bypassing
-                    // any ArduRover pre-arm checks.
-                    repeat(3) { attempt ->
+                repeat(3) { attempt ->
+                    synchronized(commandLock) {
+                        if (socket !== udp || !connected.get() || target != system ||
+                            (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                                SystemClock.elapsedRealtime() - requestedAt >= 500))) {
+                            runOnUiThread {
+                                if (socket === udp) { pendingArmState = null; lastArmAck = "COMMAND CANCELLED"; refreshUi() }
+                            }
+                            return@execute
+                        }
+                        if (attempt == 0) sendControlHandoverBlocking(udp, remote, system, remotePort, releaseToReceiver = false)
+                        // USB neutral writes can consume the remaining request lifetime.
+                        if (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                                SystemClock.elapsedRealtime() - requestedAt >= 500)) {
+                            runOnUiThread {
+                                if (socket === udp) { pendingArmState = null; lastArmAck = "COMMAND CANCELLED"; refreshUi() }
+                            }
+                            return@execute
+                        }
                         val command = Mavlink.armDisarm(200 + attempt, system, 1, !armed)
-                        udp.send(DatagramPacket(command, command.size, remote, endpointPort))
-                        if (attempt < 2) Thread.sleep(40)
+                        udp.send(DatagramPacket(command, command.size, remote, remotePort))
                     }
+                    // Let lifecycle/STOP revoke the request between retries.
+                    if (attempt < 2) Thread.sleep(40)
                 }
                 runOnUiThread {
                     android.widget.Toast.makeText(this@MainActivity,
@@ -670,8 +692,11 @@ class MainActivity : Activity() {
             addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         enable = button("Enable control") {
-            if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (linkFresh()) {
-                controlEnabled.set(true)
+            if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (synchronized(commandLock) {
+                val allowed = controlEnabled.enable(target, heartbeatAt, SystemClock.elapsedRealtime())
+                if (allowed) commandEpoch++
+                allowed
+            }) {
                 steeringStick?.isEnabled = true; driveStick?.isEnabled = true
                 if (!mapActive) setControlsMapVisible(true) else {
                     deadReckoning.hold()
@@ -1121,7 +1146,7 @@ class MainActivity : Activity() {
         connect?.text = if (page == Page.LORA) {
             if (wantsLink) { if (usbMode) "Disconnect USB" else "Disconnect Wi-Fi" } else "Connect USB board"
         } else if (wantsLink) "Disconnect" else "Connect"
-        enable?.isEnabled = connected.get()
+        enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
         refreshFunctionButtons()
     }
@@ -1130,11 +1155,17 @@ class MainActivity : Activity() {
         val system = target
         val udp = socket
         val remote = endpoint
+        val remotePort = endpointPort
         disableControlState()
+        val epoch = synchronized(commandLock) { commandEpoch }
         if (system != 0 && udp != null && remote != null) {
             txExecutor.execute {
                 try {
-                    sendControlHandoverBlocking(udp, remote, system, releaseToReceiver)
+                    synchronized(commandLock) {
+                        if (socket === udp && commandEpoch == epoch) {
+                            sendControlHandoverBlocking(udp, remote, system, remotePort, releaseToReceiver)
+                        }
+                    }
                 } catch (_: Exception) {
                     // ESP32 500 ms watchdog remains the final safety layer if phone TX fails.
                 }
@@ -1159,8 +1190,8 @@ class MainActivity : Activity() {
             }
         }
         usbPermissionReceiver = receiver
-        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, IntentFilter(action), Context.RECEIVER_NOT_EXPORTED)
-        else registerReceiver(receiver, IntentFilter(action))
+        // API 26+ flag-bearing overload; the PendingIntent targets our own package.
+        registerReceiver(receiver, IntentFilter(action), Context.RECEIVER_NOT_EXPORTED)
         try {
             manager.requestPermission(device, PendingIntent.getBroadcast(this, 0,
                 Intent(action).setPackage(packageName), PendingIntent.FLAG_IMMUTABLE))
@@ -1218,6 +1249,7 @@ class MainActivity : Activity() {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
+                revokeExpiredControl(udp)
                 // Do not tear down the socket because Android temporarily changes
                 // capabilities on the captured Network object. The ESP32 data path
                 // is authoritative: only an actual UDP failure or explicit
@@ -1235,6 +1267,9 @@ class MainActivity : Activity() {
                 try {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
+                    if (socket !== udp || !connected.get()) break
+                    // Inspect the old heartbeat before accepting a recovery heartbeat.
+                    revokeExpiredControl(udp)
                     if (packet.address == remote && packet.port == number) {
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                         if (usbMode && payload.size <= 280 && String(payload, Charsets.US_ASCII).startsWith("TELERC_LORA_")) {
@@ -1379,17 +1414,6 @@ class MainActivity : Activity() {
                     lastUiRefresh = now
                     runOnUiThread {
                         if (socket === udp && connected.get()) {
-                            // Heartbeat loss must stop command transmission, but it must not
-                            // disable the joystick Views. Disabling the Views causes Android
-                            // to stop delivering touch events and makes control appear dead.
-                            // The TX path is already gated by HeartbeatHealth.isFresh().
-                            // Keep the user's control session latched so it can resume
-                            // automatically as soon as a verified heartbeat returns.
-                            if (!linkFresh() && controlEnabled.get()) {
-                                steering = 1500
-                                drive = 1500
-                                controlsEstimate?.text = "RC PAUSED · waiting for heartbeat"
-                            }
                             refreshUi()
                         }
                     }
@@ -1402,10 +1426,28 @@ class MainActivity : Activity() {
         reconnectHandler.removeCallbacks(reconnect)
         if (resumed && wantsLink) reconnectHandler.postDelayed(reconnect, 2000)
     }
+    private fun revokeExpiredControl(transport: LinkTransport) {
+        val expired = synchronized(commandLock) {
+            if (socket !== transport || !controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime())) false
+            else {
+                commandEpoch++
+                steering = 1500
+                drive = 1500
+                true
+            }
+        }
+        if (expired) runOnUiThread {
+            if (socket === transport && !controlEnabled.get()) {
+                disableControl()
+                controlsEstimate?.text = "RC STOPPED · heartbeat lost · enable again when ready"
+            }
+        }
+    }
     private fun stop(explicitDisconnect: Boolean = false) {
         val udp = socket
         val remote = endpoint
         val system = target
+        val remotePort = endpointPort
         disableControlState()
         connected.set(false)
         socket = null
@@ -1431,9 +1473,9 @@ class MainActivity : Activity() {
                     // Neutralize first. The bridge owns the actual receiver-release
                     // transition when it receives TELERC_DISCONNECT_V1, avoiding two
                     // independent handover sequences racing each other.
-                    sendControlHandoverBlocking(udp, remote, system, releaseToReceiver = false)
+                    sendControlHandoverBlocking(udp, remote, system, remotePort, releaseToReceiver = false)
                     val message = "TELERC_DISCONNECT_V1".toByteArray(Charsets.US_ASCII)
-                    repeat(3) { udp.send(DatagramPacket(message, message.size, remote, endpointPort)) }
+                    repeat(3) { udp.send(DatagramPacket(message, message.size, remote, remotePort)) }
                 } catch (_: Exception) {
                     // If the explicit message cannot be delivered, the bridge watchdog
                     // remains in neutral hold instead of guessing that handover succeeded.

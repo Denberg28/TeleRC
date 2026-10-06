@@ -116,13 +116,14 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(activity, Environment.DIRECTORY_DOWNLOADS, apk.name)
-            downloadId = downloads.enqueue(request)
             if (!receiverRegistered) {
                 val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-                if (Build.VERSION.SDK_INT >= 33) activity.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-                else activity.registerReceiver(receiver, filter)
+                // Flag-bearing overload exists since API 26 (our minimum SDK).
+                // DownloadManager sends this system broadcast from outside our UID.
+                activity.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
                 receiverRegistered = true
             }
+            downloadId = downloads.enqueue(request)
             report("Downloading TeleRC update…")
         } catch (e: Exception) { report("Could not start the update download.") }
     }

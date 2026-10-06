@@ -51,5 +51,27 @@ int main(){
  wire[12]^=1;controlUart.rx.assign(wire,wire+wireN);controlUart.cursor=0;handleUdpPacket();assert(axisUpdatedMs[1]==beforeAxis);
  controlUart.rx.clear();controlUart.cursor=0;
 #endif
+ // Discovery keeps telemetry pairing alive but must not renew motor commands.
+ requestedMode=ControlMode::DIRECT;lastRawRequestedMode=requestedMode;pins[16]=LOW;
+ disconnectLatched=false;activeMode=ControlMode::DIRECT;testMs=1000;testUs=1000000;
+ packet(rc());handleArmCommand(true);assert(directArmed);
+ packet(rc(1500,1800));updateMotors(micros());assert(currentCmd[0]>0);
+ tick(501);packet(std::vector<uint8_t>(DISCOVERY,DISCOVERY+strlen(DISCOVERY)));
+ assert(controllerLeaseFresh());updateModeArbiter(micros());
+ assert(activeMode==ControlMode::FAILSAFE);assert(!directArmed);stopped();
+ // Fresh non-neutral data cannot restore a failed source. Neutral transfer
+ // restores DIRECT only; explicit neutral ownership and ARM are still required.
+ packet(rc(1500,1800));updateModeArbiter(micros());tick(301);updateModeArbiter(micros());
+ assert(activeMode==ControlMode::FAILSAFE);stopped();
+ packet(rc());updateModeArbiter(micros());tick(301);updateModeArbiter(micros());
+ assert(activeMode==ControlMode::DIRECT);assert(!directArmed);assert(!directControlsOwned());stopped();
+ packet(rc());assert(safeToDirectArm());handleArmCommand(true);assert(directArmed);
+#ifndef TEST_UART_MOTOR
+ // A competing endpoint must not refresh the paired controller's axes or lease.
+ auto axisAt=axisUpdatedMs[1];auto leaseAt=lastControllerMs;
+ udp.peer=IPAddress(192,168,4,3);tick(10);packet(rc(1500,1900));
+ assert(axisUpdatedMs[1]==axisAt);assert(lastControllerMs==leaseAt);
+ udp.peer=IPAddress(192,168,4,2);
+#endif
  std::cout<<"Hybrid safety regression checks passed\n";
 }

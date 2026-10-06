@@ -19,6 +19,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libssl-dev
       - run: python bridge/sync_motor_core.py --check
       - run: bridge/tests/run.sh
+      - run: SANITIZE=1 bridge/tests/run.sh
   compile:
     runs-on: ubuntu-latest
     strategy:

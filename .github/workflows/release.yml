@@ -21,6 +21,7 @@ jobs:
         run: |
           python bridge/sync_motor_core.py --check
           bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
       - name: Compile matching dedicated ESP32-S3 sketches
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -47,7 +48,7 @@ jobs:
           TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
           TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
           TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
-        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease --no-daemon
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease --no-daemon
       - name: Publish release APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,8 +58,26 @@ jobs:
           awk -v release="## $version" '$0 == release {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md > release-notes.md
           test -s release-notes.md
           cp app/build/outputs/apk/release/app-release.apk "TeleRC-v${version}.apk"
-          zip -qr "TeleRC-bridge-v${version}.zip" bridge
-          sha256sum "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" > SHA256SUMS.txt
-          gh release create "v${version}" "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" SHA256SUMS.txt --title "TeleRC v${version}" --notes-file release-notes.md --latest
+          git archive --format=zip --output="TeleRC-bridge-v${version}.zip" "$GITHUB_SHA" bridge
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.50/TeleRC-v0.8.50.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-release.py "TeleRC-v${version}.apk" "$RUNNER_TEMP/telerc-baseline.apk" > BUILD_INFO.txt
+          sha256sum "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" BUILD_INFO.txt > SHA256SUMS.txt
+          gh release create "v${version}" "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" SHA256SUMS.txt BUILD_INFO.txt --title "TeleRC v${version} test candidate" --notes-file release-notes.md --prerelease --latest=false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-release
+          path: |
+            TeleRC-v*.apk
+            TeleRC-bridge-v*.zip
+            SHA256SUMS.txt
+            BUILD_INFO.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-release-evidence
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-*.xml
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"
