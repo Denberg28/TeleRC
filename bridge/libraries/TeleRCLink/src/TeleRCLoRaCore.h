@@ -14,9 +14,11 @@
 #endif
 // LILYGO T3-S3 V1.2/V1.3 manufacturer pin map. GPIO43/44 are UART, not GPIO17/18.
 #if TELERC_RADIO_VARIANT == 1262
-SX1262 radio = new Module(7,33,8,34);
+Module radioModule(7,33,8,34);
+SX1262 radio(&radioModule);
 #elif TELERC_RADIO_VARIANT == 1276
-SX1276 radio = new Module(7,9,8,33);
+Module radioModule(7,9,8,33);
+SX1276 radio(&radioModule);
 #else
 #error Unsupported radio: use the exact SX1262 or SX1276 board; SX1278/SX1280 need a separate profile.
 #endif

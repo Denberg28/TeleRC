@@ -1,6 +1,15 @@
 # TeleRC ESP32-S3 bridge firmware options
 
-TeleRC now has three ESP32-S3 rover firmware paths:
+For the swappable architecture, flash **TeleRCMotorController** to the fixed PWM ESP32-S3 and select one communication option:
+
+| Control link | Removable rover command board | Phone/base connection |
+| --- | --- | --- |
+| Wi-Fi | ESP32-S3 running `TeleRCWiFiGateway` | TeleRC-Rover AP / UDP 14550 |
+| LoRa | T3-S3 running `TeleRCLoRaRover` | Second T3-S3 running `TeleRCLoRaBase` via native USB OTG |
+
+Read [QUICK_START.md](QUICK_START.md) for Arduino library installation and sketch selection. The fixed motor MCU owns PWM and DIRECT/AUTOPILOT/FAILSAFE arbitration. Only one gateway may use its UART connector; swap with power removed. See [the common harness guide](SWAPPABLE_GATEWAYS.md).
+
+The following legacy firmware paths remain available:
 
 - **TeleRCBridge/** — Wi-Fi/MAVLink bridge for a SpeedyBee/Pixhawk running ArduRover.
 - **TeleRCDirectDrive/** — ESP32-S3-only basic rover controller that drives 4x BTS7960 directly from the existing Android/PC TeleRC CH1 steering / CH2 drive protocol.
@@ -14,7 +23,7 @@ See `TeleRCDirectDrive/README.md` for the basic ESP32-only rover and `TeleRCHybr
 
 # ESP32-S3 Wi-Fi MAVLink bridge for TeleRC
 
-This example is for **Arduino-ESP32** on an ESP32-S3 DevKitC-1-style board. It has not been bench-tested on your specific rover. TeleRC itself has no arming, disarming, mode selection, MAVLink signing, or authentication. The Flysky receiver and an independent physical stop remain essential.
+This example is for **Arduino-ESP32** on an ESP32-S3 DevKitC-1-style board. It has not been bench-tested on your specific rover. TeleRC supplies standard ARM/DISARM commands with telemetry confirmation; the flight controller enforces its safety checks. The legacy MAVLink bridge has no app flight-mode control, MAVLink signing, or command authentication. The Flysky receiver and an independent physical stop remain essential.
 
 ## Before uploading
 
@@ -30,7 +39,7 @@ If Setup says **WAITING FOR HEARTBEAT**, Connect only means the phone opened a U
 
 For TeleRC's purple measured rover track, the FC also needs a valid GPS and to emit `GLOBAL_POSITION_INT`. The phone GPS alone defines Home and the phone branch; a lost vehicle link cannot supply live rover positions.
 
-If the app says **CONTROL ON** but Mission Planner Radio Calibration does not respond to the phone, use the three-second `Commands` Serial Monitor line. Hold a stick for several seconds and compare two lines: `received=0` means the bridge sees no phone commands; rising `rejected` and its `reject=` reason identify bridge filtering; rising `accepted` and `UART_TX_bytes` with changing `CH1` or `CH3` mean valid commands were handed to ESP32 UART TX, but do not prove F405 acceptance. Then check ESP GPIO17 → F405 R3, common ground, `RC_OPTIONS` bit 1 clear, `MAV_GCS_SYSID=255` if enforced, and `RC_OVERRIDE_TIME`. Keep motor power disconnected during this test.
+If the app says **CONTROL ON** but Mission Planner Radio Calibration does not respond to the phone, use the three-second `Commands` Serial Monitor line. Hold a stick for several seconds and compare two lines: `received=0` means the bridge sees no phone commands; rising `rejected` and its `reject=` reason identify bridge filtering; rising `accepted` and `UART_TX_bytes` with changing `CH1` or `CH2` mean valid commands were handed to ESP32 UART TX, but do not prove F405 acceptance. Then check ESP GPIO17 → F405 R3, common ground, `RC_OPTIONS` bit 1 clear, `MAV_GCS_SYSID=255` if enforced, and `RC_OVERRIDE_TIME`. Keep motor power disconnected during this test.
 
 TeleRC 0.8.8 and the matching ESP32 sketch add **Setup → Diagnose link**. Every three seconds after discovery, the bridge sends its UART byte and complete-frame counters directly to the paired phone; this report never enters the FC and cannot enable control. Tap Diagnose link at least four seconds after Connect to distinguish no bridge response, zero UART bytes, incomplete frames, and missing valid heartbeat. Older bridge firmware does not send this report and will show no bridge response even if it broadcasts MAVLink telemetry.
 

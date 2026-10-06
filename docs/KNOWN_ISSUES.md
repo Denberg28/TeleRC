@@ -1,0 +1,11 @@
+# Verification limits and next work
+
+- **Local Android environment — BLOCKED:** this workspace lacks the Android SDK and cannot download Gradle from `services.gradle.org`. Initial local unit/build/lint checks could not run; authorized cloud build evidence is recorded in the final release `BUILD_INFO.txt`. Verify API 26/33+ receiver behavior, queued ARM cancellation, and heartbeat recovery on devices even after cloud checks pass.
+- **Local actual firmware toolchain — BLOCKED:** Arduino CLI/ESP32 toolchain is absent here. Host stubs do not establish target compilation. The pinned cloud release/CI compiles the six current sketches and two alternate LoRa builds; final results are recorded in `BUILD_INFO.txt`.
+- **BLOCKED — HIL:** no attached phone, T3-S3 pair, motor MCU, F405, drivers or motors. USB attachment, electrical levels, radio profile, timing, stopping, resets, power supply and repeated takeover need measured bench evidence.
+- **NOT TESTED — PC integration:** preserve sparse MAVLink inputs, but validate the actual Windows client/relay, wheel removal and release-to-transmitter workflow.
+- **Reviewed limitation — freshness/security:** Wi-Fi/legacy MAVLink lacks signing and a command timestamp/replay window. A trusted endpoint's duplicate/delayed valid frames can renew accepted-command freshness. LoRa's one-use challenge limits radio response replay, but USB/UART input is physically trusted. Do not characterize Wi-Fi as authenticated or full-stack replay protected.
+- **Reviewed limitation — updater:** `/releases/latest` excludes prereleases. New test candidates require manual installation; candidate creation must not replace the latest retained stable artifact. The update receiver fix is source-reviewed; actual download/install/signing continuity remains untested.
+- **Reviewed limitation — physical safe state:** zero PWM or neutral override does not prove coast/brake behavior, stop distance or an autonomous FC stop. Document each installed mode's expected output and measure it.
+
+Next: verify the final release `BUILD_INFO.txt` and checksums, then run `docs/TESTING.md` on raised wheels. Package/publish a signed test candidate only after required automated and packaging checks pass. Stable promotion remains blocked by HIL and installation/compatibility checks.

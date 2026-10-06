@@ -5,6 +5,15 @@
 - Added active-channel ownership tracking so sparse watchdog neutralization affects only controlled channels.
 - Added deterministic stale-sender release before Android/PC handover.
 
+## 0.8.51
+
+- Signed test candidate with matching dedicated sketches. Required Android unit/lint/build, host sanitizer, actual-board compile and signing-continuity gates run before publication; installed-device and hardware tests remain pending.
+- Revoke Android live-control authority after heartbeat expiry; retain transport and require explicit Enable Control after telemetry recovery. Add control-gate regressions.
+- Cancel expired/invalidated queued ARM requests; recheck between retries. Capture each session's endpoint port for handover/disconnect packets and synchronize stop state against control transmission.
+- Use the API 26+ receiver registration overload with explicit flags for system update and package-scoped USB permission broadcasts; register the updater receiver before enqueueing its download.
+- Adopt QA/compatibility/HIL documentation, lint gates, host sanitizer checks, and prerelease-only automated publication pending measured hardware evidence.
+- Give the LoRa radio module static lifetime, removing an unowned boot-time allocation identified by the new leak-sanitizer gate while retaining its pins/profile.
+
 ## 0.8.50
 
 - Sanitize release validation: run controller synchronization and host safety regressions before signing; compile the dedicated motor controller, Wi-Fi gateway and both LoRa roles, including both supported radio variants.

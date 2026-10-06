@@ -1,0 +1,11 @@
+Observed commands on 7 October 2026, source review branch:
+
+./scripts/check-android-env.sh
+Exit 1: Android SDK missing. Set ANDROID_HOME to your Android SDK directory.
+
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
+Exit 1: Downloading https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+java.net.SocketException: Network is unreachable
+
+No Android test, lint, or compiler task executed. These are infrastructure blockers, not a passing source verification.
+Arduino CLI is absent; actual target builds are BLOCKED.

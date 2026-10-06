@@ -1,0 +1,12 @@
+Date: 2026-10-07 (Asia/Manila)
+Baseline: 777c04e5ed8a32be9cb999b7c39761157e4099c4
+Branch: review/workflow-reliability-20261007
+Final commit: SOURCE_MANIFEST.md in delivered bundle
+Environment: Linux x86_64; OpenJDK 17.0.20; g++ 13.3.0; Python 3.12.14
+Evidence: self-reviewed source; host tests use Arduino/Wi-Fi/RadioLib stubs and OpenSSL authentication adapter.
+Host regression: PASS (15 C++ executable configurations, 4 Python tests).
+ASan/UBSan: PASS with local leak detection disabled because LeakSanitizer cannot inspect sandbox process tasks.
+LeakSanitizer: BLOCKED (original failure retained in sanitizers.txt); CI keeps default leak detection.
+Shell/YAML: PASS, bash -n and PyYAML BaseLoader parsing of all three workflow files.
+Motor generated-core synchronization: PASS; empty motor-sync.txt means successful --check exit 0.
+Android build/JVM/lint and target firmware builds: BLOCKED; HIL: BLOCKED.
