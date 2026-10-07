@@ -452,11 +452,12 @@ class MainActivity : Activity() {
         loraStatus?.text = loraInfo
         reconnectHandler.removeCallbacks(loraTimeout)
         reconnectHandler.postDelayed(loraTimeout, 3000)
+        val expiresAt = SystemClock.elapsedRealtime() + 3000
         refreshUi()
         txExecutor.execute {
             try {
                 synchronized(commandLock) {
-                    if (socket !== link) return@execute
+                    if (socket !== link || SystemClock.elapsedRealtime() >= expiresAt) return@execute
                     val bytes = message.toByteArray(Charsets.US_ASCII)
                     link.send(DatagramPacket(bytes, bytes.size, InetAddress.getByName("127.0.0.1"), 14550))
                 }
