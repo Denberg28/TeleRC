@@ -82,3 +82,19 @@ Baseline `51e98a0797c476647dea88cbebdee6a52503c2a6`. See `docs/LORA_SETUP_REVIEW
 ## Four-driver PWM and LoRa command review — 7 October 2026
 
 This extends the setup review above; its original app-only scope is historical. Firmware-review baseline is `19ffbb903bd447e151ac678510f9aa4ceec99866`. See [LORA_MOTOR_REVIEW.md](LORA_MOTOR_REVIEW.md) for findings, compatibility, gates A–F and executable tests. There are now 21 C++ host executions and 4 Python relay tests. Both Arduino core API branches and both PWM input modes are exercised. Actual target CI requires seven primary builds plus two alternate LoRa and one four-input PWM build with ESP32 core 3.3.2 / RadioLib 7.2.1. Android unit/lint/debug build must pass on the combined PR. No release is triggered by this review; HIL remains BLOCKED.
+
+
+## 0.8.53 authorized candidate build
+
+Reviewed baseline `8e2e6df550f919d27d9ee00c5a6dc0ed45e9c9d2` passed Android CI run 37614043150 and ESP32/host CI run 37614043123: Android unit/debug lint/build, 21 C++ executions, 4 Python relay tests, default full sanitizers, seven primary and three alternate target builds. Those are baseline evidence. Candidate version 0.8.53/code 71 requires fresh release validation including debug/release lint/build, signing continuity with published 0.8.50 and binary packaging/hash verification. The release's `BUILD_INFO.txt` identifies the final commit and successful run; it supersedes baseline software evidence only after completion.
+
+| Gate | Candidate status before release workflow | Required evidence / limitation |
+| --- | --- | --- |
+| A — source/build | PASS baseline; candidate NOT TESTED | Final release run must build Android and ten pinned ESP32-S3 targets, including actual T3-S3 profiles |
+| B — behavior | PASS simulator tested; hardware BLOCKED | PWM startup/loss/recovery and authenticated protocol-to-four-driver tests; device/USB operation pending |
+| C — regression | PASS baseline; candidate NOT TESTED | Final JVM, lint and full host/sanitizer checks |
+| D — integration | PASS host chain; physical BLOCKED | Correct firmware role/profile/package hashes; USB/RF/FC/driver measurements pending |
+| E — HIL | BLOCKED | No installed hardware; use `LORA_MOTOR_REVIEW.md` and restrained-wheel procedure above |
+| F — delivery | NOT TESTED before workflow | Signed prerelease, matching source/binaries, checksums, installation/rollback and verified signer/version |
+
+Next concrete check after successful publication: manually install 0.8.53 over 0.8.52, verify retained settings, flash the intended motor/BASE/ROVER roles without whole-chip erase, provision blank radios and execute four-wheel mapping and loss/recovery HIL. Stable promotion remains blocked. Android downgrade to code 70 normally requires uninstalling code 71 and loses app data; export routes/settings first. Keep the 0.8.52 APK and matching source firmware for rollback, preserve pairing NVS and signing identity.

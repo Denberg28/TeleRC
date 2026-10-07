@@ -5,10 +5,14 @@ on:
     paths:
       - 'bridge/**'
       - '.github/workflows/esp32-bridge.yml'
+      - 'scripts/build-firmware.py'
+      - 'scripts/test_firmware_package.py'
   pull_request:
     paths:
       - 'bridge/**'
       - '.github/workflows/esp32-bridge.yml'
+      - 'scripts/build-firmware.py'
+      - 'scripts/test_firmware_package.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libssl-dev
       - run: python bridge/sync_motor_core.py --check
+      - run: python -m unittest discover -s scripts -p 'test_firmware_package.py'
       - run: bridge/tests/run.sh
       - run: SANITIZE=1 bridge/tests/run.sh
   compile:

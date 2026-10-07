@@ -19,6 +19,7 @@ jobs:
       - uses: arduino/setup-arduino-cli@v2
       - name: Validate dedicated controller and gateway safety
         run: |
+          python -m unittest discover -s scripts -p 'test_firmware_package.py'
           python bridge/sync_motor_core.py --check
           bridge/tests/run.sh
           SANITIZE=1 bridge/tests/run.sh
@@ -27,13 +28,8 @@ jobs:
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli lib install RadioLib@7.2.1
-          for sketch in TeleRCBridge TeleRCHybridController TeleRCMotorController TeleRCWiFiGateway TeleRCLoRaBase TeleRCLoRaRover BTS7960PWMConverter; do
-            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries "bridge/$sketch"
-          done
-          for sketch in TeleRCLoRaBase TeleRCLoRaRover; do
-            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries --build-property 'compiler.cpp.extra_flags=-DTELERC_RADIO_VARIANT=1276 -DTELERC_BASE_WIFI=0' "bridge/$sketch"
-          done
-          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries --build-property 'compiler.cpp.extra_flags=-DTELERC_PWM_PAIRED=0' bridge/BTS7960PWMConverter
+          version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          python scripts/build-firmware.py --version "$version" --commit "$GITHUB_SHA"
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
@@ -49,7 +45,7 @@ jobs:
           TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
           TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
           TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease --no-daemon
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease --no-daemon
       - name: Publish release APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,15 +57,17 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "TeleRC-v${version}.apk"
           git archive --format=zip --output="TeleRC-bridge-v${version}.zip" "$GITHUB_SHA" bridge
           curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.50/TeleRC-v0.8.50.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
-          python scripts/verify-release.py "TeleRC-v${version}.apk" "$RUNNER_TEMP/telerc-baseline.apk" > BUILD_INFO.txt
-          sha256sum "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" BUILD_INFO.txt > SHA256SUMS.txt
-          gh release create "v${version}" "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" SHA256SUMS.txt BUILD_INFO.txt --title "TeleRC v${version} test candidate" --notes-file release-notes.md --prerelease --latest=false
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.52/TeleRC-v0.8.52.apk --output "$RUNNER_TEMP/telerc-previous.apk"
+          python scripts/verify-release.py "TeleRC-v${version}.apk" "$RUNNER_TEMP/telerc-baseline.apk" "$RUNNER_TEMP/telerc-previous.apk" "TeleRC-firmware-v${version}.zip" > BUILD_INFO.txt
+          sha256sum "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" "TeleRC-firmware-v${version}.zip" BUILD_INFO.txt > SHA256SUMS.txt
+          gh release create "v${version}" "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" "TeleRC-firmware-v${version}.zip" SHA256SUMS.txt BUILD_INFO.txt --title "TeleRC v${version} test candidate" --notes-file release-notes.md --prerelease --latest=false --target "$GITHUB_SHA"
       - uses: actions/upload-artifact@v4
         with:
           name: TeleRC-release
           path: |
             TeleRC-v*.apk
             TeleRC-bridge-v*.zip
+            TeleRC-firmware-v*.zip
             SHA256SUMS.txt
             BUILD_INFO.txt
       - uses: actions/upload-artifact@v4

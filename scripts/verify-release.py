@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Verify signed release identity/version against the retained published APK."""
 import hashlib
+import importlib.util
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+import zipfile
 
 
 def output(*command):
@@ -21,8 +24,40 @@ def signers(apk, tools):
     return sorted(values)
 
 
+def verify_firmware(archive, version, commit):
+    spec = importlib.util.spec_from_file_location("firmware", Path(__file__).with_name("build-firmware.py"))
+    firmware = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(firmware)
+    with zipfile.ZipFile(archive) as bundle:
+        manifest = json.loads(bundle.read("MANIFEST.json"))
+        if (manifest["version"], manifest["source_commit"], manifest["esp32_core"], manifest["radiolib"]) != (version, commit, "3.3.2", "7.2.1"):
+            raise RuntimeError("Firmware manifest version/source/toolchain mismatch")
+        builds = manifest["builds"]
+        if len(builds) != len(firmware.TARGETS):
+            raise RuntimeError("Incomplete firmware matrix")
+        for build, expected in zip(builds, firmware.TARGETS):
+            if (build["target"], build["sketch"], build["fqbn"], build["extra_flags"]) != expected:
+                raise RuntimeError("Firmware role/profile mismatch")
+            images = build["images"]
+            if len(images) != 4 or {x["kind"] for x in images} != set(firmware.OFFSETS):
+                raise RuntimeError("Incomplete firmware images")
+            for image in images:
+                data = bundle.read(image["path"])
+                if not data or len(data) != image["bytes"] or hashlib.sha256(data).hexdigest() != image["sha256"] or image["offset"] != firmware.OFFSETS[image["kind"]]:
+                    raise RuntimeError("Firmware image size/digest/offset mismatch")
+        sums = bundle.read("SHA256SUMS.txt").decode().splitlines()
+        covered = set()
+        for line in sums:
+            digest, name = line.split("  ", 1)
+            if name in covered or hashlib.sha256(bundle.read(name)).hexdigest() != digest:
+                raise RuntimeError("Firmware archive digest mismatch")
+            covered.add(name)
+        if covered != set(bundle.namelist()) - {"SHA256SUMS.txt"} or len(bundle.namelist()) != 43 or any("merged" in name for name in bundle.namelist()):
+            raise RuntimeError("Unexpected/unverified firmware archive members")
+
+
 def main():
-    apk, baseline = map(Path, sys.argv[1:3])
+    apk, baseline, previous, firmware = map(Path, sys.argv[1:5])
     config = Path("app/build.gradle.kts").read_text()
     version = re.search(r'versionName = "([^"]+)"', config).group(1)
     code = re.search(r"versionCode = (\d+)", config).group(1)
@@ -35,6 +70,11 @@ def main():
     current = signers(apk, tools)
     if current != signers(baseline, tools):
         raise RuntimeError("Signing identity differs from retained 0.8.50 release")
+    previous_badging = output(str(tools / "aapt"), "dump", "badging", str(previous))
+    previous_package = re.search(r"^package: name='([^']+)' versionCode='([^']+)'", previous_badging, re.M)
+    if not previous_package or previous_package.group(1) != package.group(1) or int(code) <= int(previous_package.group(2)) or current != signers(previous, tools):
+        raise RuntimeError("Version/signing upgrade from previous 0.8.52 candidate is invalid")
+    verify_firmware(firmware, version, os.environ["GITHUB_SHA"])
     tests = failures = errors = skipped = 0
     reports = list(Path("app/build/test-results/testDebugUnitTest").glob("TEST-*.xml"))
     if not reports:
@@ -59,12 +99,15 @@ def main():
     print("Application ID: io.github.denberg28.telerc")
     print(f"Signing certificate SHA-256: {', '.join(current)}")
     print("Signing continuity with published v0.8.50: PASS")
+    print(f"Upgrade identity/version progression from v0.8.52 code {previous_package.group(2)} to code {code}: PASS")
     print(f"JVM tests: {tests} passed, {failures} failures, {errors} errors, {skipped} skipped")
     print("Android debug/release lint: PASS (no errors/fatal issues)")
     print("Host regressions and default ASan/UBSan: PASS (required preceding workflow steps)")
-    print("Actual firmware: ESP32 3.3.2 / RadioLib 7.2.1; seven primary targets, two alternate LoRa builds and four-input PWM build passed")
+    print("Actual firmware: ESP32 3.3.2 / RadioLib 7.2.1; ten configurations compiled, including manufacturer T3-S3 SX1262/SX1276 profiles and both PWM input modes")
+    print("Firmware archive: roles/profiles, source commit, image offsets, 40 binary sizes/digests and complete member checksums verified; no merged NVS-overwriting images")
     print("Toolchain: JDK 17 / Gradle 8.11.1 / AGP 8.9.2 / Kotlin 2.1.20 / Android SDK & Build Tools 35")
     print(f"APK SHA-256: {hashlib.sha256(apk.read_bytes()).hexdigest()}")
+    print(f"Firmware ZIP SHA-256: {hashlib.sha256(firmware.read_bytes()).hexdigest()}")
     print("Hardware-in-the-loop, installed-device upgrade and field validation: NOT TESTED")
     print("Tier: prerelease for restrained bench validation; not stable hardware readiness")
 

@@ -1,4 +1,6 @@
-## Unreleased — LoRa setup and four-driver motor review
+## 0.8.53
+
+- Signed test candidate, versionCode 71, with matching compiled ESP32-S3 and LILYGO T3-S3 binaries, source sketches, flash instructions, build evidence and checksums.
 
 - Center the LoRa setup in compact responsive cards with consistent padding and paired action rows.
 - Add pairing-key Show/Hide, hide on pause/navigation/disconnect, and confirm draft-key replacement.
