@@ -9,6 +9,15 @@ class LoRaSetupExchangeTest {
     private fun ready() = LoRaSetupExchange().apply {
         assertTrue(beginRead()); receive(info); assertTrue(canSave)
     }
+    @Test fun blankFirmwareBoardWithUnsetFrequencyCanBeProvisioned() {
+        val session = LoRaSetupExchange(); assertTrue(session.beginRead())
+        val blank = "TELERC_LORA_INFO_V1,BASE,1262,0,0,2,f14c,0,0,0,0"
+        session.receive(blank)
+        assertTrue(session.canSave); assertEquals(0, session.board?.khz)
+        assertTrue(LoRaSetup.describe(blank).contains("frequency unset"))
+        assertNotNull(session.beginSave(draft))
+        assertNull(LoRaSetup.board(blank.replace(",0,0,2", ",1,0,2")))
+    }
     @Test fun requiresARealInactiveBoardReadBeforeSave() {
         val session = LoRaSetupExchange()
         assertNull(session.beginSave(draft))

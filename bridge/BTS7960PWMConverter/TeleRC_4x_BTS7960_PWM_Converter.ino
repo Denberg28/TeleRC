@@ -47,7 +47,10 @@
 
 // true  = 2-input skid-steer mode: LEFT drives motors 0/1, RIGHT drives 2/3.
 // false = 4 independent RC inputs, one per BTS7960.
-constexpr bool PAIRED_SKID_STEER = true;
+#ifndef TELERC_PWM_PAIRED
+#define TELERC_PWM_PAIRED 1
+#endif
+constexpr bool PAIRED_SKID_STEER = TELERC_PWM_PAIRED;
 
 // In four-input mode, loss of any required RC signal stops all motors.
 constexpr bool FAILSAFE_ALL_STOP = true;
@@ -66,6 +69,7 @@ constexpr uint16_t RC_DEADBAND_US = 35;
 
 // Signal-loss timeout.
 constexpr uint32_t RC_TIMEOUT_US = 150000;
+constexpr uint32_t SOURCE_NEUTRAL_DWELL_US = 300000;
 
 // Output PWM.
 constexpr uint32_t PWM_FREQ_HZ = 20000;
@@ -121,6 +125,12 @@ constexpr bool INVERT_MOTOR[4] = {
 // RC INPUT CAPTURE
 // -----------------------------------------------------------------------------
 
+portMUX_TYPE captureMux = portMUX_INITIALIZER_UNLOCKED;
+volatile bool riseSeen[4] = {}, pulseValid[4] = {};
+bool snapshotValid[4] = {};
+uint32_t snapshotLastUs[4] = {};
+uint16_t snapshotPulseUs[4] = {};
+
 volatile uint32_t riseUs[4] = {0, 0, 0, 0};
 volatile uint32_t lastValidPulseUs[4] = {0, 0, 0, 0};
 volatile uint16_t pulseWidthUs[4] = {
@@ -129,17 +139,24 @@ volatile uint16_t pulseWidthUs[4] = {
 
 static inline void IRAM_ATTR captureEdge(uint8_t ch) {
   const uint32_t now = micros();
-
+  portENTER_CRITICAL_ISR(&captureMux);
   if (digitalRead(RC_IN_PIN[ch])) {
-    riseUs[ch] = now;
+    riseUs[ch] = now; riseSeen[ch] = true;
   } else {
     const uint32_t width = now - riseUs[ch];
-
-    if (width >= RC_VALID_MIN_US && width <= RC_VALID_MAX_US) {
-      pulseWidthUs[ch] = static_cast<uint16_t>(width);
-      lastValidPulseUs[ch] = now;
-    }
+    pulseValid[ch] = riseSeen[ch] && width >= RC_VALID_MIN_US && width <= RC_VALID_MAX_US;
+    if (pulseValid[ch]) {pulseWidthUs[ch] = uint16_t(width); lastValidPulseUs[ch] = now;}
+    riseSeen[ch] = false;
   }
+  portEXIT_CRITICAL_ISR(&captureMux);
+}
+
+void snapshotInputs() {
+  portENTER_CRITICAL(&captureMux);
+  for (uint8_t i = 0; i < 4; ++i) {
+    snapshotPulseUs[i] = pulseWidthUs[i]; snapshotLastUs[i] = lastValidPulseUs[i]; snapshotValid[i] = pulseValid[i];
+  }
+  portEXIT_CRITICAL(&captureMux);
 }
 
 void IRAM_ATTR rc0ISR() { captureEdge(0); }
@@ -156,18 +173,20 @@ constexpr uint8_t RPWM_CH[4] = {0, 2, 4, 6};
 constexpr uint8_t LPWM_CH[4] = {1, 3, 5, 7};
 #endif
 
-void attachMotorPwm() {
+bool attachMotorPwm() {
+  bool ok = true;
   for (uint8_t i = 0; i < 4; ++i) {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcAttach(RPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS);
-    ledcAttach(LPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS);
+    ok = ledcAttach(RPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS) && ok;
+    ok = ledcAttach(LPWM_PIN[i], PWM_FREQ_HZ, PWM_BITS) && ok;
 #else
-    ledcSetup(RPWM_CH[i], PWM_FREQ_HZ, PWM_BITS);
-    ledcSetup(LPWM_CH[i], PWM_FREQ_HZ, PWM_BITS);
+    ok = (ledcSetup(RPWM_CH[i], PWM_FREQ_HZ, PWM_BITS) > 0) && ok;
+    ok = (ledcSetup(LPWM_CH[i], PWM_FREQ_HZ, PWM_BITS) > 0) && ok;
     ledcAttachPin(RPWM_PIN[i], RPWM_CH[i]);
     ledcAttachPin(LPWM_PIN[i], LPWM_CH[i]);
 #endif
   }
+  return ok;
 }
 
 static inline void pwmWritePin(uint8_t motor, bool rpwm, uint8_t duty) {
@@ -212,8 +231,7 @@ void stopAllMotors() {
 // -----------------------------------------------------------------------------
 
 bool channelFresh(uint8_t ch, uint32_t nowUs) {
-  const uint32_t last = lastValidPulseUs[ch];
-  return (last != 0) && ((uint32_t)(nowUs - last) <= RC_TIMEOUT_US);
+  return snapshotValid[ch] && uint32_t(nowUs - snapshotLastUs[ch]) < RC_TIMEOUT_US;
 }
 
 int rcPulseToCommand(uint16_t us) {
@@ -288,74 +306,62 @@ int slewToward(int current, int target) {
 int currentCmd[4] = {0, 0, 0, 0};
 int targetCmd[4]  = {0, 0, 0, 0};
 
-uint32_t lastControlUs = 0;
-uint32_t lastDiagMs = 0;
+uint32_t lastControlUs = 0, lastDiagMs = 0;
+bool motorPwmReady = false, sourceEnabled = false, neutralTracking = false;
+uint32_t neutralSinceUs = 0, snapshotAtUs = 0;
 
-void computeTargets(uint32_t nowUs) {
+void hardStop() {
+  sourceEnabled = false; neutralTracking = false;
+  for (uint8_t i = 0; i < 4; ++i) { currentCmd[i] = targetCmd[i] = 0; }
+  stopAllMotors();
+}
+
+bool computeTargets(uint32_t nowUs) {
   if (PAIRED_SKID_STEER) {
-    const bool leftFresh  = channelFresh(0, nowUs);
-    const bool rightFresh = channelFresh(1, nowUs);
-
-    if (!leftFresh || !rightFresh) {
-      for (uint8_t i = 0; i < 4; ++i) targetCmd[i] = 0;
-      return;
-    }
-
-    const int left  = rcPulseToCommand(pulseWidthUs[0]);
-    const int right = rcPulseToCommand(pulseWidthUs[1]);
-
-    targetCmd[0] = left;   // Front Left
-    targetCmd[1] = left;   // Rear Left
-    targetCmd[2] = right;  // Front Right
-    targetCmd[3] = right;  // Rear Right
-    return;
+    if (!channelFresh(0, nowUs) || !channelFresh(1, nowUs)) return false;
+    targetCmd[0] = targetCmd[1] = rcPulseToCommand(snapshotPulseUs[0]);
+    targetCmd[2] = targetCmd[3] = rcPulseToCommand(snapshotPulseUs[1]);
+    return true;
   }
-
-  bool anyLost = false;
-
+  bool anyLost = false, anyFresh = false;
   for (uint8_t i = 0; i < 4; ++i) {
-    if (!channelFresh(i, nowUs)) {
-      anyLost = true;
-      targetCmd[i] = 0;
-    } else {
-      targetCmd[i] = rcPulseToCommand(pulseWidthUs[i]);
-    }
+    const bool fresh = channelFresh(i, nowUs);
+    anyLost |= !fresh; anyFresh |= fresh;
+    targetCmd[i] = fresh ? rcPulseToCommand(snapshotPulseUs[i]) : 0;
   }
-
-  if (FAILSAFE_ALL_STOP && anyLost) {
-    for (uint8_t i = 0; i < 4; ++i) targetCmd[i] = 0;
-  }
+  return anyFresh && (!FAILSAFE_ALL_STOP || !anyLost);
 }
 
 void updateMotors() {
   for (uint8_t i = 0; i < 4; ++i) {
-    currentCmd[i] = slewToward(currentCmd[i], targetCmd[i]);
+    if (!PAIRED_SKID_STEER && !channelFresh(i, snapshotAtUs)) currentCmd[i] = 0;
+    else currentCmd[i] = slewToward(currentCmd[i], targetCmd[i]);
     setBtsMotor(i, currentCmd[i]);
   }
 }
 
 void printDiagnostics(uint32_t nowUs) {
   const uint32_t nowMs = millis();
-  if ((uint32_t)(nowMs - lastDiagMs) < DIAG_PERIOD_MS) return;
+  if (uint32_t(nowMs - lastDiagMs) < DIAG_PERIOD_MS) return;
   lastDiagMs = nowMs;
-
-  Serial.print("RC(us): ");
-  for (uint8_t i = 0; i < 4; ++i) {
-    Serial.print(pulseWidthUs[i]);
-    Serial.print(channelFresh(i, nowUs) ? "*" : "!");
-    if (i < 3) Serial.print("  ");
-  }
-
-  Serial.print(" | CMD: ");
-  for (uint8_t i = 0; i < 4; ++i) {
-    Serial.print(currentCmd[i]);
-    if (i < 3) Serial.print("  ");
-  }
-
-  Serial.println();
+  char diagnostic[192];
+  const int n = snprintf(diagnostic, sizeof(diagnostic),
+      "RC(us): %u%c %u%c %u%c %u%c | CMD: %d %d %d %d | source=%s PWM=%s\n",
+      snapshotPulseUs[0], channelFresh(0, nowUs)?'*':'!', snapshotPulseUs[1], channelFresh(1, nowUs)?'*':'!',
+      snapshotPulseUs[2], channelFresh(2, nowUs)?'*':'!', snapshotPulseUs[3], channelFresh(3, nowUs)?'*':'!',
+      currentCmd[0], currentCmd[1], currentCmd[2], currentCmd[3],
+      sourceEnabled?"enabled":"neutral-wait", motorPwmReady?"ready":"failed");
+  if (n > 0 && n < int(sizeof(diagnostic)) && Serial.availableForWrite() >= n)
+    Serial.write(reinterpret_cast<const uint8_t*>(diagnostic), size_t(n));
 }
 
 void setup() {
+  // Establish the output-low state before startup delay, diagnostics or input capture.
+  for (uint8_t i = 0; i < 4; ++i) {
+    pinMode(RPWM_PIN[i], OUTPUT); pinMode(LPWM_PIN[i], OUTPUT);
+    digitalWrite(RPWM_PIN[i], LOW); digitalWrite(LPWM_PIN[i], LOW);
+  }
+  hardStop();
   Serial.begin(115200);
   delay(250);
 
@@ -377,25 +383,30 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(RC_IN_PIN[3]), rc3ISR, CHANGE);
   }
 
-  for (uint8_t i = 0; i < 4; ++i) {
-    pinMode(RPWM_PIN[i], OUTPUT);
-    pinMode(LPWM_PIN[i], OUTPUT);
-  }
-
-  attachMotorPwm();
-  stopAllMotors();
-
-  Serial.println("Outputs initialized at neutral.");
+  motorPwmReady = attachMotorPwm();
+  hardStop();
+  Serial.println(motorPwmReady ? "Outputs neutral; waiting for 300 ms of fresh neutral inputs."
+                             : "FATAL: PWM attachment failed; outputs inhibited.");
 }
 
 void loop() {
+  snapshotInputs();
   const uint32_t nowUs = micros();
-
-  if ((uint32_t)(nowUs - lastControlUs) >= CONTROL_PERIOD_US) {
+  snapshotAtUs = nowUs;
+  if (uint32_t(nowUs - lastControlUs) >= CONTROL_PERIOD_US) {
     lastControlUs = nowUs;
-    computeTargets(nowUs);
-    updateMotors();
+    if (!motorPwmReady || !computeTargets(nowUs)) hardStop();
+    else {
+      if (!sourceEnabled) {
+        bool neutral = true;
+        for (uint8_t i = 0; i < (PAIRED_SKID_STEER ? 2 : 4); ++i)
+          if (channelFresh(i, nowUs)) neutral &= abs(int(snapshotPulseUs[i]) - int(RC_CENTER_US)) <= RC_DEADBAND_US;
+        if (!neutral) neutralTracking = false;
+        else if (!neutralTracking) {neutralTracking = true; neutralSinceUs = nowUs;}
+        else if (uint32_t(nowUs - neutralSinceUs) >= SOURCE_NEUTRAL_DWELL_US) sourceEnabled = true;
+      }
+      if (sourceEnabled) updateMotors(); else stopAllMotors();
+    }
   }
-
   printDiagnostics(nowUs);
 }

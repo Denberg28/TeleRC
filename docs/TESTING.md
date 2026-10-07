@@ -78,3 +78,7 @@ Keep previous APK, matching firmware and secret-free configuration backups. Sour
 ## LoRa setup UI review — 7 October 2026
 
 Baseline `51e98a0797c476647dea88cbebdee6a52503c2a6`. See `docs/LORA_SETUP_REVIEW.md` for findings, gates A–F, rollback and executable USB/visibility/layout checks. This is an app-only review; no firmware change or signed release. Local motor sync, full host subset and ASan/UBSan checks pass. SDK/Gradle and sandbox LeakSanitizer blockers remain; Android CI must run on the final review commit, and physical layout/USB/HIL are pending.
+
+## Four-driver PWM and LoRa command review — 7 October 2026
+
+This extends the setup review above; its original app-only scope is historical. Firmware-review baseline is `19ffbb903bd447e151ac678510f9aa4ceec99866`. See [LORA_MOTOR_REVIEW.md](LORA_MOTOR_REVIEW.md) for findings, compatibility, gates A–F and executable tests. There are now 21 C++ host executions and 4 Python relay tests. Both Arduino core API branches and both PWM input modes are exercised. Actual target CI requires seven primary builds plus two alternate LoRa and one four-input PWM build with ESP32 core 3.3.2 / RadioLib 7.2.1. Android unit/lint/debug build must pass on the combined PR. No release is triggered by this review; HIL remains BLOCKED.

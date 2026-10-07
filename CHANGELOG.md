@@ -1,11 +1,16 @@
-## Unreleased — LoRa setup review
+## Unreleased — LoRa setup and four-driver motor review
 
 - Center the LoRa setup in compact responsive cards with consistent padding and paired action rows.
 - Add pairing-key Show/Hide, hide on pause/navigation/disconnect, and confirm draft-key replacement.
 - Automatically read a newly connected local USB board and distinguish BASE/ROVER, radio activation and rover heartbeat.
 - Require inactive-board read before Save; retain phone pairing values only after successful board ACK. Serialize admin requests and require reconnect after a missing reply.
 - Add strict board-reply parsing and regression coverage for failed saves, stale ACKs, session changes, restart requirements and key fingerprints.
-- Keep the direct LoRa protocol/profile and firmware unchanged; describe supported differences from Meshtastic.
+- Accept inactive blank-board INFO replies with unset frequency, while continuing to reject active boards with unset frequency.
+- Preserve CH1 steering/CH2 drive and the existing direct LoRa wire format/profile; describe supported differences from Meshtastic.
+- Coalesce sparse radio commands per axis with independent expiry; preserve both RC release and DISARM and discard queued motion before stopping.
+- Sanitize the PWM-only converter: atomic validated capture, immediate signal-loss stop, 300 ms neutral startup/recovery, checked LEDC attachment, bounded diagnostics and Arduino folder entrypoint.
+- Establish dedicated/hybrid motor output-low GPIOs before startup delays. Count UART short writes and inhibit a failed radio receive restart.
+- Add four-driver protocol-to-motor integration and paired/four-input PWM regressions; compile all seven primary ESP32-S3 sketches and three alternate builds before future release packaging.
 
 # Bridge compatibility maintenance — 2026-10-02
 - ESP32 bridge now accepts standard sparse PC TeleRC RC_CHANNELS_OVERRIDE packets using 65535 for ignored CH1-CH4 fields.

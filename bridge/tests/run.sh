@@ -16,6 +16,16 @@ for core in 2 3; do
     "$build_dir/hybrid"
   done
 done
+for core in 2 3; do
+  for paired in 0 1; do
+    g++ -std=c++17 -Wall -Wextra -Werror "${checks[@]}" -DESP_ARDUINO_VERSION_MAJOR="$core" -DTELERC_PWM_PAIRED="$paired" \
+      -Ibridge/tests/stubs bridge/tests/pwm_converter_test.cpp -o "$build_dir/pwm"
+    "$build_dir/pwm"
+  done
+  g++ -std=c++17 -Wall -Wextra -Werror "${checks[@]}" -DESP_ARDUINO_VERSION_MAJOR="$core" \
+    -Ibridge/tests/stubs -Ibridge/libraries/TeleRCLink/src bridge/tests/lora_motor_test.cpp -lcrypto -o "$build_dir/lora-motor"
+  "$build_dir/lora-motor"
+done
 g++ -std=c++17 -Wall -Wextra -Werror "${checks[@]}" -Ibridge/tests/stubs -Ibridge/libraries/TeleRCLink/src \
   bridge/tests/lora_protocol_test.cpp -lcrypto -o "$build_dir/lora"
 "$build_dir/lora"

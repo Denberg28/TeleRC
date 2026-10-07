@@ -1,221 +1,51 @@
-# TeleRC 4x BTS7960 PWM Converter
+# ESP32-S3 four-BTS7960 PWM converter
 
-This folder contains a standalone ESP32-S3 sketch that converts standard ArduRover/flight-controller servo PWM into the two logic PWM signals required by each BTS7960/IBT-2 brushed DC motor driver.
+This companion converts flight-controller servo PWM into four RPWM/LPWM driver pairs. For joystick commands from a rover LILYGO T3-S3, flash [TeleRCMotorController](../TeleRCMotorController/README.md) instead: that sketch accepts the gateway UART, preserves CH1 steering/CH2 drive, and requires explicit DIRECT ARM. The PWM-only converter has no serial control parser, radio or DIRECT ARM state.
 
-It is intended for the current four-motor TeleRC rover architecture where each wheel motor has its own BTS7960.
+The PWM-only path is FC servo outputs → this ESP32-S3 → four BTS7960 drivers. Keep it on a separate MCU from a gateway. Flashing it onto the dedicated motor MCU replaces its UART command functionality.
 
-> Important: this is a companion firmware, not a replacement for the existing TeleRC Wi-Fi/MAVLink bridge. If you flash this sketch onto the same ESP32-S3 that currently runs TeleRCBridge.ino, the bridge firmware will be replaced. Use a second ESP32-S3 for the converter unless the two firmwares are deliberately merged later.
+## Build and input selection
 
-## Default architecture
+Open the **BTS7960PWMConverter** folder as an Arduino sketch. `BTS7960PWMConverter.ino` is the required folder entrypoint; Arduino also compiles the original `TeleRC_4x_BTS7960_PWM_Converter.ino` in that folder. Do not include the original file again.
 
-~~~
-TeleRC Android
-      |
-    Wi-Fi
-      |
-ESP32-S3 TeleRCBridge
-      |
-   MAVLink UART
-      |
-SpeedyBee F405 V4 / ArduRover
-      |
-  servo PWM outputs
-      |
-ESP32-S3 PWM Converter
-      |
-  +---+---+---+---+
-  |   |   |   |   |
-BTS BTS BTS BTS
- FL  RL  FR  RR
-  |   |   |   |
- DC motors
-~~~
+Default `TELERC_PWM_PAIRED=1`: GPIO4 is LEFT for FL/RL; GPIO5 is RIGHT for FR/RR. Set `TELERC_PWM_PAIRED=0` before the default definition, or pass the compiler flag below, for independent FL/RL/FR/RR inputs on GPIO4/5/6/7. Four-input mode has `FAILSAFE_ALL_STOP=true` by default.
 
-The default converter mode uses two FC PWM signals:
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc bridge/BTS7960PWMConverter
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property 'compiler.cpp.extra_flags=-DTELERC_PWM_PAIRED=0' bridge/BTS7960PWMConverter
+```
 
-- LEFT command drives both Front Left and Rear Left.
-- RIGHT command drives both Front Right and Rear Right.
-- 1500 us is neutral.
-- Approximately 1000 us is full reverse.
-- Approximately 2000 us is full forward.
+CI uses ESP32 core 3.3.2. Host regressions also exercise the core 2 LEDC API branch. Choose the actual carrier's flash/PSRAM settings for uploading.
 
-The sketch can also be switched to four independent RC inputs by setting:
+## Wiring
 
-~~~
-constexpr bool PAIRED_SKID_STEER = false;
-~~~
+| Connection | ESP32-S3 GPIO / destination |
+| --- | --- |
+| FC LEFT / independent FL PWM | GPIO4 |
+| FC RIGHT / independent RL PWM | GPIO5 |
+| Independent FR PWM | GPIO6 (four-input mode) |
+| Independent RR PWM | GPIO7 (four-input mode) |
+| FL RPWM / LPWM | GPIO8 / GPIO9 |
+| RL RPWM / LPWM | GPIO10 / GPIO11 |
+| FR RPWM / LPWM | GPIO12 / GPIO13 |
+| RR RPWM / LPWM | GPIO14 / GPIO15 |
+| FC and all driver logic GND | Common ESP32 signal ground |
 
-## ESP32-S3 pin assignment
+Verify the FC's actual SERVOx_FUNCTION assignments before connecting; GPIO4/5 are already mixed LEFT/RIGHT commands in paired mode, rather than raw steering/throttle. Only connect signal levels suitable for ESP32 3.3 V GPIO. Do not feed 5 V into an input.
 
-### Flight-controller PWM inputs
+Retain the [hybrid wiring guide](../TeleRCHybridController/README.md) and installation checks for regulated logic power, driver VCC/enable levels, external PWM pulldowns, common signal ground, motor distribution, fusing and physical battery cutoff. Motor current must not return through the MCU/FC signal wiring. R_IS/L_IS are unused by this firmware. GPIO-low initialization begins in `setup()`; external pulldowns and a physical power cutoff are still required for reset, unpowered MCU or CPU/peripheral faults.
 
-| Function | ESP32-S3 GPIO | Use |
-|---|---:|---|
-| LEFT PWM input | GPIO 4 | Required in paired skid-steer mode |
-| RIGHT PWM input | GPIO 5 | Required in paired skid-steer mode |
-| Motor 2 input | GPIO 6 | Four-input mode only |
-| Motor 3 input | GPIO 7 | Four-input mode only |
+## Software behavior
 
-Connect only the FC signal wire to the GPIO. FC ground must also be connected to ESP32 ground.
+- Accept 850–2150 µs pulses with a witnessed rising edge; commands clamp to 1000–2000 µs with 1500 µs center and ±35 µs deadband.
+- Capture width, timestamp and validity atomically. Invalid or orphan falling edges invalidate that channel immediately.
+- Boot and signal-loss recovery wait for **300 ms of fresh neutral required inputs**. A displaced input cannot start or resume motion. PWM authority is enabled after neutral dwell; there is no separate ARM input in this companion.
+- If a required input becomes invalid or reaches the **150 ms** freshness deadline, zero actual output/current duty at the next 5 ms control iteration. Fault stops bypass slew; normal command changes retain acceleration/deceleration slew and mandatory zero crossing before reversal.
+- Both directions are zero before startup delays. A failed LEDC attachment inhibits motion. Outputs use eight LEDC channels at 20 kHz / 8 bit.
+- Diagnostics attempt one bounded message every 250 ms, dropping it when serial capacity is insufficient. `*` means fresh; `!` means invalid/stale. GPIO6/7 are unused in paired mode. `source=neutral-wait` or `PWM=failed` identifies inhibition.
 
-An example with two available F405 PWM outputs is:
+All-stop is the supported/tested default. Changing `FAILSAFE_ALL_STOP` changes four-input fault policy and requires separate bench acceptance. This firmware's zero PWM is a software output state, not a measurement of braking, coast time or stopped wheels.
 
-~~~
-F405 configured LEFT motor output  -> ESP32 GPIO4
-F405 configured RIGHT motor output -> ESP32 GPIO5
-F405 GND                           -> ESP32 GND
-~~~
+## Restrained-wheel acceptance
 
-Do not assume an FC output number is LEFT or RIGHT until its ArduRover SERVOx_FUNCTION/motor assignment has been verified. Test the output in Mission Planner with motor power disconnected.
-
-### BTS7960 outputs
-
-| Wheel / driver | RPWM | LPWM |
-|---|---:|---:|
-| Front Left | GPIO 8 | GPIO 9 |
-| Rear Left | GPIO 10 | GPIO 11 |
-| Front Right | GPIO 12 | GPIO 13 |
-| Rear Right | GPIO 14 | GPIO 15 |
-
-Each BTS7960 receives one RPWM/LPWM pair.
-
-## BTS7960 logic wiring
-
-For each BTS7960:
-
-~~~
-ESP32 assigned RPWM ----> BTS7960 RPWM
-ESP32 assigned LPWM ----> BTS7960 LPWM
-
-Regulated 5 V ----------> BTS7960 VCC
-Regulated 5 V ----------> BTS7960 R_EN
-Regulated 5 V ----------> BTS7960 L_EN
-
-Common GND -------------> BTS7960 GND
-
-Motor battery + --------> BTS7960 B+
-Motor battery - --------> BTS7960 B-
-Motor ------------------> BTS7960 M+ / M-
-~~~
-
-R_IS and L_IS may be left unused for this version.
-
-### Common ground
-
-The logic-side grounds must share the same reference:
-
-~~~
-SpeedyBee F405 GND
-        |
-ESP32-S3 GND
-        |
-BTS7960 #1 GND
-BTS7960 #2 GND
-BTS7960 #3 GND
-BTS7960 #4 GND
-~~~
-
-Do not route motor current through the FC or ESP32 ground wiring. The common ground connection is a signal reference; high-current motor return paths should go through the motor power distribution wiring.
-
-## Power wiring
-
-Recommended high-level power layout:
-
-~~~
-24 V battery
-     |
- main fuse / disconnect
-     |
- power distribution
-  |    |    |    |
- BTS1 BTS2 BTS3 BTS4
-  |    |    |    |
- FL   RL   FR   RR motors
-
-24 V battery
-     |
- regulated buck converter
-     |
- 5 V logic rail
-  |          |
-ESP32-S3   BTS logic VCC/EN
-~~~
-
-Never connect a 24 V motor battery directly to the ESP32-S3 5 V/VIN pin unless a suitable regulator is in between.
-
-For higher-power motors, give each BTS7960 adequate cooling and use wire, connectors, fuses and distribution hardware sized for measured current. Motor stall current can be several times normal running current and should be treated as the worst-case sizing condition.
-
-## Software safety behavior
-
-The converter implements:
-
-- valid RC pulse window of 850-2150 us
-- calibrated command range of 1000-2000 us
-- 1500 us center
-- +/-35 us neutral deadband
-- 150 ms signal timeout
-- all-stop on missing paired input
-- acceleration slew limiting
-- faster deceleration toward neutral
-- mandatory zero crossing before motor reversal
-- 20 kHz motor PWM
-- 115200-baud serial diagnostics
-
-If either LEFT or RIGHT input disappears in the default paired mode, all four motor targets are set to zero.
-
-This converter is an additional safety layer, not the rover's only failsafe. Keep ArduRover failsafes, RC override timeout, transmitter failsafe and a physical motor-power disconnect.
-
-## First bench test
-
-1. Raise all four wheels off the ground.
-2. Disconnect motor battery power while checking logic wiring.
-3. In the sketch, temporarily change MAX_MOTOR_DUTY from 255 to 140.
-4. Upload the sketch to the dedicated ESP32-S3.
-5. Open Serial Monitor at 115200 baud.
-6. Confirm both input channels are near 1500 us at neutral.
-7. Confirm losing either FC PWM signal causes command values to return to zero.
-8. Apply motor power.
-9. Move forward slowly and verify all wheels rotate in the correct rover direction.
-10. Test reverse and steering at low duty.
-11. Verify signal-loss stop behavior.
-12. Only after successful bench tests, increase MAX_MOTOR_DUTY gradually.
-
-## Motor direction correction
-
-If a wheel rotates opposite the intended direction, correct the physical wiring or change its entry in INVERT_MOTOR.
-
-Example: invert both right-side motors:
-
-~~~
-constexpr bool INVERT_MOTOR[4] = {
-  false,  // Front Left
-  false,  // Rear Left
-  true,   // Front Right
-  true    // Rear Right
-};
-~~~
-
-Motor index order is:
-
-~~~
-0 = Front Left
-1 = Rear Left
-2 = Front Right
-3 = Rear Right
-~~~
-
-## Diagnostics
-
-Serial output is printed every 250 ms:
-
-~~~
-RC(us): 1500* 1500* 1500! 1500! | CMD: 0 0 0 0
-~~~
-
-An asterisk means the input has a fresh valid pulse. An exclamation mark means that input is stale/not valid.
-
-In paired mode, GPIO6/GPIO7 are not required, so their stale indicators can be ignored.
-
-## File
-
-Open TeleRC_4x_BTS7960_PWM_Converter.ino in Arduino IDE and select the correct ESP32-S3 board definition before compiling/uploading.
+See [the review and executable bench procedure](../../docs/LORA_MOTOR_REVIEW.md). Check logic first with motor battery disconnected. Raise/restrain wheels, reduce `MAX_MOTOR_DUTY` for powered tests, and provide an accessible physical cutoff. Verify neutral boot, displaced boot inhibition, all four directions, reversal, every required PWM wire loss, neutral-only recovery, reset and serial backpressure. Correct wheel direction through wiring or `INVERT_MOTOR` in order FL, RL, FR, RR. Hardware timing and electrical compatibility remain unmeasured until those checks are recorded.

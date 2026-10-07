@@ -62,7 +62,7 @@ def main():
     print(f"JVM tests: {tests} passed, {failures} failures, {errors} errors, {skipped} skipped")
     print("Android debug/release lint: PASS (no errors/fatal issues)")
     print("Host regressions and default ASan/UBSan: PASS (required preceding workflow steps)")
-    print("Actual firmware: ESP32 3.3.2 / RadioLib 7.2.1; six primary targets and two alternate LoRa builds passed")
+    print("Actual firmware: ESP32 3.3.2 / RadioLib 7.2.1; seven primary targets, two alternate LoRa builds and four-input PWM build passed")
     print("Toolchain: JDK 17 / Gradle 8.11.1 / AGP 8.9.2 / Kotlin 2.1.20 / Android SDK & Build Tools 35")
     print(f"APK SHA-256: {hashlib.sha256(apk.read_bytes()).hexdigest()}")
     print("Hardware-in-the-loop, installed-device upgrade and field validation: NOT TESTED")

@@ -56,22 +56,27 @@ uint32_t hostAt=0;
 
 bool writeSerialFrame(Stream &stream,const uint8_t*p,size_t n,int capacity){
   uint8_t f[telerc::UART_MAX+6];size_t k=telerc::encodeUart(p,n,f);
-  if(!k||capacity<int(k)){++uartDrop;return false;}return stream.write(f,k)==k;
+  if(!k||capacity<int(k)||stream.write(f,k)!=k){++uartDrop;return false;}return true;
+}
+bool restartRadioReceive(){
+  radioActive=radio.startReceive()==RADIOLIB_ERR_NONE;
+  if(!radioActive){commands.clear();challenge.open=false;radioPacketReady=false;}
+  return radioActive;
 }
 bool receiveRadio(uint8_t expected,uint64_t &token,const uint8_t*&body,size_t &n,uint8_t*buffer){
   if(!radioPacketReady){return false;}
   radioPacketReady=false;
   size_t count=radio.getPacketLength();
-  if(count>telerc::AUTH_MAX||count<telerc::AUTH_HEADER+telerc::AUTH_TAG){radio.standby();radio.startReceive();++radioReject;return false;}
-  int state=radio.readData(buffer,count);radio.startReceive();
-  if(state!=RADIOLIB_ERR_NONE||!telerc::openRadio(buffer,count,radioKey,expected,token,body,n)){++radioReject;return false;}
+  if(count>telerc::AUTH_MAX||count<telerc::AUTH_HEADER+telerc::AUTH_TAG){radio.standby();restartRadioReceive();++radioReject;return false;}
+  int state=radio.readData(buffer,count);
+  if(!restartRadioReceive()||state!=RADIOLIB_ERR_NONE||!telerc::openRadio(buffer,count,radioKey,expected,token,body,n)){++radioReject;return false;}
   ++radioRx;return true;
 }
 bool transmitRadio(uint8_t kind,uint64_t token,const uint8_t*p,size_t n){
   uint8_t f[telerc::AUTH_MAX];size_t k=telerc::sealRadio(kind,token,p,n,radioKey,f);if(!k)return false;
   // Blocking radio work is confined to communications boards, never the motor ESP32.
-  radioPacketReady=false;int result=radio.transmit(f,k);radio.startReceive();
-  if(result!=RADIOLIB_ERR_NONE){++radioTxFail;return false;}return true;
+  radioPacketReady=false;int result=radio.transmit(f,k);bool receiving=restartRadioReceive();
+  if(result!=RADIOLIB_ERR_NONE||!receiving){++radioTxFail;return false;}return true;
 }
 void adminReply(const char *message){writeSerialFrame(Serial,reinterpret_cast<const uint8_t*>(message),strlen(message),Serial.availableForWrite());}
 bool adminCommand(const uint8_t *p,size_t n){
@@ -170,7 +175,7 @@ bool forwardCommands(const uint8_t*p,size_t n){
   for(size_t i=0;i<n;){size_t k=p[i++];size_t written=telerc::encodeUart(p+i,k,out+used);used+=written;i+=k;}
   if(!used)return true;
   if(motorPort.availableForWrite()<int(used)){++uartDrop;return false;}
-  return motorPort.write(out,used)==used;
+  if(motorPort.write(out,used)!=used){++uartDrop;return false;}return true;
 }
 #endif
 
@@ -199,7 +204,7 @@ void setup(){
 #else
   radio.setDio0Action(radioInterrupt, RISING);
 #endif
-  radioActive=radio.startReceive()==RADIOLIB_ERR_NONE;
+  restartRadioReceive();
 #if TELERC_LORA_BASE && TELERC_BASE_WIFI
   Preferences prefs;String password=TELERC_BASE_PASSWORD;
   if(password.length()<12||password.length()>63){

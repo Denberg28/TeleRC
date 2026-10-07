@@ -15,6 +15,8 @@ Status: implementation for bench validation, not a field-qualified release. Andr
 
 Three ESP32-based boards total: one motor ESP32-S3 and two T3-S3 boards. Motor control does not execute on either communications board.
 
+Use `TeleRCMotorController` for this UART command path. `BTS7960PWMConverter` is a separate FC-PWM-only companion; it has no UART command decoder or DIRECT ARM state. [The four-driver review](../docs/LORA_MOTOR_REVIEW.md) documents the distinction and the current sanitization changes.
+
 ## Connections
 
 | From | To | Notes |
@@ -88,7 +90,7 @@ AUTOPILOT retains the physical GPIO16 selector and the F405's receiver/RC6 rules
 - Rover-led request/response slots: a new random 64-bit challenge for each poll. Base responses must echo it; rover accepts only one response within 90 ms after poll transmission completes. Old, repeated and wrong-direction responses are rejected.
 - HMAC-SHA256 truncated to 128 bits authenticates header/body. This provides authentication, not encryption or resistance to radio jamming. Local Wi-Fi/USB and physical motor UART remain trusted interfaces; this is not end-to-end signed MAVLink.
 - Radio bodies are at most 96 bytes (124 bytes including authenticated header/tag). No radio fragmentation, blocking radio operation on the motor board, or bulk telemetry queue.
-- Control mailbox keeps latest RC override and heartbeat plus a bounded event. Controls/events expire after 200 ms at base; a poll gap over 250 ms clears queued commands. RC release/disconnect overrides queued ARM, preventing release from being overwritten by a subsequent drive frame before transmission.
+- Control mailbox coalesces only touched CH1–CH4 values, each with its own 200 ms expiry; ignored channels never renew another axis. It also retains the latest heartbeat, a bounded event and a separate release slot. A poll gap over 250 ms clears queued commands. Release and DISARM both survive either arrival order, cancel queued drive/ARM and block later motion until dispatch. Disconnect has highest priority. Expired commands are never replayed after recovery.
 - Each accepted RC packet is forwarded at most once. No cached throttle is periodically resent. Sparse channel updates preserve the original motor controller's independent 500 ms CH1/CH2 deadlines.
 - UART framing: A5 5A, uint16 little-endian length, original datagram, CRC16-CCITT (initial 0xffff) over length+payload. At most 280 payload bytes; incomplete frames expire at 20 ms. The local UART is CRC-protected, not cryptographically authenticated.
 - Commands admitted: current apps' MAVLink v1 heartbeat, RC override, ARM/DISARM, discovery and explicit disconnect. The base checks CRC, controller/target identity, channel range/reserved channels and standard ARM/DISARM parameters; motor/FC parsers remain final validators. Mission upload, parameter download, generic MAVLink v2 control and external servo commands are not supported by this LoRa mailbox.
@@ -106,6 +108,8 @@ A CRC/authenticated frame does not prove physical motor safety. Software zero PW
 ## Validation and bench acceptance
 
 Run `python bridge/sync_motor_core.py --check` and `bridge/tests/run.sh`. The generated motor core is reproducibly derived from the independently flashable original hybrid sketch; this check catches future drift. CI compiles legacy bridge/hybrid, dedicated motor and both LoRa roles, plus SX1276/USB-only variants.
+
+CI also compiles the Wi-Fi gateway and standalone PWM converter in paired and four-input configurations (seven primary and three alternate builds total). Host tests exercise the actual dedicated motor parser after authenticated protocol framing and UART decoding; they do not emulate RF airtime or establish physical operation. Radio receive-restart failures now report inactive, clear pending commands/challenges and require a board restart; the motor's independent watchdog still governs stopping.
 
 Host tests compile both gateway roles with both radio profiles and local Wi-Fi enabled/disabled against peripheral stubs. They also cover both core motor API branches, axis staleness, RC release, neutral-only ARM, PWM loss, selector transitions, UART backpressure, framing/CRC/timeout, HMAC corruption/wrong key/wrong direction, one-use/expired challenges, latest command coalescing, stale mailbox purge and USB relay decoding. These are software checks, not measured ESP32/RF/driver timing.
 

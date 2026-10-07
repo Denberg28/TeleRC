@@ -3,9 +3,9 @@
 #define RADIOLIB_ERR_NONE 0
 struct Module {Module(int,int,int,int){}};
 struct RadioMock {
- std::vector<uint8_t> rx;std::vector<std::vector<uint8_t>> tx;int result=0;
+ std::vector<uint8_t> rx;std::vector<std::vector<uint8_t>> tx;int result=0,receiveResult=0;
  RadioMock(Module*){}
- int startReceive(){return 0;}int standby(){rx.clear();return 0;}
+ int startReceive(){return receiveResult;}int standby(){rx.clear();return 0;}
  size_t getPacketLength(){return rx.size();}
  int readData(uint8_t*p,size_t n){if(n>rx.size())return -1;memcpy(p,rx.data(),n);rx.clear();return result;}
  int transmit(uint8_t*p,size_t n){tx.emplace_back(p,p+n);return result;}

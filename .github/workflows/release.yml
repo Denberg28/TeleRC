@@ -27,12 +27,13 @@ jobs:
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli lib install RadioLib@7.2.1
-          for sketch in TeleRCBridge TeleRCHybridController TeleRCMotorController TeleRCWiFiGateway TeleRCLoRaBase TeleRCLoRaRover; do
+          for sketch in TeleRCBridge TeleRCHybridController TeleRCMotorController TeleRCWiFiGateway TeleRCLoRaBase TeleRCLoRaRover BTS7960PWMConverter; do
             arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries "bridge/$sketch"
           done
           for sketch in TeleRCLoRaBase TeleRCLoRaRover; do
             arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries --build-property 'compiler.cpp.extra_flags=-DTELERC_RADIO_VARIANT=1276 -DTELERC_BASE_WIFI=0' "bridge/$sketch"
           done
+          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --libraries bridge/libraries --build-property 'compiler.cpp.extra_flags=-DTELERC_PWM_PAIRED=0' bridge/BTS7960PWMConverter
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}

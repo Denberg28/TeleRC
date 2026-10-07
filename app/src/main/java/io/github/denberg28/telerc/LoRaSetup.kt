@@ -9,7 +9,7 @@ internal object LoRaSetup {
         val f = reply.split(',')
         if (f.size != 11 || f[0] != "TELERC_LORA_INFO_V1" || f[1] !in listOf("BASE", "ROVER") ||
             f[2] !in listOf("1262", "1276") || f[3] !in listOf("0", "1")) return null
-        val khz = f[4].toIntOrNull()?.takeIf { it in 150000..960000 } ?: return null
+        val khz = f[4].toIntOrNull()?.takeIf { it in 150000..960000 || (it == 0 && f[3] == "0") } ?: return null
         val power = f[5].toIntOrNull()?.takeIf { it in 2..17 } ?: return null
         if (!Regex("[0-9a-fA-F]{4}").matches(f[6])) return null
         val counters = f.drop(7).map { it.toLongOrNull()?.takeIf { n -> n in 0..0xffffffffL } ?: return null }
@@ -46,8 +46,9 @@ internal object LoRaSetup {
             else -> "Unrecognized board result. Read settings before retrying."
         }
         val b = board(reply) ?: return "Invalid or unrecognized board settings reply."
+        val frequency = if (b.khz == 0) "frequency unset" else "${b.khz / 1000.0} MHz"
         return "${b.role} · SX${b.chip} · ${if (b.active) "radio active" else "radio inactive"}\n" +
-            "${b.khz / 1000.0} MHz · ${b.power} dBm · key fingerprint ${b.fingerprint}\n" +
+            "$frequency · ${b.power} dBm · key fingerprint ${b.fingerprint}\n" +
             "RX ${b.rx} · rejected ${b.rejected} · TX failures ${b.txFailures} · UART drops ${b.uartDrops}"
     }
 }

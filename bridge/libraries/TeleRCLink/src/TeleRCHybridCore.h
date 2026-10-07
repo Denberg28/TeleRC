@@ -1349,6 +1349,11 @@ void printDiagnostics(uint32_t nowUs) {
 // -----------------------------------------------------------------------------
 
 void setup() {
+  // Set every driver input low before startup delay/serial/network initialization.
+  for (uint8_t i = 0; i < 4; ++i) {
+    pinMode(RPWM_PIN[i], OUTPUT); pinMode(LPWM_PIN[i], OUTPUT);
+    digitalWrite(RPWM_PIN[i], LOW); digitalWrite(LPWM_PIN[i], LOW);
+  }
   Serial.begin(115200);
   delay(500);
   Serial.println();
@@ -1358,10 +1363,6 @@ void setup() {
 
   for (uint8_t i = 0; i < 4; ++i) {
     pinMode(FC_PWM_PIN[i], INPUT_PULLDOWN);
-    pinMode(RPWM_PIN[i], OUTPUT);
-    pinMode(LPWM_PIN[i], OUTPUT);
-    digitalWrite(RPWM_PIN[i], LOW);
-    digitalWrite(LPWM_PIN[i], LOW);
   }
 
   attachInterrupt(digitalPinToInterrupt(FC_PWM_PIN[0]), fc0ISR, CHANGE);

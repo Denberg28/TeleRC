@@ -32,5 +32,10 @@ int main(){
  // Oversized RF packet is discarded without writing beyond receive buffer.
  radio.rx.assign(255,0);radioPacketReady=true;loop();assert(motorPort.tx.size()==motorSize);
 #endif
+ // A failed RX restart invalidates radio-active state and drops pending authority.
+ const uint8_t pending[]="TELERC_DISCOVER_V1";
+ assert(commands.accept(pending,sizeof(pending)-1,millis()));challenge.issue(1001,millis());
+ radio.receiveResult=-1;assert(!transmitRadio(1,1002,nullptr,0));
+ assert(!radioActive&&!challenge.open&&commands.eventN==0);
  std::cout<<"Gateway forwarding regression checks passed\n";
 }
