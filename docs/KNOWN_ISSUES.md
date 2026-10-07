@@ -9,3 +9,6 @@
 - **Reviewed limitation — physical safe state:** zero PWM or neutral override does not prove coast/brake behavior, stop distance or an autonomous FC stop. Document each installed mode's expected output and measure it.
 
 Next: verify the final release `BUILD_INFO.txt` and checksums, then run `docs/TESTING.md` on raised wheels. Package/publish a signed test candidate only after required automated and packaging checks pass. Stable promotion remains blocked by HIL and installation/compatibility checks.
+
+
+0.8.53 software-build update: release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c` passed run 37619553457, including retained signing identity, increased code 71, Android tests/debug/release lint/build, full host sanitizers and ten packaged firmware configurations. Actual T3-S3 builds use manufacturer SX1262/SX1276 revisions with QSPI PSRAM/native CDC. This resolves cloud software/packaging gates; local infrastructure limitations and installed-device, native USB, RF/driver timing, PC and HIL limitations remain. Download checksums and BUILD_INFO from v0.8.53; follow `bridge/FIRMWARE_FLASHING.md` before flashing.

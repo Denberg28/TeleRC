@@ -2,7 +2,7 @@
 
 ## Scope and baseline
 
-Current release candidate: 0.8.52 / code 70. Rebuild baseline: published 0.8.51 commit `a8e6ed7bab4948ab221aeb639b3ca1ea617e0e21`, tree `3c7016a39f3ab295b4d0c68f76bcf5fe11c1fdb5`. Android/firmware behavior is unchanged; the new build reruns the automated gates. The retained baseline passed 48 JVM tests, debug/release lint with no errors, host/sanitizer checks and eight actual firmware builds. Physical operation remains unverified.
+Current release candidate: **0.8.53 / code 71**, published from `0f7272da0d30b398dfe13c0a1008afca93f24c5c`. It packages the LoRa setup and four-driver review plus matched binary/source firmware. Release workflow [37619553457](https://github.com/Denberg28/TeleRC/actions/runs/37619553457) passed signing continuity/version progression, JVM tests, debug/release lint/build, full host sanitizers, ten actual firmware configurations and archive verification. Baseline retained for rollback: 0.8.52 commit `51e98a0797c476647dea88cbebdee6a52503c2a6`. Physical operation remains unverified; compatibility details for 0.8.53 are below.
 
 ## Signal paths
 

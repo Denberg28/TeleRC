@@ -98,3 +98,19 @@ Reviewed baseline `8e2e6df550f919d27d9ee00c5a6dc0ed45e9c9d2` passed Android CI r
 | F — delivery | NOT TESTED before workflow | Signed prerelease, matching source/binaries, checksums, installation/rollback and verified signer/version |
 
 Next concrete check after successful publication: manually install 0.8.53 over 0.8.52, verify retained settings, flash the intended motor/BASE/ROVER roles without whole-chip erase, provision blank radios and execute four-wheel mapping and loss/recovery HIL. Stable promotion remains blocked. Android downgrade to code 70 normally requires uninstalling code 71 and loses app data; export routes/settings first. Keep the 0.8.52 APK and matching source firmware for rollback, preserve pairing NVS and signing identity.
+
+
+## 0.8.53 published software evidence — 7 October 2026
+
+Release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c`, tag [v0.8.53](https://github.com/Denberg28/TeleRC/releases/tag/v0.8.53). [Signed release run 37619553457](https://github.com/Denberg28/TeleRC/actions/runs/37619553457), [Android CI 37619553716](https://github.com/Denberg28/TeleRC/actions/runs/37619553716) and [ESP32/host CI 37619553416](https://github.com/Denberg28/TeleRC/actions/runs/37619553416) completed successfully. This section supersedes the candidate-before-workflow software statuses above. A later documentation-only commit does not alter the tag's app/firmware source or build evidence.
+
+| Gate | Published candidate status | Evidence / remaining check |
+| --- | --- | --- |
+| A — source/build | PASS — build verified | Final debug/release APK builds/lint and ten actual pinned firmware configurations; source commit recorded in BUILD_INFO/firmware manifest |
+| B — behavior | PASS — simulator tested; hardware BLOCKED | JVM setup/control tests and host PWM/authenticated-UART-to-four-driver tests; phone and wheel behavior pending |
+| C — regression | PASS — automated subset | JVM suite, 21 C++ executions, 4 Python relay tests, 3 package regressions and default full ASan/UBSan/leak checks; actual PC/device tests NOT TESTED |
+| D — integration | PASS — host/package; physical BLOCKED | Exact board roles/profiles, source commit, 40 binary sizes/hashes, image offsets and complete internal checksums verified; USB/RF/FC/electrical path pending |
+| E — HIL | BLOCKED | No hardware measurements; execute restrained-wheel procedure and LORA_MOTOR_REVIEW.md |
+| F — delivery | PASS — prerelease packaging | Signed APK with retained signer and code71>code70, source ZIP, compiled binary ZIP, BUILD_INFO and SHA256SUMS published; installed-device/field validation NOT TESTED |
+
+Next concrete check: manually install over 0.8.52, verify retained settings, flash the matching dedicated motor/BASE/ROVER images with default-layout NVS preserved, and execute provisioning/mapping/loss/recovery HIL. Stable promotion remains blocked.
