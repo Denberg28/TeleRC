@@ -74,3 +74,7 @@ Stop on uncontrolled output, ineffective required failsafe or a broken core path
 Do not trigger release automation during source review. After required automated and packaging checks pass, authorized publishing can produce a clearly labeled prerelease. The manual updater ignores prereleases, so install candidates explicitly. Stable promotion requires every applicable gate, measured installed safe states, and recorded device/PC compatibility.
 
 Keep previous APK, matching firmware and secret-free configuration backups. Source rollback: retain baseline `777c04e5` and branch independently; do not overwrite user work. Installed Android normally blocks version-code downgrade: restoring code 69 may require uninstalling code 70, which deletes app data. Export routes/settings first; never switch signing identity to force an upgrade. Do not erase motor/gateway NVS or replace pairing keys for an app-only rollback.
+
+## LoRa setup UI review — 7 October 2026
+
+Baseline `51e98a0797c476647dea88cbebdee6a52503c2a6`. See `docs/LORA_SETUP_REVIEW.md` for findings, gates A–F, rollback and executable USB/visibility/layout checks. This is an app-only review; no firmware change or signed release. Local motor sync, full host subset and ASan/UBSan checks pass. SDK/Gradle and sandbox LeakSanitizer blockers remain; Android CI must run on the final review commit, and physical layout/USB/HIL are pending.

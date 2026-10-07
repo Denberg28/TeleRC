@@ -56,3 +56,11 @@ Setup includes a saved 25–100% joystick sensitivity slider for Controls and Te
 ## Swappable control link and LoRa setup
 
 The dedicated **LoRa setup** tab provisions blank BASE/ROVER boards over native USB, reads their real local radio settings and counters, and retains a masked pairing key for the second board. Saving requires restart; active radios reject configuration changes. New installations retain Wi-Fi as their initial transport. The new `TeleRCWiFiGateway` lets a command ESP32-S3 use the same framed UART connector as the rover T3-S3 while the dedicated PWM ESP32-S3 remains fixed. See [the swappable gateway guide](bridge/SWAPPABLE_GATEWAYS.md) for the keyed harness, carrier compatibility, provisioning and bench checks.
+
+## LoRa setup review (7 October 2026)
+
+The reviewed tab follows a device → radio/pairing → link-check sequence inspired by Meshtastic's setup workflow. Connect exactly one native USB T3-S3; the app automatically reads its role and local settings. Set the permitted frequency/power and shared 64-digit hex key on each inactive board, save, restart, and read back. A BASE with an active radio and fresh rover heartbeat unlocks the Controls shortcut; Enable Control/ARM remain explicit. ROVER USB is for local provisioning only.
+
+The compact tab uses centered, equal-width landscape columns (stacked below 640 dp), 12 dp horizontal/10 dp vertical card padding, 8 dp card gaps, persistent field labels, and 48 dp controls. Pairing-key Show/Hide preserves the caret; the key is hidden again on pause/navigation/disconnect. Generate asks before replacing an existing draft. Drafts remain in memory while navigating; only a board-confirmed Save updates the private phone pairing settings. Replies time out after 3 seconds; reconnect after a missing reply before retrying.
+
+The profile remains fixed at SF7/500 kHz/CR4:5. Region tables, configurable modem presets, BLE, Meshtastic channel QR import and mesh routing are not implemented. The USB workflow needs no Wi-Fi password; the pairing key authenticates TeleRC's direct radio packets and does not encrypt payloads. Protocol and firmware are unchanged. This source review does not publish or change the installed 0.8.52 APK. See [review and device checks](docs/LORA_SETUP_REVIEW.md).

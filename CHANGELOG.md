@@ -1,3 +1,12 @@
+## Unreleased — LoRa setup review
+
+- Center the LoRa setup in compact responsive cards with consistent padding and paired action rows.
+- Add pairing-key Show/Hide, hide on pause/navigation/disconnect, and confirm draft-key replacement.
+- Automatically read a newly connected local USB board and distinguish BASE/ROVER, radio activation and rover heartbeat.
+- Require inactive-board read before Save; retain phone pairing values only after successful board ACK. Serialize admin requests and require reconnect after a missing reply.
+- Add strict board-reply parsing and regression coverage for failed saves, stale ACKs, session changes, restart requirements and key fingerprints.
+- Keep the direct LoRa protocol/profile and firmware unchanged; describe supported differences from Meshtastic.
+
 # Bridge compatibility maintenance — 2026-10-02
 - ESP32 bridge now accepts standard sparse PC TeleRC RC_CHANNELS_OVERRIDE packets using 65535 for ignored CH1-CH4 fields.
 - Android TeleRC MAVLink generation is unchanged.
