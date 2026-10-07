@@ -485,7 +485,13 @@ class MainActivity : Activity() {
         val center = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
         val wide = resources.configuration.screenWidthDp >= 640
         val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
-        center.addView(body, LinearLayout.LayoutParams(if (wide) minOf(dp(920), resources.displayMetrics.widthPixels - dp(64)) else -1, -2))
+        center.addView(body, LinearLayout.LayoutParams(-1, -2))
+        center.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = minOf(dp(920), view.width)
+            if (width > 0 && body.layoutParams.width != width) {
+                body.layoutParams = (body.layoutParams as LinearLayout.LayoutParams).apply { this.width = width }
+            }
+        }
         scroll.addView(center)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -617,6 +623,7 @@ class MainActivity : Activity() {
         pairing.actions(generateKey, loraSave!!)
         pairing.addView(text("Match both inactive boards. Save → restart → read back. Local frequency rules apply.", 12f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        if (!wide) { left.removeView(check); right.addView(check) }
         val help = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         right.addView(help, LinearLayout.LayoutParams(-1, -2))
         val details = text("Keep motor power disconnected while pairing. Read BASE and ROVER separately; compare frequency, power and key fingerprint. An active radio cannot be edited here: follow the NVS reset/reflash guide to re-pair. The key is retained in private phone settings only after the board confirms Save.\n\nNative USB CDC only; BLE, USB-UART adapters, mesh routing and Meshtastic channel QR import are unavailable. The shared key authenticates direct radio packets; payloads are not encrypted. No Wi-Fi password is needed for this USB setup.", 12f, muted).apply { visibility = View.GONE }
