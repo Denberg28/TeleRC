@@ -240,6 +240,8 @@ void loop(){
     if(telerc::validBundle(body,n)&&challenge.consume(token,millis()))forwardCommands(body,n);
     else ++radioReject;
   }
+  // A receive restart may have failed above; do not revive the radio via the next poll.
+  if(!radioActive){delay(1);return;}
   if(uint32_t(millis()-lastPollAt)>=100){
     uint8_t telemetryBody[telerc::RADIO_MAX];size_t count=takeTelemetry(telemetryBody);
     token=(uint64_t(esp_random())<<32)|esp_random();

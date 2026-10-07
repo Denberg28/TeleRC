@@ -37,5 +37,15 @@ int main(){
  assert(commands.accept(pending,sizeof(pending)-1,millis()));challenge.issue(1001,millis());
  radio.receiveResult=-1;assert(!transmitRadio(1,1002,nullptr,0));
  assert(!radioActive&&!challenge.open&&commands.eventN==0);
+ // Failure during reception must also inhibit a due poll in the same loop iteration.
+ radioActive=true;challenge.issue(1003,millis());lastPollAt=0;
+ auto failedTxCount=radio.tx.size();
+#ifdef TEST_BASE_GATEWAY
+ inject(1,1003,nullptr,0);
+#else
+ inject(2,1003,nullptr,0);
+#endif
+ loop();assert(!radioActive&&!challenge.open&&radio.tx.size()==failedTxCount);
+ radio.receiveResult=0;loop();assert(!radioActive&&radio.tx.size()==failedTxCount);
  std::cout<<"Gateway forwarding regression checks passed\n";
 }
