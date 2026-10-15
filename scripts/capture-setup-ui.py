@@ -92,6 +92,8 @@ shell('input keyevent 82')
 def capture_failure(kind, value, traceback):
     try:
         print('SETUP_FAILURE_PNG_BASE64=' + base64.b64encode(adb('exec-out', 'screencap', '-p')).decode(), flush=True)
+        shell('uiautomator dump /data/local/tmp/failure.xml')
+        print('SETUP_FAILURE_XML=' + shell('cat /data/local/tmp/failure.xml').decode(), flush=True)
     finally:
         sys.__excepthook__(kind, value, traceback)
 
@@ -109,7 +111,22 @@ find(items, 'text', 'Background · Pastel ▾')
 # A later explicit Dark choice must survive activity recreation and process restart.
 tap(find(items, 'text', 'Background · Pastel ▾'))
 _, items = nodes()
-tap(find(items, 'text', 'Dark'))
+# The native theme menu is scrollable on short landscape windows.
+for attempt in range(3):
+    dark = next((n for n in items if n.attrib.get('text') == 'Dark'), None)
+    if dark is not None:
+        x1, y1, x2, y2 = bounds(dark)
+        if y2 - y1 >= 40:
+            tap(dark)
+            break
+    menu = next(n for n in items if n.attrib.get('scrollable') == 'true')
+    x1, y1, x2, y2 = bounds(menu)
+    x = (x1+x2)//2
+    shell(f'input swipe {x} {y2-24} {x} {y1+24} 300')
+    time.sleep(.5)
+    _, items = nodes()
+else:
+    raise AssertionError('Dark theme could not be reached by scrolling the native menu')
 shell(f'am force-stop {PKG}')
 launch()
 _, items = nodes()
