@@ -1,3 +1,11 @@
+## 0.8.60 — muted themes and balanced Setup
+
+- Add desaturated accents and tonal buttons across Light/Sepia/Dark with readable foregrounds.
+- Replace stretched Setup quadrants with centered, equal columns and matching content rows; remove shadows and reduce rounding.
+- Preserve connection, response, updates, diagnostics and all rover control/firmware behavior.
+- Verify native Setup variants in an API 35 emulator. Keep physical phone/rover acceptance pending.
+- Retain signer and increase versionCode to 78. Use release assets without the redundant quota-limited Actions copy.
+
 ## 0.8.59 — compact UI and Sepia background
 
 - Keep Setup and Controls; remove Test drive/game and LoRa provisioning pages.

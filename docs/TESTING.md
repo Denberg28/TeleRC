@@ -1,3 +1,9 @@
+# 0.8.60 verification
+
+Baseline: released 0.8.59/code77 commit `450fdb86331ffad27c8d8b2720abfe3702fa4dfc`. The user supplied actual phone screenshots showing excessive saturation and stretched Setup cards. Scope: tonal palette, symmetric content-sized Setup and UI evidence. Firmware/protocol/control behavior is unchanged; no actual-target firmware compilation is required for this app-only update.
+
+A source/build: cloud unit/debug/release lint/build REQUIRED. B behavior/UI: 12 API 35 native emulator variants, equal panel dimensions, visible actions and large-font capture REQUIRED. C regression: host/default ASan/UBSan REQUIRED. D integration: Android-to-mini parser REQUIRED; physical link/USB NOT TESTED. E HIL: BLOCKED, no physical hardware. F delivery: signer continuity with 0.8.59, code78, native/ZIP alignment, release APK/source/evidence/checksums REQUIRED. Successful preceding workflow steps and BUILD_INFO supersede pending software gates; no stable readiness claim. Local Android build remains BLOCKED by SDK/network. Native emulator evidence is not actual-phone visual acceptance. See MUTED_SETUP_060.md for executable raised-wheel acceptance and rollback.
+
 # 0.8.59 verification
 
 Baseline 0.8.58/code76 commit `2228f1ea8315ef25311965230f693eebdc19a6ba`, successful workflow 38735282670. Only Android UI, theme migration and release packaging change; firmware and wire protocols are unchanged. Acceptance and rollback: COMPACT_UI_059.md.

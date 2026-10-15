@@ -28,8 +28,8 @@ def identity(apk):
 current, cert = identity(candidate)
 previous, old_cert = identity(baseline)
 assert current[0] == previous[0] == 'io.github.denberg28.telerc', 'Package changed'
-assert current[1:] == ('77', '0.8.59'), 'Unexpected candidate version'
-assert previous[1:] == ('76', '0.8.58'), 'Unexpected upgrade baseline'
+assert current[1:] == ('78', '0.8.60'), 'Unexpected candidate version'
+assert previous[1:] == ('77', '0.8.59'), 'Unexpected upgrade baseline'
 assert int(current[1]) > int(previous[1]), 'Non-increasing version code'
 assert cert == old_cert, 'Signing identity changed'
 permissions = run(tools / 'aapt', 'dump', 'permissions', candidate)
@@ -52,14 +52,15 @@ with zipfile.ZipFile(candidate) as archive:
                 assert header[7] >= 16384, f'Non-16KB PT_LOAD alignment: {name}'
 
 
-print('TeleRC compact UI / USB FPV APK candidate')
+print('TeleRC muted themes and compact Setup APK candidate')
 print('Source commit:', run('git', 'rev-parse', 'HEAD').strip())
 print('Package:', current[0], 'version:', current[2], 'code:', current[1])
-print('Signing continuity with 0.8.58: PASS')
+print('Signing continuity with 0.8.59: PASS')
 print('Certificate SHA-256:', ', '.join(cert))
 print('USB FPV permissions, APK ZIP and arm64 ELF 16 KB alignment: PASS')
 print('Android JVM regression, debug/release lint and builds: PASS (required preceding workflow steps)')
 print('Firmware host regression + ASan/UBSan: PASS (required preceding workflow steps)')
+print('Native Android emulator: all 12 background/accent combinations, equal panel bounds and visible actions: PASS')
 print('Android packets -> actual MiniRover parser: PASS (required preceding workflow step)')
 print('Firmware unchanged: retain installed mini 1.2.2 or existing matching receiver/FC firmware; no reflash needed')
 print('Physical Wi-Fi/phone installation/motor HIL: BLOCKED, no hardware attached')

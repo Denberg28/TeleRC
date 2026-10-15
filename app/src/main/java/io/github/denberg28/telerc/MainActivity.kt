@@ -167,13 +167,17 @@ class MainActivity : Activity() {
         text = value; isAllCaps = false; textSize = 15f
         minimumWidth = 0; minimumHeight = 0
         setPadding(dp(8), 0, dp(8), 0)
-        setTextColor(if (filled) Color.WHITE else accent)
-        background = shape(if (filled) accent else softAccent, 16)
+        setTextColor(if (filled) ink else accent)
+        stateListAnimator = null; elevation = 0f
+        background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf((accent and 0x00ffffff) or 0x24000000),
+            shape(if (filled) AppColors.buttonFill(this@MainActivity) else softAccent, 10),
+            shape(Color.WHITE, 10))
         setOnClickListener { action() }
     }
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
-        background = shape(surface); elevation = dp(2).toFloat()
+        background = shape(surface, 14).apply { setStroke(dp(1), AppColors.outline(this@MainActivity)) }; elevation = 0f
     }
     private fun LinearLayout.addCard(view: View) {
         addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
@@ -492,135 +496,123 @@ class MainActivity : Activity() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
         val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(120), dp(44)))
-        header.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
-        header.addView(button("${AppColors.theme(this).label} ▾", false) {
+        val scale = maxOf(1f, resources.configuration.fontScale)
+        fun height(value: Int) = dp((value * scale).toInt())
+        val viewport = ScrollView(this).apply { isFillViewport = true; clipToPadding = false }
+        val centered = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        centered.addView(panel, LinearLayout.LayoutParams(-1, -2))
+        centered.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = minOf(dp(740), view.width)
+            if (width > 0 && panel.layoutParams.width != width)
+                panel.layoutParams = (panel.layoutParams as LinearLayout.LayoutParams).apply { this.width = width }
+        }
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(112), -1))
+        header.addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 12f, muted), LinearLayout.LayoutParams(0, -1, 1f))
+        header.addView(button("Controls ›", false) { switchTo(Page.CONTROLS) }, LinearLayout.LayoutParams(dp(112), -1))
+        panel.addView(header, LinearLayout.LayoutParams(-1, height(40)).apply { bottomMargin = dp(8) })
+
+        val wide = resources.configuration.screenWidthDp >= 600
+        val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
+        val connection = card().apply { setPadding(dp(10), dp(10), dp(10), dp(10)); contentDescription = "Connection settings" }
+        val preferences = card().apply { setPadding(dp(10), dp(10), dp(10), dp(10)); contentDescription = "Preferences" }
+        fun row(column: LinearLayout, view: View, size: Int = 40) {
+            column.addView(view, LinearLayout.LayoutParams(-1, height(size)).apply {
+                if (column.childCount > 0) topMargin = dp(6)
+            })
+        }
+        row(connection, button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "Wi-Fi bridge ▾", false) {
+            if (!wantsLink) AlertDialog.Builder(this).setTitle("Control link")
+                .setItems(arrayOf("Mini rover Wi-Fi", "Wi-Fi bridge / flight controller", "LoRa via USB base")) { _, choice ->
+                    getSharedPreferences("link", MODE_PRIVATE).edit()
+                        .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; else -> "wifi" }).apply()
+                    render()
+                }.show()
+            else Toast.makeText(this, "Disconnect before changing the control link.", Toast.LENGTH_SHORT).show()
+        })
+        host = EditText(this).apply {
+            setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_TEXT; textSize = 14f
+            background = shape(pale, 10); setPadding(dp(10), 0, dp(10), 0)
+            setText(if (connected.get()) endpoint?.hostAddress else
+                getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
+            isEnabled = !connected.get(); contentDescription = "Bridge IPv4 address"
+        }
+        port = EditText(this).apply {
+            setSingleLine(); hint = "UDP port"; setTextColor(ink); setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_NUMBER; textSize = 14f
+            background = shape(pale, 10); setPadding(dp(10), 0, dp(10), 0)
+            setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
+            isEnabled = !connected.get(); contentDescription = "UDP port"
+        }
+        val endpointRow = LinearLayout(this)
+        endpointRow.addView(host, LinearLayout.LayoutParams(0, -1, 2f).apply { rightMargin = dp(6) })
+        endpointRow.addView(port, LinearLayout.LayoutParams(0, -1, 1f))
+        row(connection, when {
+            usbMode -> text("USB OTG → T3-S3 base → LoRa", 12f, muted)
+            miniRoverMode -> button("Wi-Fi setup", false) { showMiniRoverSetup() }
+            else -> endpointRow
+        })
+        connect = button("Connect") {
+            if (wantsLink) {
+                wantsLink = false
+                getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                reconnectHandler.removeCallbacks(reconnect); stop(explicitDisconnect = true)
+            } else {
+                wantsLink = true
+                getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
+                start(); scheduleReconnect()
+            }
+        }
+        row(connection, connect!!)
+        status = text("DISCONNECTED", 12f, ink, true).apply {
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+            contentDescription = "Rover link status"
+        }
+        row(connection, status!!, 32)
+        row(connection, button("Diagnose link", false) {
+            AlertDialog.Builder(this).setTitle("Link diagnostics")
+                .setMessage(linkDiagnosis()).setPositiveButton("OK", null)
+                .setNeutralButton("Export route") { _, _ ->
+                    startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
+                        putExtra(Intent.EXTRA_TITLE, "telerc-route.csv")
+                    }, 43)
+                }.show()
+        }, 36)
+
+        row(preferences, button("Background · ${AppColors.theme(this).label} ▾", false) {
             AlertDialog.Builder(this).setTitle("Background")
-                .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(),
-                    AppColors.theme(this).ordinal) { dialog, index ->
+                .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(), AppColors.theme(this).ordinal) { dialog, index ->
                     disableControl()
                     val selected = BackgroundTheme.entries[index]
-                    appearance.edit().putString("background", selected.name)
-                        .putBoolean("dark", selected == BackgroundTheme.DARK).apply()
+                    appearance.edit().putString("background", selected.name).putBoolean("dark", selected == BackgroundTheme.DARK).apply()
                     dialog.dismiss(); recreate()
                 }.setNegativeButton("Cancel", null).show()
-        }.apply { contentDescription = "Choose Light, Sepia or Dark background" },
-            LinearLayout.LayoutParams(dp(100), dp(44)))
-        root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(8) })
-
-        val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
-        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-
-        val connection = card().apply {
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "Wi-Fi bridge ▾", true) {
-                if (!wantsLink) AlertDialog.Builder(this@MainActivity).setTitle("Control link")
-                    .setItems(arrayOf("Mini rover Wi-Fi", "Wi-Fi bridge / flight controller", "LoRa via USB base")) { _, choice ->
-                        getSharedPreferences("link", MODE_PRIVATE).edit()
-                            .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; else -> "wifi" }).apply()
-                        render()
-                    }.show()
-                else android.widget.Toast.makeText(this@MainActivity, "Disconnect before changing the control link.",
-                    android.widget.Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(-1, dp(30)))
-            host = EditText(this@MainActivity).apply {
-                setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
-                inputType = InputType.TYPE_CLASS_TEXT
-                background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
-                setText(if (connected.get()) endpoint?.hostAddress else
-                    getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
-                isEnabled = !connected.get(); textSize = 15f; contentDescription = "Bridge IPv4 address"
-            }
-            port = EditText(this@MainActivity).apply {
-                setSingleLine(); hint = "UDP port"; setTextColor(ink); setHintTextColor(muted)
-                inputType = InputType.TYPE_CLASS_NUMBER
-                background = shape(pale, 12); setPadding(dp(12), 0, dp(12), 0)
-                setText((if (connected.get()) endpointPort else
-                    getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
-                isEnabled = !connected.get(); textSize = 15f; contentDescription = "UDP port"
-            }
-            val endpointRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(36), 2f).apply { rightMargin = dp(6) })
-            endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(36), 1f))
-            if (usbMode) addView(text("USB OTG → T3-S3 base → LoRa", 12f, muted),
-                LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
-            else if (miniRoverMode) addView(button("Wi-Fi setup") { showMiniRoverSetup() },
-                LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
-            else addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
-            connect = button("Connect") {
-                if (wantsLink) {
-                    wantsLink = false
-                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
-                    reconnectHandler.removeCallbacks(reconnect)
-                    stop(explicitDisconnect = true)
-                } else {
-                    wantsLink = true
-                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
-                    start(); scheduleReconnect()
-                }
-            }
-            addView(connect, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+        }.apply { contentDescription = "Choose Light, Sepia or Dark background" })
+        val choices = LinearLayout(this)
+        val selected = appearance.getString("accent", "Blue")
+        AppColors.names.forEachIndexed { index, name ->
+            choices.addView(button(if (selected == name) "✓ $name" else name, selected == name) {
+                appearance.edit().putString("accent", name).apply(); render()
+            }.apply { textSize = 12f; contentDescription = "$name accent${if (selected == name) ", selected" else ""}" },
+                LinearLayout.LayoutParams(0, -1, 1f).apply { if (index > 0) leftMargin = dp(4) })
         }
-        left.addView(connection, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
-
-        val link = card().apply {
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(text("LINK STATUS", 12f, accent, true))
-            status = text("DISCONNECTED", 15f, ink, true).apply {
-                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            }
-            addView(status)
-            addView(button("Diagnose link", false) {
-                AlertDialog.Builder(this@MainActivity).setTitle("Link diagnostics")
-                    .setMessage(linkDiagnosis()).setPositiveButton("OK", null)
-                    .setNeutralButton("Export route") { _, _ ->
-                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
-                            putExtra(Intent.EXTRA_TITLE, "telerc-route.csv")
-                        }, 43)
-                    }.show()
-            }, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
-        }
-        left.addView(link, LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(left, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-
-        val theme = card().apply {
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(text("THEME & CONTROL FEEL", 12f, accent, true))
-            val choices = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            val selected = appearance.getString("accent", "Blue")
-            AppColors.names.forEach { name ->
-                choices.addView(button(if (selected == name) "✓ $name" else name, selected == name) {
-                    appearance.edit().putString("accent", name).apply(); render()
-                }.apply { textSize = 12f },
-                    LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
-            }
-            addView(choices, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
-            val response = ControlResponseStore.read(this@MainActivity)
-            addView(button("Control response ▸", false) { showControlResponse() },
-                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
-            addView(text("Steer ${response.steeringPercent}% · Drive ${response.drivePercent}% · Expo ${response.expoPercent}%", 11f, muted),
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
-        }
-        right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
-        val updates = card().apply {
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(text("APP UPDATE", 12f, accent, true))
-            addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 14f, ink, true))
-            addView(button("Check for updates", false) { updater.check() },
-                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
-            updateStatus = text("Signed APK · manual check", 11f, muted).apply {
-                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            }
-            addView(updateStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
-        }
-        right.addView(updates, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        body.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
-
-        root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
+        row(preferences, choices)
+        row(preferences, button("Control response ›", false) { showControlResponse() })
+        val response = ControlResponseStore.read(this)
+        row(preferences, text("Steer ${response.steeringPercent}% · Drive ${response.drivePercent}% · Expo ${response.expoPercent}%", 12f, muted), 32)
+        row(preferences, button("Check for updates", false) { updater.check() }, 36)
+        body.addView(connection, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f).apply {
+            if (wide) rightMargin = dp(8) else bottomMargin = dp(8)
+        })
+        body.addView(preferences, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f))
+        panel.addView(body, LinearLayout.LayoutParams(-1, -2))
+        updateStatus = text("", 11f, muted).apply { maxLines = 2 }
+        panel.addView(updateStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        viewport.addView(centered, ScrollView.LayoutParams(-1, -2))
+        root.addView(viewport, LinearLayout.LayoutParams(-1, -1))
         setContentView(root)
     }
 

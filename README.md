@@ -1,3 +1,7 @@
+# TeleRC 0.8.60 — muted themes and balanced Setup
+
+Setup now uses two centered, equal columns sized to their contents, with aligned rows and subdued tonal buttons. Light, Sepia and Dark plus all four accents remain available. Controls, settings and firmware behavior are preserved. See [installation and verification](docs/MUTED_SETUP_060.md). Signed test candidate; physical phone/receiver/rover checks remain pending.
+
 # TeleRC 0.8.59 — compact UI
 
 Setup and Controls are the two pages. Choose Light, Sepia or Dark in Setup. Larger joysticks, central USB FPV/map swapping, separate sensitivity/expo, Mini rover Wi-Fi and USB LoRa operation are retained. Test drive/game and LoRa provisioning pages are removed; older descriptions below document historical versions. Route export is in Setup → Diagnose link. See [installation, validation and limits](docs/COMPACT_UI_059.md). No firmware update is needed. Signed test candidate; physical acceptance remains pending.
