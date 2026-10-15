@@ -26,14 +26,22 @@ def identity(apk):
 current, cert = identity(candidate)
 previous, old_cert = identity(baseline)
 assert current[0] == previous[0] == 'io.github.denberg28.telerc', 'Package changed'
-assert current[1:] == ('75', '0.8.57'), 'Unexpected candidate version'
+assert current[1:] == ('76', '0.8.58'), 'Unexpected candidate version'
+assert previous[1:] == ('75', '0.8.57'), 'Unexpected upgrade baseline'
 assert int(current[1]) > int(previous[1]), 'Non-increasing version code'
 assert cert == old_cert, 'Signing identity changed'
-print('TeleRC independent control response APK candidate')
+permissions = run(tools / 'aapt', 'dump', 'permissions', candidate)
+assert 'android.permission.CAMERA' in permissions, 'Camera permission missing'
+assert not any(p in permissions for p in ('RECORD_AUDIO', 'MANAGE_EXTERNAL_STORAGE',
+    'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'FOREGROUND_SERVICE')), 'Unused capture permissions present'
+run(tools / 'zipalign', '-c', '-P', '16', '4', candidate)
+
+print('TeleRC USB FPV and control response APK candidate')
 print('Source commit:', run('git', 'rev-parse', 'HEAD').strip())
 print('Package:', current[0], 'version:', current[2], 'code:', current[1])
-print('Signing continuity with 0.8.56: PASS')
+print('Signing continuity with 0.8.57: PASS')
 print('Certificate SHA-256:', ', '.join(cert))
+print('USB FPV permission policy and APK ZIP alignment: PASS')
 print('Android JVM regression, debug/release lint and builds: PASS (required preceding workflow steps)')
 print('Firmware host regression + ASan/UBSan: PASS (required preceding workflow steps)')
 print('Android packets -> actual MiniRover parser: PASS (required preceding workflow step)')

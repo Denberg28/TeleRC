@@ -191,3 +191,19 @@ Baseline: signed full-interface app 0.8.56/code74 (`33240eff444c35304fa594542b96
 | F — delivery | Pending | Signed APK code75, signer match and progression against 0.8.56, source/evidence/checksums and prerelease |
 
 Next physical check after software success: upgrade with an existing sensitivity, verify migration and persisted independent sliders, then restrained-wheel CH1/CH2 endpoint, expo, release and loss/recovery behavior. Stable promotion remains blocked on applicable HIL.
+
+
+## USB FPV / larger controls 0.8.58
+
+Authoritative baseline: released `v0.8.57`, commit `47cdf3e88f3f83fc9877890fdd0eec7a2befb052`, code75. The main branch still held 0.8.53; a prior local 0.8.54 build used that older baseline and is superseded. This update uses code76, retains all 0.8.57 ControlResponse/MiniRover behavior, and changes no firmware. Setup, acceptance and rollback are in USB_FPV.md.
+
+| Gate | Local status / evidence | GitHub release gate |
+| --- | --- | --- |
+| A source/build | PASS: pinned Gradle 8.11.1/JDK17/SDK35; full debug/release compile/build and lint. Zero lint errors, 62 warnings. No affected ESP32 target. | Same builds/lint rerun on release source |
+| B behavior | PASS: 72 JVM tests, zero failures/errors; includes existing sensitivity/expo/migration/MiniRover arm tests and new preview geometry/frame-age tests | All tests and Android-shaped frames through actual mini parser |
+| C regression | PASS: legacy/mini host regression, twenty driver/count/API profiles, ASan/UBSan with local leak inspection disabled. Default LeakSanitizer BLOCKED by runtime /proc task restriction | Default leak-enabled sanitizers must pass before publishing |
+| D integration | Software protocol checks; actual USB camera/phone/hub path BLOCKED | No hardware claim |
+| E HIL/device visual QA | BLOCKED: no attached phone, receiver or rover. Run USB_FPV.md plus CONTROL_RESPONSE_057.md raised-wheel checks | No stable promotion |
+| F packaging | Local APK code76, retained keystore signature, permission policy and ZIP alignment PASS | Compare signer/package/increasing version directly with released v0.8.57; verify source/evidence archives/checksums; publish prerelease only |
+
+GitHub workflow `full-ui-wifi-arm.yml` is restricted to `work/fpv-ui-058-*` and publishes v0.8.58 only after its required checks. Actual run/result and source commit are carried in the release BUILD_INFO and Actions evidence. The separate sensitivity/expo files and MiniRover transport/arm logic are retained from 0.8.57; firmware reflash is unnecessary. Next physical check is upgrade from the installed 0.8.57 app, confirm saved independent sliders/expo, connect the actual UVC receiver, then run permission/swap/disconnect/background and raised-wheel control checks.

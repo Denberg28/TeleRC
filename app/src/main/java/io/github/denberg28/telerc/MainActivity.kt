@@ -111,6 +111,12 @@ class MainActivity : Activity() {
     private var routeStatus: TextView? = null
     private var mapBadge: TextView? = null
     private var musicButton: Button? = null
+    private var fpvCamera: UsbFpvView? = null
+    private var fpvSwap: Button? = null
+    private var fpvConnect: Button? = null
+    private var showingCamera = false
+    private var pendingFpvPermission = false
+    private var connectFpvOnResume = false
     private var controlsPlaceholder: View? = null
     private var controlsLocate: Button? = null
     private var controlsEstimate: TextView? = null
@@ -870,6 +876,8 @@ class MainActivity : Activity() {
             routeMap = map
             map.view.visibility = View.GONE
             scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
+            fpvCamera = UsbFpvView(this@MainActivity).apply { visibility = View.GONE }
+            scene.addView(fpvCamera, FrameLayout.LayoutParams(-1, -1))
             val badge = text("CYAN · ESTIMATE FROM SENT RC", 10f, ink, true).apply {
                 background = shape(surface, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
                 visibility = View.GONE
@@ -891,6 +899,15 @@ class MainActivity : Activity() {
             if (started) map.onStart()
             if (resumed) map.onResume()
             addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
+            val viewButtons = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+            fpvSwap = button("Show camera", false) {
+                showingCamera = !showingCamera
+                if (!showingCamera && !mapActive) showRecoveryMap() else updateControlsScene()
+            }.apply { textSize = 12f; contentDescription = "Swap map and FPV camera view" }
+            fpvConnect = button("Connect FPV", false) { connectFpv() }.apply { textSize = 12f }
+            viewButtons.addView(fpvSwap, LinearLayout.LayoutParams(0, -1, 1f))
+            viewButtons.addView(fpvConnect, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(4) })
+            addView(viewButtons, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
         }
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (synchronized(commandLock) {
@@ -912,9 +929,9 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
-        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1f))
+        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1.2f).apply { rightMargin = dp(8) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 4.6f).apply { rightMargin = dp(8) })
+        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1.2f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // Three-zone footer keeps link state centered and prevents control buttons from
@@ -938,6 +955,7 @@ class MainActivity : Activity() {
         root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
         setContentView(root)
         if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
+        updateControlsScene()
         updateRoute()
         // Ask while controls are still disabled; a permission dialog must never interrupt driving.
         if (!locationPermissionRequested && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -948,14 +966,35 @@ class MainActivity : Activity() {
             }
         }
     }
+    private fun updateControlsScene() {
+        if (page != Page.CONTROLS) return
+        val mapVisibility = if (mapActive && !showingCamera) View.VISIBLE else View.GONE
+        routeMap?.view?.visibility = mapVisibility
+        controlsLocate?.visibility = mapVisibility
+        controlsEstimate?.visibility = mapVisibility
+        mapBadge?.visibility = mapVisibility
+        controlsPlaceholder?.visibility = if (!mapActive && !showingCamera) View.VISIBLE else View.GONE
+        fpvCamera?.visibility = if (showingCamera) View.VISIBLE else View.GONE
+        fpvCamera?.setVisiblePreview(showingCamera)
+        fpvSwap?.text = if (showingCamera) "Show map" else "Show camera"
+    }
+
+    private fun connectFpv() {
+        if (page != Page.CONTROLS || !resumed || pendingFpvPermission) return
+        // Runtime and USB permission dialogs can take focus. Neutralize before either.
+        disableControl()
+        showingCamera = true
+        updateControlsScene()
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingFpvPermission = true
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), 44)
+        } else fpvCamera?.connectCamera()
+    }
+
     private fun setControlsMapVisible(visible: Boolean) {
         if (page != Page.CONTROLS) return
         mapActive = visible
-        routeMap?.view?.visibility = if (visible) View.VISIBLE else View.GONE
-        controlsPlaceholder?.visibility = if (visible) View.GONE else View.VISIBLE
-        controlsLocate?.visibility = if (visible) View.VISIBLE else View.GONE
-        controlsEstimate?.visibility = if (visible) View.VISIBLE else View.GONE
-        mapBadge?.visibility = if (visible) View.VISIBLE else View.GONE
+        updateControlsScene()
         if (visible) {
             deadReckoning.reset()
             controlsEstimate?.text = "DISP 0 m · H 0° · 0 m/s"
@@ -972,12 +1011,8 @@ class MainActivity : Activity() {
 
     private fun showRecoveryMap() {
         mapActive = true
-        routeMap?.view?.visibility = View.VISIBLE
-        controlsPlaceholder?.visibility = View.GONE
-        controlsLocate?.visibility = View.VISIBLE
-        controlsEstimate?.visibility = View.VISIBLE
+        updateControlsScene()
         controlsEstimate?.text = "RC STOPPED · last estimate frozen"
-        mapBadge?.visibility = View.VISIBLE
         startPhoneLocation()
         routeMap?.view?.post { routeMap?.draw() }
     }
@@ -1274,6 +1309,14 @@ class MainActivity : Activity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 44) {
+            pendingFpvPermission = false
+            if (page == Page.CONTROLS && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                if (resumed) fpvCamera?.connectCamera() else connectFpvOnResume = true
+            } else if (page == Page.CONTROLS)
+                Toast.makeText(this, "Camera permission required. Tap Connect FPV to retry.", Toast.LENGTH_LONG).show()
+            return
+        }
         if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
             if (pendingPhoneLocate) locatePhone() else startPhoneLocation()
         } else if (requestCode == 42) {
@@ -1295,6 +1338,9 @@ class MainActivity : Activity() {
     }
     private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
     private fun releaseMap() {
+        pendingFpvPermission = false; connectFpvOnResume = false
+        fpvCamera?.close(); fpvCamera = null; fpvSwap = null; fpvConnect = null
+        showingCamera = false
         pendingPhoneLocate = false
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
@@ -1754,10 +1800,10 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onPause() { fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; fpvCamera?.connectCamera() }; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
-    override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
+    override fun onStop() { fpvCamera?.close(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
     override fun onDestroy() { usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); txExecutor.shutdown(); super.onDestroy() }
 }

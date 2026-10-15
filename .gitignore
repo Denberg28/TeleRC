@@ -11,3 +11,5 @@ local.properties
 TeleRCLoRaConfigLocal.h
 __pycache__/
 *.pyc
+
+.kotlin/

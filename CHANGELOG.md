@@ -1,3 +1,11 @@
+## 0.8.58 — larger controls and USB FPV (development)
+
+- Base this update on the released 0.8.57/code75 source, retaining independent steering/drive sensitivity, expo and all Mini rover/Wi-Fi/LoRa behavior.
+- Enlarge joystick panels, circles and knobs; retain the response curve, endpoints and spring return.
+- Add USB UVC FPV preview, permission/error/disconnect states, aspect-fit rendering and stale-frame masking.
+- Add Show camera / Show map and Connect FPV below the center view; preserve route activity during view swaps.
+- Neutralize before camera/USB permission prompts; release video resources on lifecycle loss. Firmware unchanged.
+
 # Changelog
 
 ## 0.8.56

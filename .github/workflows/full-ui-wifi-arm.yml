@@ -1,7 +1,7 @@
-name: TeleRC independent sensitivity and expo
+name: TeleRC USB FPV and control response
 on:
   push:
-    branches: ['work/control-response-*']
+    branches: ['work/fpv-ui-058-*']
   workflow_dispatch:
 permissions:
   contents: write
@@ -47,13 +47,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.57.apk
-          gh release download v0.8.56 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.56.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
-          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.57.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
-          git archive --format=zip --output=deliverables/TeleRC-v0.8.57-source.zip HEAD
-          cp docs/CONTROL_RESPONSE_057.md deliverables/START_HERE.md
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.58.apk
+          gh release download v0.8.57 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.57.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.58.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          git archive --format=zip --output=deliverables/TeleRC-v0.8.58-source.zip HEAD
+          cp docs/USB_FPV.md deliverables/START_HERE.md
           (cd app/build && zip -r "$RUNNER_TEMP/evidence.zip" reports test-results mini-rover-interop)
-          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.57-build-evidence.zip
+          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.58-build-evidence.zip
           cd deliverables
           sha256sum *.apk *.zip BUILD_INFO.txt START_HERE.md > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
@@ -63,6 +63,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd deliverables
-          gh release create v0.8.57 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.57 — separate steering and drive sensitivity, expo" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
+          gh release create v0.8.58 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.58 — larger joysticks and USB FPV, sensitivity and expo retained" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

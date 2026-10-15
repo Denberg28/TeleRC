@@ -12,3 +12,6 @@ Next: verify the final release `BUILD_INFO.txt` and checksums, then run `docs/TE
 
 
 0.8.53 software-build update: release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c` passed run 37619553457, including retained signing identity, increased code 71, Android tests/debug/release lint/build, full host sanitizers and ten packaged firmware configurations. Actual T3-S3 builds use manufacturer SX1262/SX1276 revisions with QSPI PSRAM/native CDC. This resolves cloud software/packaging gates; local infrastructure limitations and installed-device, native USB, RF/driver timing, PC and HIL limitations remain. Download checksums and BUILD_INFO from v0.8.53; follow `bridge/FIRMWARE_FLASHING.md` before flashing.
+
+
+0.8.58 USB FPV: based on released v0.8.57, retaining separate sensitivities/expo and Mini rover Wi-Fi/ARM behavior. Only USB UVC receivers are supported. Phone/receiver/powered-hub integration, physical installation, visual/device QA and RF/latency behavior remain NOT TESTED. USB frames do not prove healthy FPV RF reception. Default local leak inspection is blocked by the runtime; the cloud workflow retains default ASan/UBSan/leak checks before prerelease publishing. No stable promotion. See USB_FPV.md.
