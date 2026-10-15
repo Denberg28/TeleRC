@@ -133,3 +133,14 @@ Release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c`, tag [v0.8.53](https:/
 | F — delivery | PASS — prerelease packaging | Signed APK with retained signer and code71>code70, source ZIP, compiled binary ZIP, BUILD_INFO and SHA256SUMS published; installed-device/field validation NOT TESTED |
 
 Next concrete check: manually install over 0.8.52, verify retained settings, flash the matching dedicated motor/BASE/ROVER images with default-layout NVS preserved, and execute provisioning/mapping/loss/recovery HIL. Stable promotion remains blocked.
+
+## Final 0.8.56 result
+
+PASS — signed software test candidate published from `33240eff444c35304fa594542b9641d5bac8e40f`.
+Workflow: https://github.com/Denberg28/TeleRC/actions/runs/38696307553
+Release: https://github.com/Denberg28/TeleRC/releases/tag/v0.8.56
+
+Gates A/B/C and software part of D PASS: full JVM regression, debug/release lint and APK builds, legacy bridge host suite and default leak-enabled ASan/UBSan, mini heartbeat fixture and Kotlin-to-real-mini-parser ARM/DISARM/RC integration. Gate F software packaging PASS: app identity, code 74/name 0.8.56, increasing upgrade code and signing continuity against 0.8.55 verified. Release contains APK, source, setup, test evidence, BUILD_INFO and SHA256SUMS. Actual firmware was unchanged and reused its 0.8.55 target-build evidence. Gate E plus phone installation, actual Wi-Fi/LoRa/FC/driver behavior remain pending.
+
+APK: 51995958 bytes; SHA-256 `48f56a4e2cc5ef53a2fab78fa2e82d5fc813efafe075852a80e4f60d2635fc05`.
+The app restores the full prior UI; only Mini Wi-Fi support and safe arm gating are added. Install over 0.8.55 without uninstalling, retain mini sketch 1.2.0, select Mini rover Wi-Fi, Connect → Controls → Enable → neutral ready → ARM, and run the raised-wheel procedure before ground driving. No main merge, release deletion or stable promotion was performed.
