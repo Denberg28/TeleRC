@@ -45,6 +45,8 @@ class MainActivity : Activity() {
     private var page = Page.SETUP
     @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
+    private val miniRoverMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
+    private val miniArmGate = MiniRoverArmGate()
     private var loraStatus: TextView? = null
     private var loraInfo = "Attach one T3-S3 by native USB, connect, then read board settings."
     private val loraExchange = LoRaSetupExchange()
@@ -274,7 +276,11 @@ class MainActivity : Activity() {
     }
     private fun armCaption(): String = when (vehicleArmed) {
         true -> "DISARM"
-        false -> "ARM"
+        false -> if (!miniRoverMode) "ARM" else when {
+            !controlEnabled.get() -> "ENABLE FIRST"
+            !miniArmGate.ready(SystemClock.elapsedRealtime()) -> "ARM · CENTER"
+            else -> "ARM · READY"
+        }
         null -> "ARM / DISARM"
     }
 
@@ -326,6 +332,7 @@ class MainActivity : Activity() {
         synchronized(commandLock) {
             commandEpoch++
             controlEnabled.disable()
+            miniArmGate.reset()
             steering = 1500
             drive = 1500
         }
@@ -352,6 +359,14 @@ class MainActivity : Activity() {
                 android.widget.Toast.LENGTH_SHORT).show()
             return
         }
+        val mini = miniRoverMode
+        if (mini && !armed && (!controlEnabled.get() || steering !in 1475..1525 ||
+                drive !in 1475..1525 || !miniArmGate.ready(SystemClock.elapsedRealtime()))) {
+            android.widget.Toast.makeText(this,
+                "Enable control, center both sticks and wait for ARM · READY. Use the matching standalone Wi-Fi mini rover sketch.",
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
 
         // Keep the live control session intact. Neutralize both axes before sending
         // ARM/DISARM so a stale joystick value cannot resume motion after the command.
@@ -372,6 +387,8 @@ class MainActivity : Activity() {
                     synchronized(commandLock) {
                         if (socket !== udp || !connected.get() || target != system ||
                             (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                                (mini && (!controlEnabled.get() || steering !in 1475..1525 ||
+                                    drive !in 1475..1525 || !miniArmGate.ready(SystemClock.elapsedRealtime()))) ||
                                 SystemClock.elapsedRealtime() - requestedAt >= 500))) {
                             runOnUiThread {
                                 if (socket === udp) { pendingArmState = null; lastArmAck = "COMMAND CANCELLED"; refreshUi() }
@@ -656,13 +673,15 @@ class MainActivity : Activity() {
 
         val connection = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(button(if (usbMode) "LoRa USB ▾" else "Wi-Fi UDP ▾", true) {
+            addView(button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "Wi-Fi bridge ▾", true) {
                 if (!wantsLink) AlertDialog.Builder(this@MainActivity).setTitle("Control link")
-                    .setItems(arrayOf("LoRa via USB base", "Legacy Wi-Fi UDP")) { _, choice ->
+                    .setItems(arrayOf("Mini rover Wi-Fi", "Wi-Fi bridge / flight controller", "LoRa via USB base")) { _, choice ->
                         getSharedPreferences("link", MODE_PRIVATE).edit()
-                            .putString("transport", if (choice == 0) "lora_usb" else "wifi").apply()
+                            .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; else -> "wifi" }).apply()
                         render()
                     }.show()
+                else android.widget.Toast.makeText(this@MainActivity, "Disconnect before changing the control link.",
+                    android.widget.Toast.LENGTH_SHORT).show()
             }, LinearLayout.LayoutParams(-1, dp(30)))
             host = EditText(this@MainActivity).apply {
                 setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
@@ -684,6 +703,8 @@ class MainActivity : Activity() {
             endpointRow.addView(host, LinearLayout.LayoutParams(0, dp(36), 2f).apply { rightMargin = dp(6) })
             endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(36), 1f))
             if (usbMode) addView(text("USB OTG → T3-S3 base → LoRa", 12f, muted),
+                LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+            else if (miniRoverMode) addView(button("Wi-Fi setup") { showMiniRoverSetup() },
                 LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
             else addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
             connect = button("Connect") {
@@ -859,7 +880,8 @@ class MainActivity : Activity() {
                 refreshUi()
             } else {
                 android.widget.Toast.makeText(this,
-                    "Waiting for rover heartbeat. Check bridge Wi-Fi, UART RX/TX and SERIAL3 settings.",
+                    if (miniRoverMode) "Join TeleRC-MiniRover Wi-Fi, tap Connect and wait for the rover heartbeat."
+                    else "Waiting for rover heartbeat. Check bridge Wi-Fi, UART RX/TX and SERIAL3 settings.",
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
@@ -1257,7 +1279,24 @@ class MainActivity : Activity() {
         catch (_: Exception) { routeStatus?.text = "Could not save route locally" }
     }
     private fun linkFresh() = HeartbeatHealth.isFresh(target, heartbeatAt, SystemClock.elapsedRealtime())
+    private fun showMiniRoverSetup() {
+        AlertDialog.Builder(this).setTitle("Mini rover Wi-Fi")
+            .setMessage(MiniRoverWifi.SETUP + "\n\nEndpoint: ${MiniRoverWifi.HOST}:${MiniRoverWifi.PORT}.")
+            .setPositiveButton("Open Wi-Fi settings") { _, _ -> startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+            .setNegativeButton("Close", null).show()
+    }
     private fun linkDiagnosis(): String {
+        if (miniRoverMode) {
+            val state = if (linkFresh()) "Rover heartbeat received; ${if (vehicleArmed == true) "ARMED" else "DISARMED"}. "
+                else "No fresh rover heartbeat. Join ${MiniRoverWifi.SSID}, keep the no-internet Wi-Fi connected, and tap Connect. "
+            return state + "Target ${MiniRoverWifi.HOST}:${MiniRoverWifi.PORT}; local UDP ${MiniRoverWifi.PORT}. " +
+                "Close PC TeleRC to free the single-client lease. " +
+                "Enable app control, center until ARM · READY, then ARM. " +
+                "Use standalone Wi-Fi firmware 1.2.0; no receiver or flight controller is required. " +
+                "F405 UART settings and bridge counters do not apply. " +
+                (if (lastArmAck.isNotBlank()) "Last ARM/DISARM result: $lastArmAck. " else "") +
+                lastLinkError
+        }
         if (!connected.get()) return if (lastLinkError.isNotBlank())
             "Link closed after $lastLinkError. Reconnect, then diagnose again if it repeats."
         else "Tap Connect first, wait a few seconds, then diagnose again."
@@ -1302,6 +1341,7 @@ class MainActivity : Activity() {
         } else if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
+        armButton?.apply { text = armCaption(); isEnabled = linkFresh() && vehicleArmed != null }
         val localUsb = usbMode && connected.get()
         loraRead?.isEnabled = localUsb && loraExchange.pending == null && !loraExchange.blocked
         loraSave?.isEnabled = localUsb && loraExchange.canSave && vehicleArmed != true
@@ -1377,11 +1417,11 @@ class MainActivity : Activity() {
     private fun start() {
         if (connected.get()) return
         val saved = getSharedPreferences("link", MODE_PRIVATE)
-        val address = if (usbMode) "127.0.0.1" else
+        val address = if (miniRoverMode) MiniRoverWifi.HOST else if (usbMode) "127.0.0.1" else
             (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
         val valid = Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$").matches(address) &&
             address.split('.').all { it.toInt() in 0..255 }
-        val number = if (usbMode) 14550 else
+        val number = if (miniRoverMode) MiniRoverWifi.PORT else if (usbMode) 14550 else
             (port?.text?.toString() ?: saved.getInt("port", 14550).toString()).toIntOrNull()
         if (!valid || number == null || number !in 1..65535) {
             wantsLink = false
@@ -1404,7 +1444,7 @@ class MainActivity : Activity() {
             try { UsbLoRaTransport.open(manager, device) }
             catch (error: Exception) { lastLinkError = "USB open failed. Close other serial apps and reconnect the data cable."; refreshUi(); status?.text = "USB LoRa OPEN FAILED"; return }
         } else {
-            saved.edit().putString("host", address).putInt("port", number).apply()
+            if (!miniRoverMode) saved.edit().putString("host", address).putInt("port", number).apply()
             val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
             val wifi = connectivity.allNetworks.firstOrNull {
                 connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
@@ -1529,6 +1569,8 @@ class MainActivity : Activity() {
                                     if (socket === udp) {
                                         val message = if (ack.result == 0)
                                             "ARM/DISARM command accepted · waiting for rover state"
+                                        else if (miniRoverMode && ack.result == 2)
+                                            "DENIED · Enable control and center both sticks before ARM"
                                         else
                                             "ARM/DISARM " + ack.resultText
                                         android.widget.Toast.makeText(
@@ -1576,6 +1618,7 @@ class MainActivity : Activity() {
                                 val bytes = Mavlink.override(sequence++, target, 1,
                                     channels.one, channels.two, channels.three, channels.four)
                                 udp.send(DatagramPacket(bytes, bytes.size, remote, number))
+                                if (miniRoverMode) miniArmGate.sent(channels.one, channels.two, SystemClock.elapsedRealtime())
                                 lastSend = now
                                 channels
                             }
@@ -1623,6 +1666,7 @@ class MainActivity : Activity() {
             if (socket !== transport || !controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime())) false
             else {
                 commandEpoch++
+                miniArmGate.reset()
                 steering = 1500
                 drive = 1500
                 true

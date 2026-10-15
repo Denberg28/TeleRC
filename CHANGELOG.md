@@ -1,3 +1,20 @@
+# Changelog
+
+## 0.8.56
+
+- Restore the full previous TeleRC layout and features after the Wi-Fi-only simplification.
+- Preserve Wi-Fi bridge and USB LoRa choices, map/test/game, themes and diagnostics.
+- Add Mini rover Wi-Fi setup and require a fresh centered command dwell before ARM; wait for heartbeat-confirmed arm/disarm.
+- Correct standalone Wi-Fi instructions for existing sketch 1.2.0: no receiver or flight controller required. Firmware is unchanged.
+- Retain signing identity and increase versionCode to 74 so this restoration installs over 0.8.55.
+
+## 0.8.54
+
+- Add an explicit Mini rover Wi-Fi preset with fixed target/source UDP 14550 and direct ESP32 receiver setup instructions.
+- Require successfully streamed centered controls before mini ARM; preserve explicit Enable/ARM, source permission and failsafe recovery.
+- Explain missing receiver permission and single-client Wi-Fi without flight-controller UART diagnostics.
+- Add neutral arming regressions and Android-to-mini parser compatibility tests. Firmware unchanged; physical installation/Wi-Fi/motor HIL pending.
+
 ## 0.8.53
 
 - Signed test candidate, versionCode 71, with matching compiled ESP32-S3 and LILYGO T3-S3 binaries, source sketches, flash instructions, build evidence and checksums.

@@ -1,3 +1,22 @@
+# TeleRC 0.8.56 restoration verification
+
+Restores the full pre-simplification UI from 0.8.53 / local 0.8.54 mini-profile development. App ID and signing identity remain; code 74 installs over 0.8.55/code 73. User scope: roll back the simplified layout, keep all prior features and add Wi-Fi arm/disarm for the mini rover. Firmware 1.2.0 is unchanged; actual-target compilation evidence is retained in 0.8.55/run 38694370783. There are no affected firmware targets to rebuild for this app-only change.
+
+Acceptance: all original tabs/map/test/game/LoRa/themes/diagnostics remain; fixed Mini rover Wi-Fi endpoint; normal Enable then fresh-neutral ARM; heartbeat-confirmed arm/disarm; no CH5/CH6 requirement for standalone 1.2.0. STOP/tab/background/heartbeat-loss authority rules remain from the original full app. Run the raised-wheel procedures in MINI_ROVER_WIFI.md.
+
+| Gate | Status before cloud build | Required evidence |
+| --- | --- | --- |
+| A source/build | PENDING | Full JVM, debug/release lint/build; signing and upgrade identity. |
+| B behavior | PENDING | Neutral-ready gate and cancellation regressions; actual device UI pending. |
+| C regression | PENDING | All existing JVM and bridge host/sanitizer tests. |
+| D integration | PENDING | Kotlin command frames consumed by the real mini parser harness. Physical connection pending. |
+| E HIL | BLOCKED | No attached phone/rover. |
+| F delivery | PENDING | Signed prerelease APK, source, setup, evidence and checksums; higher code 74. |
+
+The successful final workflow and release BUILD_INFO.txt supersede these pending software statuses. This is a test candidate; phone installation and hardware tests remain pending. Next concrete step: install over 0.8.55 and perform MINI_ROVER_WIFI.md raised-wheel tests. Do not uninstall to downgrade: this update restores behavior with a higher version code.
+
+Previous full app verification procedures follow for retained features.
+
 # TeleRC QA gates and bench procedure
 
 ## Acceptance criteria for 0.8.52
