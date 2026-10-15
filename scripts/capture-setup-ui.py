@@ -15,7 +15,7 @@ OUT = Path('app/build/ui-evidence')
 OUT.mkdir(parents=True, exist_ok=True)
 
 def adb(*args, **kwargs):
-    return subprocess.check_output(['adb', *args], **kwargs)
+    return subprocess.check_output(['adb', *args], timeout=45, **kwargs)
 
 def shell(command, **kwargs):
     return adb('shell', command, **kwargs)
@@ -36,7 +36,8 @@ for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
     for theme in ('LIGHT', 'SEPIA', 'DARK'):
         shell(f'am force-stop {PKG}')
         prefs = f'<?xml version="1.0" encoding="utf-8" standalone="yes"?><map><string name="background">{theme}</string><string name="accent">{accent}</string></map>'
-        shell(f'run-as {PKG} sh -c ' + shlex.quote('mkdir -p shared_prefs; cat > shared_prefs/appearance.xml'), input=prefs.encode())
+        encoded = base64.b64encode(prefs.encode()).decode()
+        shell(f'run-as {PKG} sh -c ' + shlex.quote(f'mkdir -p shared_prefs; echo {encoded} | base64 -d > shared_prefs/appearance.xml'))
         shell(f'am start -W -n {PKG}/.MainActivity')
         time.sleep(1)
         assert shell(f'pidof {PKG}').strip(), 'App did not stay alive'
