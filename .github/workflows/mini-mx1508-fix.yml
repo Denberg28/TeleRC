@@ -1,0 +1,45 @@
+name: Mini rover MX1508 1.2.1 firmware
+on:
+  push:
+    branches: ['work/mini-mx1508-fix-*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Firmware regression and fault tests
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Compile actual ESP32-S3 firmware
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          mkdir -p deliverables/firmware
+          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --output-dir deliverables/firmware bridge/TeleRC_MiniRover_WiFi
+          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property 'compiler.cpp.extra_flags=-DTELERC_MOTOR_COUNT=2' bridge/TeleRC_MiniRover_WiFi
+          for profile in '2' '3' '4 -DTELERC_SUPPLY_MAX_MV=6000 -DTELERC_BTS_LOGIC_VERIFIED=1' '5'; do
+            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property "compiler.cpp.extra_flags=-DTELERC_DRIVER=$profile" bridge/TeleRC_MiniRover_WiFi
+          done
+      - name: Package and publish firmware candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp -R bridge/TeleRC_MiniRover_WiFi deliverables/
+          cp docs/MINI_MX1508_121.md deliverables/START_HERE.md
+          cp -R bridge/mini_wifi_tests deliverables/tests
+          printf 'Source: %s\nFirmware: 1.2.1-mx1508-diagnostics\nAPK: keep TeleRC 0.8.56 unchanged\nESP32 core: 3.3.2\nSix actual target configurations and host/sanitizer/fault tests: PASS\nHardware diagnosis: pending; physical no-movement cause not yet confirmed\n' "$GITHUB_SHA" > deliverables/BUILD_INFO.txt
+          cd deliverables
+          zip -r TeleRC-MiniRover-MX1508-v1.2.1-sketch.zip TeleRC_MiniRover_WiFi START_HERE.md BUILD_INFO.txt
+          zip -r TeleRC-MiniRover-MX1508-v1.2.1-firmware.zip TeleRC_MiniRover_WiFi firmware START_HERE.md BUILD_INFO.txt
+          sha256sum *.zip BUILD_INFO.txt > SHA256SUMS.txt
+          gh release create mini-rover-v1.2.1 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "Mini rover MX1508 1.2.1 — scaling, PWM fault handling and diagnosis" --notes-file START_HERE.md *.zip SHA256SUMS.txt BUILD_INFO.txt START_HERE.md

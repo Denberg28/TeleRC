@@ -144,3 +144,9 @@ Gates A/B/C and software part of D PASS: full JVM regression, debug/release lint
 
 APK: 51995958 bytes; SHA-256 `48f56a4e2cc5ef53a2fab78fa2e82d5fc813efafe075852a80e4f60d2635fc05`.
 The app restores the full prior UI; only Mini Wi-Fi support and safe arm gating are added. Install over 0.8.55 without uninstalling, retain mini sketch 1.2.0, select Mini rover Wi-Fi, Connect → Controls → Enable → neutral ready → ARM, and run the raised-wheel procedure before ground driving. No main merge, release deletion or stable promotion was performed.
+
+## Mini MX1508 firmware 1.2.1 pending gate update
+
+User report: Wi-Fi connected/ARM accepted but no motor motion, with GPIO pairs 4/5, 6/7, 8/9, 10/11. Mapping matches the existing sketch. Reproduced a full-input range defect: APK 1900 yielded 142 instead of configured 180 PWM; added failing regression before aligning full scale to ±400 µs. PWM write failures were ignored; now detected failures disarm and latch all outputs off. Added nonblocking command/PWM diagnostics and a 1 kHz MX1508 bench default. Frequency/electrical cause is not proven. No APK/UI change; keep signed 0.8.56 and its build evidence.
+
+Gates A firmware build, B fault/scaling behavior, C host/profile/sanitizer regression and F firmware packaging require the final firmware workflow. D physical app/driver/power path and E HIL remain pending; run MINI_MX1508_121.md. That guide records exact wiring, common ground and driver power, 100% sensitivity raised-wheel test, expected CH/duty and diagnostic interpretation. Next physical evidence: centered and held-forward Serial Monitor lines at 115200 baud. Do not claim confirmed motion or physical repair from host/target compilation.
