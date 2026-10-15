@@ -41,7 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS, TEST_DRIVE, LORA }
+    private enum class Page { SETUP, CONTROLS }
     private var page = Page.SETUP
     @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
@@ -105,12 +105,10 @@ class MainActivity : Activity() {
     private val functionButtons = mutableMapOf<String, Button>()
     private var steeringStick: JoystickView? = null
     private var driveStick: JoystickView? = null
-    private var testCourse: TestDriveView? = null
     private val route = RouteSession()
     private var routeMap: RouteMapView? = null
     private var routeStatus: TextView? = null
     private var mapBadge: TextView? = null
-    private var musicButton: Button? = null
     private var fpvCamera: UsbFpvView? = null
     private var fpvSwap: Button? = null
     private var fpvConnect: Button? = null
@@ -122,7 +120,6 @@ class MainActivity : Activity() {
     private var controlsEstimate: TextView? = null
     private val deadReckoning = DeadReckoning()
     private var mapActive = false
-    private var showTestMap = true
     private var locationPermissionRequested = false
     private var pendingPhoneLocate = false
     private var started = false
@@ -148,12 +145,12 @@ class MainActivity : Activity() {
     private lateinit var updater: AppUpdater
     private var endpoint: InetAddress? = null
     private var endpointPort = 0
-    private val darkTheme get() = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark", false)
-    private val ink get() = if (darkTheme) Color.rgb(232, 239, 246) else Color.rgb(27, 38, 49)
-    private val muted get() = if (darkTheme) Color.rgb(164, 181, 196) else Color.rgb(96, 114, 131)
+    private val darkTheme get() = AppColors.theme(this) == BackgroundTheme.DARK
+    private val ink get() = AppColors.ink(this)
+    private val muted get() = AppColors.muted(this)
     private val accent get() = AppColors.accent(this)
-    private val pale get() = if (darkTheme) Color.rgb(12, 20, 28) else Color.rgb(245, 248, 251)
-    private val surface get() = if (darkTheme) Color.rgb(22, 34, 45) else Color.WHITE
+    private val pale get() = AppColors.background(this)
+    private val surface get() = AppColors.surface(this)
     private val softAccent get() = AppColors.softAccent(this)
 
 
@@ -203,8 +200,6 @@ class MainActivity : Activity() {
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
-            "TEST_DRIVE" -> Page.TEST_DRIVE
-            "LORA" -> Page.LORA
             else -> Page.SETUP
         }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -214,12 +209,12 @@ class MainActivity : Activity() {
         outState.putString("page", page.name); super.onSaveInstanceState(outState)
     }
     override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig); disableControl(); testCourse?.stop(); releaseMap(); render()
+        super.onConfigurationChanged(newConfig); disableControl(); releaseMap(); render()
     }
     private fun switchTo(next: Page) {
         if (page == next) return
         disableControl()
-        testCourse?.stop(); testCourse = null; releaseMap()
+        releaseMap()
         page = next
         val orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         requestedOrientation = orientation
@@ -227,7 +222,7 @@ class MainActivity : Activity() {
     }
     private fun shell(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setBackgroundColor(pale)
-        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setPadding(dp(8), dp(6), dp(8), dp(6))
         setOnApplyWindowInsetsListener { view, insets ->
             val left: Int; val top: Int; val right: Int; val bottom: Int
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -237,7 +232,7 @@ class MainActivity : Activity() {
                 left = insets.systemWindowInsetLeft; top = insets.systemWindowInsetTop
                 right = insets.systemWindowInsetRight; bottom = insets.systemWindowInsetBottom
             }
-            view.setPadding(dp(12) + left, dp(8) + top, dp(12) + right, dp(8) + bottom)
+            view.setPadding(dp(8) + left, dp(6) + top, dp(8) + right, dp(6) + bottom)
             insets
         }
     }
@@ -247,10 +242,8 @@ class MainActivity : Activity() {
             PopupMenu(this, anchor).apply {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test drive")
-                menu.add(0, 4, 3, "LoRa setup")
                 setOnMenuItemClickListener { item ->
-                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; 4 -> Page.LORA; else -> Page.TEST_DRIVE })
+                    switchTo(if (item.itemId == 2) Page.CONTROLS else Page.SETUP)
                     true
                 }
             }.show()
@@ -276,8 +269,6 @@ class MainActivity : Activity() {
         when (page) {
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
-            Page.TEST_DRIVE -> renderTestDrive()
-            Page.LORA -> renderLoRa()
         }
         refreshUi()
     }
@@ -497,168 +488,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun renderLoRa() {
-        host = null; port = null; enable = null; steeringStick = null; driveStick = null
-        val root = shell()
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        header.addView(pageDropdown("LoRa setup"), LinearLayout.LayoutParams(dp(160), dp(48)))
-        status = text("DISCONNECTED", 12f, accent, true)
-        header.addView(status, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
-        root.addView(header, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
-
-        val scroll = ScrollView(this).apply { isFillViewport = true; clipToPadding = false }
-        val center = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-        val wide = resources.configuration.screenWidthDp >= 640
-        val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
-        center.addView(body, LinearLayout.LayoutParams(-1, -2))
-        center.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-            val width = minOf(dp(920), view.width)
-            if (width > 0 && body.layoutParams.width != width) {
-                body.layoutParams = (body.layoutParams as LinearLayout.LayoutParams).apply { this.width = width }
-            }
-        }
-        scroll.addView(center)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        body.addView(left, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f).apply { if (wide) rightMargin = dp(8) })
-        body.addView(right, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f))
-        fun section(column: LinearLayout, title: String) = card().apply {
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            addView(text(title, 13f, accent, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
-            column.addView(this, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-        }
-        fun LinearLayout.action(view: View) {
-            addView(view, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(6) })
-        }
-        fun LinearLayout.actions(first: View, second: View) {
-            val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            row.addView(first, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
-            row.addView(second, LinearLayout.LayoutParams(0, dp(48), 1f))
-            addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(6) })
-        }
-        fun label(value: String) = text(value, 12f, muted).apply { gravity = Gravity.START }
-        fun field(label: String, value: String, type: Int) = EditText(this).apply {
-            hint = label; contentDescription = label; setSingleLine(); inputType = type
-            setTextColor(ink); setHintTextColor(muted); textSize = 14f
-            background = shape(pale, 12); setPadding(dp(10), 0, dp(10), 0); setText(value)
-            // The key must not be retained by framework view-state/autofill.
-            isSaveEnabled = false; importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
-        }
-        val device = section(left, "1 · DEVICE CONNECTION")
-        device.addView(text("Attach one T3-S3 with a USB OTG data cable. Grant USB permission; close other serial apps.", 13f, ink))
-        connect = button("Connect USB board") {
-            hideLoRaKey()
-            if (wantsLink) {
-                wantsLink = false
-                getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
-                reconnectHandler.removeCallbacks(reconnect); stop(explicitDisconnect = true)
-            } else {
-                getSharedPreferences("link", MODE_PRIVATE).edit().putString("transport", "lora_usb").putBoolean("auto_connect", true).apply()
-                wantsLink = true; start(); scheduleReconnect()
-            }
-            refreshUi()
-        }
-        loraRead = button("Read board settings", false) {
-            if (loraExchange.beginRead()) sendLoRaAdmin("TELERC_LORA_GET_V1")
-        }
-        device.actions(connect!!, loraRead!!)
-        loraStatus = text(loraInfo, 12f, ink)
-        device.addView(loraStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-
-        val check = section(left, "3 · LINK CHECK")
-        loraLinkStatus = text("Connect and read the local board first.", 13f, ink)
-        check.addView(loraLinkStatus)
-        loraOperate = button("Open Controls") {
-            hideLoRaKey(); disableControl(); page = Page.CONTROLS; render()
-        }
-        check.action(loraOperate!!)
-        check.addView(text("Enable control and ARM explicitly at neutral.", 12f, muted),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-
-        val pairing = section(right, "2 · RADIO & PAIRING")
-        pairing.addView(text("Fixed control profile · SF7 / 500 kHz / CR4:5", 12f, muted))
-        val prefs = getSharedPreferences("lora_pair", MODE_PRIVATE)
-        val draft = loraDraft ?: LoRaSetupExchange.Draft(prefs.getString("mhz", "").orEmpty(),
-            prefs.getString("power", "2").orEmpty(), prefs.getString("key", "").orEmpty()).also { loraDraft = it }
-        val radioRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun radioField(title: String, value: String, type: Int): EditText {
-            val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            val edit = field(title, value, type)
-            column.addView(label(title)); column.addView(edit, LinearLayout.LayoutParams(-1, dp(48)))
-            radioRow.addView(column, LinearLayout.LayoutParams(0, -2, 1f).apply { if (radioRow.childCount == 1) rightMargin = dp(8) })
-            return edit
-        }
-        val frequency = radioField("Frequency (MHz)", draft.mhz, InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        val power = radioField("Power (2–17 dBm)", draft.power, InputType.TYPE_CLASS_NUMBER)
-        pairing.addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        pairing.addView(label("Shared pairing key · 64 hex digits"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        val keyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val key = field("Pairing key", draft.key, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD).apply {
-            typeface = android.graphics.Typeface.MONOSPACE
-            transformationMethod = PasswordTransformationMethod.getInstance()
-        }
-        loraKey = key
-        loraReveal = button("Show", false) {
-            val caret = key.selectionStart.coerceAtLeast(0)
-            val reveal = key.transformationMethod != null
-            key.transformationMethod = if (reveal) null else PasswordTransformationMethod.getInstance()
-            key.setSelection(caret.coerceAtMost(key.length()))
-            loraReveal?.text = if (reveal) "Hide" else "Show"
-            loraReveal?.contentDescription = if (reveal) "Hide pairing key" else "Show pairing key"
-        }.apply { contentDescription = "Show pairing key"; textSize = 13f }
-        keyRow.addView(key, LinearLayout.LayoutParams(0, dp(48), 1f))
-        keyRow.addView(loraReveal, LinearLayout.LayoutParams(dp(64), dp(48)).apply { leftMargin = dp(6) })
-        pairing.addView(keyRow)
-        loraFingerprint = text("", 12f, muted)
-        pairing.addView(loraFingerprint)
-        fun captureDraft() {
-            loraDraft = LoRaSetupExchange.Draft(frequency.text.toString(), power.text.toString(), key.text.toString())
-            loraFingerprint?.text = LoRaSetup.fingerprint(key.text.toString().trim())?.let { "Draft key fingerprint · $it (comparison hint)" }
-                ?: "Enter or generate a 64-digit hex key"
-        }
-        val watcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { captureDraft() }
-            override fun afterTextChanged(s: Editable?) {}
-        }
-        frequency.addTextChangedListener(watcher); power.addTextChangedListener(watcher); key.addTextChangedListener(watcher)
-        captureDraft()
-        val generateKey = button("Generate key", false) {
-            fun generate() {
-                hideLoRaKey()
-                val bytes = ByteArray(32); java.security.SecureRandom().nextBytes(bytes)
-                key.setText(bytes.joinToString("") { "%02x".format(it.toInt() and 255) })
-            }
-            if (key.text.isNotEmpty()) AlertDialog.Builder(this).setTitle("Replace draft pairing key?")
-                .setMessage("Both boards need the same key. This changes only the draft; the board stays unchanged until Save succeeds.")
-                .setPositiveButton("Replace") { _, _ -> generate() }.setNegativeButton("Cancel", null).show()
-            else generate()
-        }
-        loraSave = button("Save pairing") {
-            hideLoRaKey()
-            if (vehicleArmed == true) { loraStatus?.text = "Disarm and disconnect motor power before setup."; return@button }
-            val value = LoRaSetupExchange.Draft(frequency.text.toString().trim(), power.text.toString().trim(), key.text.toString().trim())
-            if (LoRaSetup.request(value.mhz, value.power, value.key) == null) {
-                loraStatus?.text = "Enter 150–960 MHz with up to 3 decimal places, 2–17 dBm, and a nonzero 64-digit hex key."; return@button
-            }
-            val request = loraExchange.beginSave(value) ?: return@button
-            sendLoRaAdmin(request)
-        }
-        pairing.actions(generateKey, loraSave!!)
-        pairing.addView(text("Match both inactive boards. Save → restart → read back. Local frequency rules apply.", 12f, muted),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        if (!wide) { left.removeView(check); right.addView(check) }
-        val help = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        right.addView(help, LinearLayout.LayoutParams(-1, -2))
-        val details = text("Keep motor power disconnected while pairing. Read BASE and ROVER separately; compare frequency, power and key fingerprint. An active radio cannot be edited here: follow the NVS reset/reflash guide to re-pair. The key is retained in private phone settings only after the board confirms Save.\n\nNative USB CDC only; BLE, USB-UART adapters, mesh routing and Meshtastic channel QR import are unavailable. The shared key authenticates direct radio packets; payloads are not encrypted. No Wi-Fi password is needed for this USB setup.", 12f, muted).apply { visibility = View.GONE }
-        help.action(button("Setup details ▾", false) {
-            details.visibility = if (details.visibility == View.GONE) View.VISIBLE else View.GONE
-        })
-        help.addView(details, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        setContentView(root)
-    }
-
     private fun renderSetup() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
@@ -666,12 +495,18 @@ class MainActivity : Activity() {
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(120), dp(44)))
         header.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
-        header.addView(button(if (darkTheme) "☀" else "☾", false) {
-            disableControl()
-            appearance.edit().putBoolean("dark", !darkTheme).apply()
-            recreate()
-        }.apply { contentDescription = if (darkTheme) "Switch to light theme" else "Switch to dark theme" },
-            LinearLayout.LayoutParams(dp(48), dp(44)))
+        header.addView(button("${AppColors.theme(this).label} ▾", false) {
+            AlertDialog.Builder(this).setTitle("Background")
+                .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(),
+                    AppColors.theme(this).ordinal) { dialog, index ->
+                    disableControl()
+                    val selected = BackgroundTheme.entries[index]
+                    appearance.edit().putString("background", selected.name)
+                        .putBoolean("dark", selected == BackgroundTheme.DARK).apply()
+                    dialog.dismiss(); recreate()
+                }.setNegativeButton("Cancel", null).show()
+        }.apply { contentDescription = "Choose Light, Sepia or Dark background" },
+            LinearLayout.LayoutParams(dp(100), dp(44)))
         root.addView(header, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(8) })
 
         val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8)) }
@@ -739,7 +574,13 @@ class MainActivity : Activity() {
             addView(status)
             addView(button("Diagnose link", false) {
                 AlertDialog.Builder(this@MainActivity).setTitle("Link diagnostics")
-                    .setMessage(linkDiagnosis()).setPositiveButton("OK", null).show()
+                    .setMessage(linkDiagnosis()).setPositiveButton("OK", null)
+                    .setNeutralButton("Export route") { _, _ ->
+                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
+                            putExtra(Intent.EXTRA_TITLE, "telerc-route.csv")
+                        }, 43)
+                    }.show()
             }, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
         }
         left.addView(link, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -812,7 +653,7 @@ class MainActivity : Activity() {
         slider("Steering sensitivity", 25, 100, draft.steeringPercent) { draft = draft.copy(steeringPercent = it) }
         slider("Drive sensitivity", 25, 100, draft.drivePercent) { draft = draft.copy(drivePercent = it) }
         slider("Expo", 0, 100, draft.expoPercent) { draft = draft.copy(expoPercent = it) }
-        content.addView(text("Sensitivity limits each axis. Expo softens both axes near center: 0% linear, 100% softest. Full-stick range stays the same. Applies to Controls and Test drive.", 12f, muted))
+        content.addView(text("Sensitivity limits each axis. Expo softens both axes near center: 0% linear, 100% softest. Full-stick range stays the same. Applies to the live controls.", 12f, muted))
         val scroll = ScrollView(this).apply { addView(content) }
         AlertDialog.Builder(this).setTitle("Control response").setView(scroll)
             .setPositiveButton("Apply") { _, _ -> ControlResponseStore.save(this, draft); render() }
@@ -823,24 +664,7 @@ class MainActivity : Activity() {
         host = null; port = null; connect = null
         val root = shell()
         status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
-        lateinit var pages: Button
-        pages = button("Controls ▾", true) {
-            PopupMenu(this, pages).apply {
-                menu.add(0, 1, 0, "Setup")
-                menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test drive")
-                menu.add(0, 4, 3, "LoRa setup")
-                setOnMenuItemClickListener { item ->
-                    when (item.itemId) {
-                        1 -> switchTo(Page.SETUP)
-                        2 -> Unit
-                        3 -> switchTo(Page.TEST_DRIVE)
-                        4 -> switchTo(Page.LORA)
-                    }
-                    true
-                }
-            }.show()
-        }
+        val pages = pageDropdown("Controls")
         val arm = armDisarmButton()
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
@@ -929,9 +753,9 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1.2f).apply { rightMargin = dp(8) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 4.6f).apply { rightMargin = dp(8) })
-        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1.2f))
+        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1.6f).apply { rightMargin = dp(8) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 3.8f).apply { rightMargin = dp(8) })
+        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1.6f))
         root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // Three-zone footer keeps link state centered and prevents control buttons from
@@ -1016,241 +840,19 @@ class MainActivity : Activity() {
         startPhoneLocation()
         routeMap?.view?.post { routeMap?.draw() }
     }
-    private fun renderTestDrive() {
-        host = null; port = null; connect = null; enable = null
-        steeringStick = null; driveStick = null
-        val root = shell()
-        lateinit var pages: Button
-        pages = button("Test drive ▾", true) {
-            PopupMenu(this, pages).apply {
-                menu.add(0, 1, 0, "Setup")
-                menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test drive")
-                menu.add(0, 4, 3, "LoRa setup")
-                setOnMenuItemClickListener { item ->
-                    when (item.itemId) {
-                        1 -> switchTo(Page.SETUP)
-                        2 -> switchTo(Page.CONTROLS)
-                        4 -> switchTo(Page.LORA)
-                    }
-                    true
-                }
-            }.show()
-        }
-        status = text("DISCONNECTED", 11f, accent, true).apply { gravity = Gravity.CENTER }
-        lateinit var bottom: LinearLayout
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val course = TestDriveView(this)
-        testCourse = course
-        val vehiclePrefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-        course.maxYawRateDegrees = vehiclePrefs.getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
-        val left = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            addView(text("STEER", 16f, ink, true).apply { gravity = Gravity.CENTER })
-            addView(text("CH1  ·  left / right", 11f, muted).apply { gravity = Gravity.CENTER })
-            val stick = JoystickView(this@MainActivity, false) { course.setSteering(it) }
-            stick.isEnabled = true
-            addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
-        }
-        row.addView(controlColumn(pages, left), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        val middle = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            val scene = FrameLayout(this@MainActivity)
-            scene.addView(course, FrameLayout.LayoutParams(-1, -1))
-            val map = RouteMapView(this@MainActivity, route)
-            map.maxSpeedMetersPerSecond = vehiclePrefs.getFloat("max_m_s", 2.8f).coerceIn(.1f, 30f).toDouble()
-            routeMap = map
-            course.onTestPose = { pose -> if (mapActive) map.updatePreview(pose) }
-            map.view.visibility = View.GONE
-            scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
-            mapBadge = text("CYAN ROVER · OFFLINE PREVIEW", 10f, ink, true).apply {
-                background = shape(surface, 8)
-                setPadding(dp(6), dp(2), dp(6), dp(2))
-                visibility = View.GONE
-                contentDescription = "Vehicle settings: name, estimated maximum speed and turn rate"
-                setOnClickListener { editTestVehicle(course, map) }
-            }
-            scene.addView(mapBadge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT).apply {
-                leftMargin = dp(6); topMargin = dp(6)
-            })
-            if (started) map.onStart()
-            if (resumed) map.onResume()
-            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
-            bottom = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            var testMode = false
-            val modeButton = button("Test", false) { }
-            modeButton.contentDescription = "Open Test mode; tap again to return to Game"
-            modeButton.textSize = 12f
-            bottom.addView(modeButton, LinearLayout.LayoutParams(dp(62), dp(36)).apply { rightMargin = dp(4) })
-            routeStatus = text("", 11f, muted)
-            val locate = button("⌖", false) { locatePhone() }.apply {
-                contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
-            }
-            lateinit var viewMode: Button
-            viewMode = button(if (showTestMap) "SIM" else "MAP", false) {
-                showTestMap = !showTestMap
-                mapActive = showTestMap
-                course.visibility = if (showTestMap) View.GONE else View.VISIBLE
-                map.view.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                mapBadge?.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                if (showTestMap) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
-                locate.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                viewMode.text = if (showTestMap) "SIM" else "MAP"
-            }.apply { visibility = View.GONE }
-            // The switch also exposes the offline simulator without sending commands.
-            viewMode.textSize = 12f
-            bottom.addView(viewMode, LinearLayout.LayoutParams(dp(52), dp(36)).apply { rightMargin = dp(4) })
-            val reset = button("Reset", false) {
-                if (mapActive) {
-                    route.reset(); map.reset(); updateRoute(); locatePhone()
-                } else course.resetCourse()
-            }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
-            bottom.addView(locate, LinearLayout.LayoutParams(dp(40), dp(36)).apply { rightMargin = dp(4) })
-            reset.textSize = 12f
-            bottom.addView(reset, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(4) })
-            val export = button("CSV", false) {
-                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
-                    putExtra(Intent.EXTRA_TITLE, "telerc-route.csv")
-                }
-                startActivityForResult(intent, 43)
-            }.apply { contentDescription = "Export recorded route and transmitted control commands as CSV"; visibility = View.GONE }
-            export.textSize = 12f
-            bottom.addView(export, LinearLayout.LayoutParams(dp(48), dp(36)))
-            val music = button("♫", false) { }.apply {
-                contentDescription = "Turn game music on or off; uses media volume"
-                setOnClickListener {
-                    isSelected = course.setMusic(!isSelected)
-                    text = if (isSelected) "♫ ON" else "♫"
-                }
-            }
-            musicButton = music
-            modeButton.setOnClickListener {
-                    testMode = !testMode
-                    val checked = testMode
-                    course.setMode(if (checked) TestDriveView.Mode.TEST else TestDriveView.Mode.GAME)
-                    modeButton.text = if (checked) "Game" else "Test"
-                    modeButton.contentDescription = if (checked) "Return to Game" else "Open Test"
-                    music.visibility = if (checked) View.GONE else View.VISIBLE
-                    if (checked) { music.isSelected = false; music.text = "♫" }
-                    mapActive = checked && showTestMap
-                    course.visibility = if (mapActive) View.GONE else View.VISIBLE
-                    map.view.visibility = if (mapActive) View.VISIBLE else View.GONE
-                    mapBadge?.visibility = if (mapActive) View.VISIBLE else View.GONE
-                    locate.visibility = if (mapActive) View.VISIBLE else View.GONE
-                    reset.visibility = if (checked) View.VISIBLE else View.GONE
-                    export.visibility = if (checked) View.VISIBLE else View.GONE
-                    viewMode.visibility = if (checked) View.VISIBLE else View.GONE
-                    routeStatus?.visibility = if (checked) View.VISIBLE else View.GONE
-                    if (mapActive) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
-            }
-            music.textSize = 12f
-            bottom.addView(music, LinearLayout.LayoutParams(dp(52), dp(36)).apply { leftMargin = dp(4) })
-
-            routeStatus?.visibility = View.GONE
-
-        }
-        row.addView(middle, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
-        val right = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-
-            addView(text("DRIVE", 16f, ink, true).apply { gravity = Gravity.CENTER })
-            addView(text("CH2  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
-            val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
-            stick.isEnabled = true
-            addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
-        }
-        val arm = armDisarmButton()
-        row.addView(controlColumn(arm, right), LinearLayout.LayoutParams(0, -1, 1f))
-        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        // Match Controls: equal side zones + a fixed center status. The left tool
-        // strip may scroll only on unusually narrow displays; it never overlaps status.
-        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val tools = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            addView(bottom)
-        }
-        toolbar.addView(tools, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        status?.apply {
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        toolbar.addView(status, LinearLayout.LayoutParams(dp(156), -1))
-        val rightSlot = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
-        for (label in listOf("F1", "F2", "F3")) {
-            rightSlot.addView(servoAssignmentButton(label),
-                LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
-        }
-        toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
-        setContentView(root)
-        updateRoute()
-    }
     private fun updateRoute() {
         routeMap?.draw()
-        val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-        val vehicle = prefs.getString("name", "Rover") ?: "Rover"
-        val maxSpeed = prefs.getFloat("max_m_s", 2.8f)
         val lastGps = route.rover.lastOrNull()?.timeMs
         val gpsAge = lastGps?.let {
             val seconds = ((System.currentTimeMillis() - it).coerceAtLeast(0L) / 1000L)
             if (seconds < 60) "${seconds}s" else "${seconds / 60}m"
         }
-        mapBadge?.text = when {
-            page == Page.CONTROLS -> "${if (gpsAge == null) "NO GPS · ${if (route.home == null) "SAMPLE" else "PHONE HOME"}" else "LAST GPS $gpsAge AGO"} · " +
-                if (controlEnabled.get()) "CYAN RC ESTIMATE" else "CYAN ESTIMATE FROZEN"
-            route.rover.isEmpty() -> "$vehicle · SIM ${"%.1f".format(maxSpeed)} m/s · TAP TO EDIT"
-            else -> "$vehicle · LIVE ROVER · TAP TO EDIT SIM"
-        }
+        mapBadge?.text = "${if (gpsAge == null) "NO GPS · ${if (route.home == null) "SAMPLE" else "PHONE HOME"}" else "LAST GPS $gpsAge AGO"} · " +
+            if (controlEnabled.get()) "CYAN RC ESTIMATE" else "CYAN ESTIMATE FROZEN"
         routeStatus?.text = "HOME ${if (route.home == null) "GPS pending · SAMPLE MAP" else "GPS fixed"}  ·  " +
             "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}" +
             (route.rover.lastOrNull()?.headingDegrees?.let { " H ${it.toInt()}°" } ?: "") +
             "  ·  SENT ${route.commands.size}"
-    }
-
-    private fun editTestVehicle(course: TestDriveView, map: RouteMapView) {
-        val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-        fun field(label: String, value: String, decimal: Boolean): EditText = EditText(this).apply {
-            hint = label; setSingleLine(); setText(value); textSize = 15f
-            inputType = if (decimal) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-                else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        }
-        val name = field("Vehicle name", prefs.getString("name", "Rover") ?: "Rover", false)
-        val speed = field("Maximum speed (m/s)", prefs.getFloat("max_m_s", 2.8f).toString(), true)
-        val turn = field("Pivot turn rate (°/s)", prefs.getFloat("turn_deg_s", 220f).toString(), true)
-        val form = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(4), dp(22), 0)
-            addView(name); addView(speed); addView(turn)
-        }
-        val dialog = AlertDialog.Builder(this).setTitle("Offline vehicle estimate")
-            .setMessage("Simulated map movement only. No values are sent to the rover.")
-            .setView(form).setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val label = name.text.toString().trim()
-                val metersPerSecond = speed.text.toString().toFloatOrNull()
-                val degreesPerSecond = turn.text.toString().toFloatOrNull()
-                when {
-                    label.isBlank() || label.length > 24 -> name.error = "Enter a name up to 24 characters"
-                    metersPerSecond == null || !metersPerSecond.isFinite() || metersPerSecond !in .1f..30f ->
-                        speed.error = "Enter 0.1–30 m/s"
-                    degreesPerSecond == null || !degreesPerSecond.isFinite() || degreesPerSecond !in 10f..360f ->
-                        turn.error = "Enter 10–360 °/s"
-                    else -> {
-                        prefs.edit().putString("name", label).putFloat("max_m_s", metersPerSecond)
-                            .putFloat("turn_deg_s", degreesPerSecond).apply()
-                        map.maxSpeedMetersPerSecond = metersPerSecond.toDouble()
-                        course.maxYawRateDegrees = degreesPerSecond
-                        map.resetPreview(); updateRoute(); dialog.dismiss()
-                    }
-                }
-            }
-        }
-        dialog.show()
     }
 
     private fun locatePhone() {
@@ -1332,8 +934,8 @@ class MainActivity : Activity() {
             try {
                 val uri = data?.data ?: return
                 contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(route.encode()) }
-                routeStatus?.text = "Route exported"
-            } catch (_: Exception) { routeStatus?.text = "Could not export route" }
+                Toast.makeText(this, "Route exported", Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) { Toast.makeText(this, "Could not export route", Toast.LENGTH_LONG).show() }
         }
     }
     private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
@@ -1344,7 +946,7 @@ class MainActivity : Activity() {
         pendingPhoneLocate = false
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
-        routeMap = null; routeStatus = null; mapBadge = null; musicButton = null
+        routeMap = null; routeStatus = null; mapBadge = null
         controlsPlaceholder = null; controlsLocate = null; controlsEstimate = null; deadReckoning.reset()
     }
     private fun saveRoute() {
@@ -1398,10 +1000,9 @@ class MainActivity : Activity() {
     private fun refreshUi() {
         val now = SystemClock.elapsedRealtime()
         status?.text = when {
-            page == Page.LORA && usbPermissionPending -> "USB PERMISSION PENDING"
+            usbMode && usbPermissionPending -> "USB PERMISSION PENDING"
             !connected.get() && wantsLink -> if (usbMode) "CONNECT USB LoRa BASE" else "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
-            page == Page.LORA && usbMode && target == 0 -> "USB CONNECTED · LOCAL SETUP"
             target == 0 -> "WAITING FOR HEARTBEAT"
             controlEnabled.get() && !HeartbeatHealth.isFresh(target, heartbeatAt, now) ->
                 "SYSTEM $target  •  CONTROL PAUSED"
@@ -1409,9 +1010,7 @@ class MainActivity : Activity() {
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
-        connect?.text = if (page == Page.LORA) {
-            if (wantsLink) { if (usbMode) "Disconnect USB" else "Disconnect Wi-Fi" } else "Connect USB board"
-        } else if (wantsLink) "Disconnect" else "Connect"
+        connect?.text = if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
         armButton?.apply { text = armCaption(); isEnabled = linkFresh() && vehicleArmed != null }
@@ -1538,7 +1137,6 @@ class MainActivity : Activity() {
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
-        if (usbMode && page == Page.LORA && loraExchange.beginRead()) sendLoRaAdmin("TELERC_LORA_GET_V1")
         thread(name = "telerc-link") {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
@@ -1800,8 +1398,8 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; fpvCamera?.connectCamera() }; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onPause() { fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; fpvCamera?.connectCamera() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.close(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }

@@ -1,3 +1,9 @@
+# 0.8.59 verification
+
+Baseline 0.8.58/code76 commit `2228f1ea8315ef25311965230f693eebdc19a6ba`, successful workflow 38735282670. Only Android UI, theme migration and release packaging change; firmware and wire protocols are unchanged. Acceptance and rollback: COMPACT_UI_059.md.
+
+Gates A (Android compile/lint/unit), B (theme migration regression), C (host/sanitizer regression), D (Android-to-mini parser integration), and F (signed package/version/alignment/checksums) must pass on the new commit in the compact UI release workflow. E (physical HIL), phone installation and visual/USB device QA are BLOCKED by absent hardware. Local Android build is BLOCKED by missing SDK/network; no local Android pass is claimed. Stable promotion is not authorized by software gates alone.
+
 # TeleRC 0.8.56 restoration verification
 
 Restores the full pre-simplification UI from 0.8.53 / local 0.8.54 mini-profile development. App ID and signing identity remain; code 74 installs over 0.8.55/code 73. User scope: roll back the simplified layout, keep all prior features and add Wi-Fi arm/disarm for the mini rover. Firmware 1.2.0 is unchanged; actual-target compilation evidence is retained in 0.8.55/run 38694370783. There are no affected firmware targets to rebuild for this app-only change.

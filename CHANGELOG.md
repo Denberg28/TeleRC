@@ -1,3 +1,11 @@
+## 0.8.59 — compact UI and Sepia background
+
+- Keep Setup and Controls; remove Test drive/game and LoRa provisioning pages.
+- Add persistent Light/Sepia/Dark backgrounds with legacy preference migration.
+- Reduce shell padding, widen both joystick panels and retain central USB FPV/map swapping.
+- Preserve response settings, Wi-Fi/USB LoRa control, arming, failsafes and stored routes; move CSV export into diagnostics.
+- Package with retained signing identity and increasing versionCode 77; hardware/phone QA pending.
+
 ## 0.8.58 — larger controls and USB FPV (development)
 
 - Base this update on the released 0.8.57/code75 source, retaining independent steering/drive sensitivity, expo and all Mini rover/Wi-Fi/LoRa behavior.

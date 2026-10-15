@@ -1,3 +1,7 @@
+# TeleRC 0.8.59 — compact UI
+
+Setup and Controls are the two pages. Choose Light, Sepia or Dark in Setup. Larger joysticks, central USB FPV/map swapping, separate sensitivity/expo, Mini rover Wi-Fi and USB LoRa operation are retained. Test drive/game and LoRa provisioning pages are removed; older descriptions below document historical versions. Route export is in Setup → Diagnose link. See [installation, validation and limits](docs/COMPACT_UI_059.md). No firmware update is needed. Signed test candidate; physical acceptance remains pending.
+
 # TeleRC 0.8.58 — larger joysticks and USB FPV
 
 Built on released 0.8.57/code75: independent steering/drive sensitivity and expo, Mini rover Wi-Fi and ARM gate, Wi-Fi/FC and LoRa USB choices are retained. Adds larger joystick controls and a USB UVC FPV preview with Show camera / Show map buttons below the center view. See [USB FPV setup and checks](docs/USB_FPV.md). Version 0.8.58/code76 is a development/test update; receiver/phone/hub HIL remains pending. No firmware reflash is required.
