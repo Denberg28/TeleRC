@@ -155,3 +155,18 @@ Gates A firmware build, B fault/scaling behavior, C host/profile/sanitizer regre
 
 PASS — firmware candidate at `c2d43d41ab1e5514b20bd55a4e7710fdf1943053`, workflow https://github.com/Denberg28/TeleRC/actions/runs/38699947458, release https://github.com/Denberg28/TeleRC/releases/tag/mini-rover-v1.2.1.
 Gates A firmware target build, B automated scaling/fault behavior, C regression/sanitizers/profile checks and F packaging PASS. Six actual core 3.3.2 ESP32-S3 configurations compiled, twenty driver/count/API host configurations passed, and default leak-enabled sanitizer suites passed. No app sources or APK were changed. D physical command-to-driver/motor integration and E hardware verification remain pending. The old range mismatch is reproduced and corrected; actual cause of the user's no-motion condition is not physically confirmed. Next evidence: Serial Monitor lines at armed neutral and held-forward, common ground and driver supply verification, then raised-wheel stopping/recovery test. See MINI_MX1508_121.md.
+
+## Mini MX1508 1.2.2 response candidate
+
+Baseline local `d2de989`, remote `83ef606d2cbfa9877308372ae94e31dde3b01a64`; built 1.2.1 source `c2d43d41ab1e5514b20bd55a4e7710fdf1943053`. User reports movement, audible steering and very slow drive. Scope: MX1508 PWM frequency, drive cap, steering gain only; app/protocol/GPIO and safety rules unchanged. See MINI_MX1508_122.md for assumptions, exact outputs, raised-wheel HIL and rollback. Reproduced failing full-duty regression on baseline before changing settings.
+
+| Gate | Status before final workflow | Evidence / acceptance |
+| --- | --- | --- |
+| A — source/build | Reviewed; target NOT TESTED | Compile six actual pinned core 3.3.2 configurations |
+| B — behavior | PASS — simulator tested | Exact forward/pivot PWM, proportional response, normalized combined inputs, stop/rearm and PWM-fault regression |
+| C — regression | PASS local; final CI pending | Host/sanitizers and twenty profile/count/API combinations; other driver limits retained. App untouched, evidence run 38696307553 retained |
+| D — integration | Software reviewed; physical NOT TESTED | User reports 1.2.1 movement; new noise/drive performance needs actual Serial lines and supply measurements |
+| E — HIL | BLOCKED | No attached rover; use MINI_MX1508_122.md, verify noise, current/temperature, stopping and no automatic rearm |
+| F — delivery | Pending final workflow | Prerelease source/binaries/checksums tied to commit, setup and rollback |
+
+Next physical check: sensitivity 100%, raised wheels, small command first; confirm full forward and full steering Serial outputs, release/DISARM/command-loss zero, then brief ground test. Full duty can increase current; this is not current regulation or measured speed control. No stable promotion.

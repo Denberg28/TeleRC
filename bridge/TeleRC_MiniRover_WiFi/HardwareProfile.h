@@ -19,9 +19,9 @@
 #ifndef TELERC_BTS_LOGIC_VERIFIED
 #define TELERC_BTS_LOGIC_VERIFIED 0
 #endif
-// MX1508 mini motor bench profile: longer 1 kHz pulses; override only after testing.
+// Move the PWM carrier above the 1 kHz bench tone. Actual noise/torque needs HIL.
 #ifndef TELERC_PWM_HZ
-#define TELERC_PWM_HZ (TELERC_DRIVER==1 ? 1000 : TELERC_DRIVER==5 ? 10000 : 20000)
+#define TELERC_PWM_HZ (TELERC_DRIVER==5 ? 10000 : 20000)
 #endif
 
 namespace hardware {

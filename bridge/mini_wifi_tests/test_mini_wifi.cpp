@@ -33,15 +33,27 @@ int main(int argc,char **argv){
   discover();command(true);assert(!state.armed);
   rc(1900,1900);command(true);assert(!state.armed);zero();
   neutral();command(true);assert(state.armed);rc(1500,1900);advance(5);
-  for(unsigned pin:{4,6,8,10}) assert(duties[pin]==180); // All four mapped motors forward.
+  for(unsigned pin:{4,6,8,10}) assert(duties[pin]==255); // Full MX1508 drive reaches 100% duty.
   for(unsigned pin:{5,7,9,11}) assert(duties[pin]==0);
   assert(hardware::MOTORS[0].a==4 && hardware::MOTORS[0].b==5);
   assert(hardware::MOTORS[1].a==6 && hardware::MOTORS[1].b==7);
   assert(hardware::MOTORS[2].a==8 && hardware::MOTORS[2].b==9);
   assert(hardware::MOTORS[3].a==10 && hardware::MOTORS[3].b==11);
-  assert(hardware::PWM_HZ==1000);
+  assert(hardware::PWM_HZ==20000);
   rc(1500,1600);advance(5); // Full app stick at retained 25% sensitivity.
-  for(unsigned pin:{4,6,8,10}) assert(duties[pin]==36); // Explains low starting torque without changing limits.
+  for(unsigned pin:{4,6,8,10}) assert(duties[pin]==51); // Sensitivity still scales the command.
+  rc(1500,1700);advance(5);
+  for(unsigned pin:{4,6,8,10}) assert(duties[pin]==119); // Proportional drive, no minimum-duty jump.
+  rc(1900,1500);advance(5);advance(30); // Full steering pivots at full duty.
+  for(unsigned pin:{4,6,9,11}) assert(duties[pin]==255);
+  for(unsigned pin:{5,7,8,10}) assert(duties[pin]==0);
+  rc(1100,1500);advance(5);zero();advance(30); // Opposite pivot preserves reversal coast.
+  for(unsigned pin:{5,7,8,10}) assert(duties[pin]==255);
+  for(unsigned pin:{4,6,9,11}) assert(duties[pin]==0);
+  rc(1900,1900);advance(5);advance(30); // Combined input is normalized, never wraps duty.
+  for(unsigned pin:{4,6}) assert(duties[pin]==255);
+  for(unsigned pin:{5,7,8,9,10,11}) assert(duties[pin]==0);
+  rc();advance(5);zero(); // Neutral remains exactly zero, with no launch boost.
   rc(1500,1900);advance(5);
 
   auto oldRC=state.lastRC;advance(200);discover();assert(state.lastRC==oldRC); // Discovery cannot feed motor watchdog.

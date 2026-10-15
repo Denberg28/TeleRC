@@ -1,5 +1,7 @@
 # TeleRC 0.8.56 — previous full interface restored
 
+Standalone MX1508 mini rover: [firmware 1.2.2 response candidate](docs/MINI_MX1508_122.md) raises MX drive/steering duty and moves PWM to 20 kHz. Keep APK 0.8.56; upload sketch + all headers. The original 1.2.0 setup below is historical; use the candidate guide for current mini firmware.
+
 Restores the pre-simplification TeleRC interface: Setup, Controls, Map/Test drive, LoRa setup, themes, diagnostics, servo assignments and normal connection choices. Adds the Mini rover Wi-Fi preset and a fresh-neutral ARM gate for the existing standalone mini rover Wi-Fi sketch 1.2.0. ARM/DISARM follows rover heartbeat confirmation. No other controls or workflows have been redesigned.
 
 Install this signed code 74 update over 0.8.55/code 73; the app ID and signing identity are retained. Choose Setup → Mini rover Wi-Fi, join TeleRC-MiniRover (telerc123), Connect → Controls → ENABLE CONTROL → center until ARM · READY → ARM. The mini sketch does not change; no reflash is needed if 1.2.0 is already installed. See [mini Wi-Fi setup](docs/MINI_ROVER_WIFI.md) and [verification](docs/TESTING.md). Hardware/installation checks remain pending.
