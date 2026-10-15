@@ -20,3 +20,23 @@ An earlier automatic approval review rejected pushing the previous task's build 
 The user authorized the new APK + sketch release. Build `38693069439` at source `f90b1c9fe876bc3fa098c788f4e970cd8e9924c0` passed the full host regressions and default leak-enabled sanitizers, 20 host driver/count/API combinations, all six actual ESP32-S3/core 3.3.2 configurations, Android JVM tests/debug-release lint/build and Kotlin-to-firmware protocol interop. Packaging failed because an unauthenticated private-repository baseline download returned 404. Artifact upload separately hit the account's storage quota. These were delivery failures; app/firmware code was not changed after passing.
 
 The follow-up workflow authenticates the baseline release download, retains certificate/version verification, uses a GitHub prerelease for the verified package and evidence, and keeps the existing latest release unchanged. Increased Gradle build memory addresses observed metaspace pressure. Final BUILD_INFO.txt and the successful release workflow supersede earlier local build blockers. Phone/rover installation and hardware tests remain BLOCKED; use MINI_WIFI_ONLY.md. This is a test candidate, with no stable promotion or main merge.
+
+## Final 0.8.55 software release evidence
+
+Release: https://github.com/Denberg28/TeleRC/releases/tag/v0.8.55
+Successful workflow: https://github.com/Denberg28/TeleRC/actions/runs/38694370783
+Exact built source: `0633eb35c7f9f8d9820188296e38ad484d94bee9`.
+
+| Gate | Final status | Evidence |
+| --- | --- | --- |
+| A source/build | PASS — build verified | Android unit/debug/release lint/debug/release APK builds; six actual ESP32-S3 configurations using core 3.3.2. |
+| B behavior | PASS — automated | Mini rover safety, arming/stop/watchdog/recovery/malformed-frame tests. Device touch behavior remains pending. |
+| C regression | PASS — automated | Legacy bridge suite, full default leak-enabled sanitizers and 20 driver/count/API host combinations. |
+| D integration | PASS — software only | Kotlin-generated packets consumed by actual firmware parser harness. Phone-to-rover hardware integration remains pending. |
+| E HIL | BLOCKED | No attached rover, phone, driver or timing equipment. Follow MINI_WIFI_ONLY.md; stable promotion remains blocked. |
+| F delivery | PASS — candidate packaging | Retained certificate verified against 0.8.53; versionCode 73/name 0.8.55 verified; signed APK, source, sketch/binaries, evidence and SHA-256 manifest published as prerelease with latest=false. Installation/upgrade on phone remains pending. |
+
+APK: `TeleRC-v0.8.55-WiFi-only.apk`, 851088 bytes, SHA-256 `280d081e714f6184fd41d5ed90d4e0a3cf1b182c5f73046829bd0ee7845841e0`.
+Paired sketch/binaries: `TeleRC-MiniRover-WiFi-only-v1.2.0.zip`, 6607110 bytes, SHA-256 `8ba7224e7b9d0329ca5cd8dab9f55604545b8ac02de135234c5f804fefbf122e`.
+
+The release is complete and supersedes previous local SDK/packaging/permission blockers in this historical document. No main merge or stable promotion occurred. Next concrete check: install this signed APK, flash the matching sketch with the correct driver profile, and execute raised-wheel arm/disarm, lifecycle, command-loss and recovery checks before ground operation.
