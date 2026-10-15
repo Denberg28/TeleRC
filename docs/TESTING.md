@@ -170,3 +170,9 @@ Baseline local `d2de989`, remote `83ef606d2cbfa9877308372ae94e31dde3b01a64`; bui
 | F — delivery | Pending final workflow | Prerelease source/binaries/checksums tied to commit, setup and rollback |
 
 Next physical check: sensitivity 100%, raised wheels, small command first; confirm full forward and full steering Serial outputs, release/DISARM/command-loss zero, then brief ground test. Full duty can increase current; this is not current regulation or measured speed control. No stable promotion.
+
+### Final 1.2.2 software result
+
+PASS — built source `b27e7e5019f16140ce7d39e051aabf1a8f33f9a8`, [workflow 38702871979](https://github.com/Denberg28/TeleRC/actions/runs/38702871979), [prerelease mini-rover-v1.2.2](https://github.com/Denberg28/TeleRC/releases/tag/mini-rover-v1.2.2). Gates A, automated B, C and F PASS: six actual core 3.3.2 ESP32-S3 builds, twenty driver/count/API host combinations, legacy/mini host regression, default leak-enabled ASan/UBSan, ZIP CRC and SHA-256 verification completed. No app source changes; retain APK 0.8.56 and its prior Android evidence. D physical performance and E HIL remain pending. User-observed movement applies to 1.2.1 only; 1.2.2 noise/torque/current/temperature/stop behavior is not physically verified.
+
+Documentation-only correction after the built tag: core 3.3.2 maps requested 8-bit duty 255 to raw LEDC register 256, so full-on `PWM=256` is expected (OUT remains 255). This is supported by pinned `esp32-hal-ledc.c` `ledcWrite`/`ledcRead`, not a hardware measurement. The Arduino deliverable's updated START_HERE includes that clarification; earlier tag guide's PWM=255 example should be read with this correction. Firmware source is unchanged from the successful build. The original release remains retained. Next check: restrained-wheel full-drive/full-steer Serial lines with sensitivity 100%, then stop/loss/recovery and brief ground-load measurement.
