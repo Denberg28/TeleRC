@@ -34,10 +34,10 @@ internal object AppColors {
         val prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
         val dark = theme(context) == BackgroundTheme.DARK
         return when (prefs.getString("accent", "Blue")) {
-            "Teal" -> if (dark) Color.rgb(171, 192, 186) else Color.rgb(80, 111, 105)
-            "Violet" -> if (dark) Color.rgb(190, 178, 201) else Color.rgb(107, 96, 122)
-            "Slate" -> if (dark) Color.rgb(184, 190, 195) else Color.rgb(98, 108, 116)
-            else -> if (dark) Color.rgb(168, 184, 193) else Color.rgb(82, 107, 122)
+            "Teal" -> if (dark) Color.rgb(171, 192, 186) else Color.rgb(69, 96, 90)
+            "Violet" -> if (dark) Color.rgb(190, 178, 201) else Color.rgb(94, 84, 108)
+            "Slate" -> if (dark) Color.rgb(184, 190, 195) else Color.rgb(79, 91, 99)
+            else -> if (dark) Color.rgb(168, 184, 193) else Color.rgb(72, 93, 106)
         }
     }
     private fun mix(base: Int, tint: Int, amount: Float): Int {
