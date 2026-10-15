@@ -191,3 +191,9 @@ Baseline: signed full-interface app 0.8.56/code74 (`33240eff444c35304fa594542b96
 | F — delivery | Pending | Signed APK code75, signer match and progression against 0.8.56, source/evidence/checksums and prerelease |
 
 Next physical check after software success: upgrade with an existing sensitivity, verify migration and persisted independent sliders, then restrained-wheel CH1/CH2 endpoint, expo, release and loss/recovery behavior. Stable promotion remains blocked on applicable HIL.
+
+### Final 0.8.57 result
+
+PASS — signed software candidate built from `47cdf3e88f3f83fc9877890fdd0eec7a2befb052`, [workflow 38726606985](https://github.com/Denberg28/TeleRC/actions/runs/38726606985), [release v0.8.57](https://github.com/Denberg28/TeleRC/releases/tag/v0.8.57). A build verified; B response/math/migration and shaped packet behavior simulator tested; C full JVM, debug/release lint/build and legacy/mini host plus default leak-enabled sanitizer regressions PASS. D software protocol integration and F signer/code75>74, archive CRC/checksums and prerelease packaging PASS. D physical integration and E phone/UI/rover HIL remain BLOCKED. No firmware sources changed; retain their prior actual-target evidence.
+
+APK: 51995954 bytes; SHA-256 `a8c0821a8e047287e63b3833ab9b4b228b86fcb3269e01db688f5f353188d691`. Install over 0.8.56 without uninstalling. Setup → Control response shows Steering/Drive sensitivity and Expo. Legacy value becomes both axis gains, expo 0%. Next check: verify migration, independent endpoints, persistence/Cancel, expo and short-landscape/theme/touch behavior on the actual phone, then raised-wheel release/STOP/loss/recovery. No new sketch is required, and no stable/field claim is made.
