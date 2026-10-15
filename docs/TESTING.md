@@ -176,3 +176,18 @@ Next physical check: sensitivity 100%, raised wheels, small command first; confi
 PASS — built source `b27e7e5019f16140ce7d39e051aabf1a8f33f9a8`, [workflow 38702871979](https://github.com/Denberg28/TeleRC/actions/runs/38702871979), [prerelease mini-rover-v1.2.2](https://github.com/Denberg28/TeleRC/releases/tag/mini-rover-v1.2.2). Gates A, automated B, C and F PASS: six actual core 3.3.2 ESP32-S3 builds, twenty driver/count/API host combinations, legacy/mini host regression, default leak-enabled ASan/UBSan, ZIP CRC and SHA-256 verification completed. No app source changes; retain APK 0.8.56 and its prior Android evidence. D physical performance and E HIL remain pending. User-observed movement applies to 1.2.1 only; 1.2.2 noise/torque/current/temperature/stop behavior is not physically verified.
 
 Documentation-only correction after the built tag: core 3.3.2 maps requested 8-bit duty 255 to raw LEDC register 256, so full-on `PWM=256` is expected (OUT remains 255). This is supported by pinned `esp32-hal-ledc.c` `ledcWrite`/`ledcRead`, not a hardware measurement. The Arduino deliverable's updated START_HERE includes that clarification; earlier tag guide's PWM=255 example should be read with this correction. Firmware source is unchanged from the successful build. The original release remains retained. Next check: restrained-wheel full-drive/full-steer Serial lines with sensitivity 100%, then stop/loss/recovery and brief ground-load measurement.
+
+## Independent control response 0.8.57 candidate
+
+Baseline: signed full-interface app 0.8.56/code74 (`33240eff444c35304fa594542b9641d5bac8e40f`), combined source branch `8764ace89f1800699a5e54f746eed8a3da4e8ca2` (local 665ee39). Scope: independent steering/drive sensitivity, common expo, legacy preference migration, bounded response math and compact Setup dialog. No firmware source, transport, ARM/STOP or command timing changes. See CONTROL_RESPONSE_057.md for formula, compatibility, acceptance checks and rollback.
+
+| Gate | Candidate status before workflow | Evidence / limit |
+| --- | --- | --- |
+| A — source/build | Reviewed; build NOT TESTED | Final JVM, debug/release lint/build required on pinned Gradle/SDK |
+| B — behavior | Reviewed; simulator tests pending | Independent gains, migration, expo known values/endpoints/monotonic bounds, neutral/invalid input and shaped MAVLink parser integration |
+| C — regression | Pending | Existing Android tests and full legacy/mini host/sanitizer checks |
+| D — integration | Software reviewed; hardware BLOCKED | CH1 steer/CH2 drive, 1500 neutral, all transport/firmware formats retained; actual phone/rover not attached |
+| E — HIL | BLOCKED | Raised-wheel phone, short landscape/font/theme/accessibility, persistence/cancel and stopping checks in CONTROL_RESPONSE_057.md |
+| F — delivery | Pending | Signed APK code75, signer match and progression against 0.8.56, source/evidence/checksums and prerelease |
+
+Next physical check after software success: upgrade with an existing sensitivity, verify migration and persisted independent sliders, then restrained-wheel CH1/CH2 endpoint, expo, release and loss/recovery behavior. Stable promotion remains blocked on applicable HIL.

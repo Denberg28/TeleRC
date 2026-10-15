@@ -178,6 +178,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(if (darkTheme) android.R.style.Theme_Material_NoActionBar else android.R.style.Theme_Material_Light_NoActionBar)
         super.onCreate(savedInstanceState)
+        ControlResponseStore.migrate(this)
         try {
             val session = getFileStreamPath("route-session.csv")
             if (session.length() <= 16_000_000L)
@@ -750,21 +751,11 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
             }
             addView(choices, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
-            val sensitivityLabel = text("Sensitivity · ${appearance.getInt("sensitivity", 100)}%", 11f, muted)
-            addView(SeekBar(this@MainActivity).apply {
-                max = 75; progress = appearance.getInt("sensitivity", 100).coerceIn(25, 100) - 25
-                progressTintList = android.content.res.ColorStateList.valueOf(accent)
-                thumbTintList = android.content.res.ColorStateList.valueOf(accent)
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
-                        sensitivityLabel.text = "Sensitivity · ${value + 25}%"
-                        if (fromUser) appearance.edit().putInt("sensitivity", value + 25).apply()
-                    }
-                    override fun onStartTrackingTouch(bar: SeekBar?) {}
-                    override fun onStopTrackingTouch(bar: SeekBar?) {}
-                })
-            }, LinearLayout.LayoutParams(-1, dp(28)).apply { topMargin = dp(2) })
-            addView(sensitivityLabel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(1) })
+            val response = ControlResponseStore.read(this@MainActivity)
+            addView(button("Control response ▸", false) { showControlResponse() },
+                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
+            addView(text("Steer ${response.steeringPercent}% · Drive ${response.drivePercent}% · Expo ${response.expoPercent}%", 11f, muted),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
         }
         right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
         val updates = card().apply {
@@ -784,6 +775,42 @@ class MainActivity : Activity() {
 
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+    }
+
+    private fun showControlResponse() {
+        // Never edit gains while a live command is held. Setup is the only entry.
+        disableControl()
+        var draft = ControlResponseStore.read(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        fun slider(name: String, minimum: Int, maximum: Int, initial: Int, update: (Int) -> Unit) {
+            val label = text("$name · $initial%", 14f, ink, true)
+            content.addView(label, LinearLayout.LayoutParams(-1, -2))
+            content.addView(SeekBar(this).apply {
+                max = maximum - minimum; progress = initial - minimum
+                contentDescription = "$name percentage"
+                progressTintList = android.content.res.ColorStateList.valueOf(accent)
+                thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                        label.text = "$name · ${value + minimum}%"
+                        if (fromUser) update(value + minimum)
+                    }
+                    override fun onStartTrackingTouch(bar: SeekBar?) {}
+                    override fun onStopTrackingTouch(bar: SeekBar?) {}
+                })
+            }, LinearLayout.LayoutParams(-1, dp(48)))
+        }
+        slider("Steering sensitivity", 25, 100, draft.steeringPercent) { draft = draft.copy(steeringPercent = it) }
+        slider("Drive sensitivity", 25, 100, draft.drivePercent) { draft = draft.copy(drivePercent = it) }
+        slider("Expo", 0, 100, draft.expoPercent) { draft = draft.copy(expoPercent = it) }
+        content.addView(text("Sensitivity limits each axis. Expo softens both axes near center: 0% linear, 100% softest. Full-stick range stays the same. Applies to Controls and Test drive.", 12f, muted))
+        val scroll = ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this).setTitle("Control response").setView(scroll)
+            .setPositiveButton("Apply") { _, _ -> ControlResponseStore.save(this, draft); render() }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun renderControls() {

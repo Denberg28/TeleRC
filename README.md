@@ -1,4 +1,6 @@
-# TeleRC 0.8.56 — previous full interface restored
+# TeleRC 0.8.57 — separate sensitivity and expo
+
+Setup → **Control response** now provides independent Steering and Drive sensitivity plus Expo. Existing sensitivity migrates to both axes with expo 0%. See [usage, compatibility and checks](docs/CONTROL_RESPONSE_057.md). No firmware reflash is needed. The 0.8.56 restoration notes below are retained for context.
 
 Standalone MX1508 mini rover: [firmware 1.2.2 response candidate](docs/MINI_MX1508_122.md) raises MX drive/steering duty and moves PWM to 20 kHz. Keep APK 0.8.56; upload sketch + all headers. The original 1.2.0 setup below is historical; use the candidate guide for current mini firmware.
 

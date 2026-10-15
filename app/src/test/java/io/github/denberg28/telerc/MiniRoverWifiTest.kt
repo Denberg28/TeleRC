@@ -47,6 +47,10 @@ class MiniRoverWifiTest {
         val dir = File("build/mini-rover-interop").apply { mkdirs() }
         File(dir, "neutral.bin").writeBytes(Mavlink.override(1, 1, 1, 1500, 1500, 1500, 1500))
         File(dir, "drive.bin").writeBytes(Mavlink.override(2, 1, 1, 1700, 1200, 1500, 1500))
+        val response = ControlResponse(25, 100, 50)
+        File(dir, "response.bin").writeBytes(Mavlink.override(6, 1, 1,
+            response.channel(StickPosition(.5f, 0f), false),
+            response.channel(StickPosition(0f, .5f), true), 1500, 1500))
         File(dir, "release.bin").writeBytes(Mavlink.release(3, 1, 1))
         File(dir, "arm.bin").writeBytes(Mavlink.armDisarm(4, 1, 1, true))
         File(dir, "disarm.bin").writeBytes(Mavlink.armDisarm(5, 1, 1, false))

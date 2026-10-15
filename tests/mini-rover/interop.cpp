@@ -9,7 +9,7 @@
 int main(int argc, char **argv) {
   assert(argc == 2);
   const std::string root = argv[1];
-  for (const char *name : {"neutral", "drive", "release", "arm", "disarm"}) {
+  for (const char *name : {"neutral", "drive", "release", "arm", "disarm", "response"}) {
     std::ifstream file(root + "/" + name + ".bin", std::ios::binary);
     assert(file.good());
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
@@ -28,8 +28,8 @@ int main(int argc, char **argv) {
     } else {
       assert(message.id == 70 && message.length == 18);
       assert(message.payload[16] == 1 && message.payload[17] == 1);
-      assert(mini_mav::u16(message.payload) == (kind == "drive" ? 1700 : kind == "release" ? 0 : 1500));
-      assert(mini_mav::u16(message.payload+2) == (kind == "drive" ? 1200 : kind == "release" ? 0 : 1500));
+      assert(mini_mav::u16(message.payload) == (kind == "response" ? 1531 : kind == "drive" ? 1700 : kind == "release" ? 0 : 1500));
+      assert(mini_mav::u16(message.payload+2) == (kind == "response" ? 1375 : kind == "drive" ? 1200 : kind == "release" ? 0 : 1500));
     }
     bytes[6] ^= 1;
     assert(!mini_mav::decode(bytes.data(), bytes.size(), message, used));

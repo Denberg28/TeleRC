@@ -15,6 +15,8 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     private val track = AppColors.softAccent(context)
     private var position = StickPosition(0f, 0f)
     private var pointer = -1
+    // Settings are edited only in Setup; entering Controls/Test creates new sticks.
+    private val response = ControlResponseStore.read(context)
 
     init {
         isEnabled = false
@@ -43,7 +45,7 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     private fun input(x: Float, y: Float) {
         val radius = min(width * 0.37f, height * 0.43f).coerceAtLeast(dp(24f)) * 0.62f
         position = limitStick((x - width / 2f) / radius, (y - height / 2f) / radius)
-        changed(stickChannel(position, vertical, context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getInt("sensitivity", 100).coerceIn(25, 100) / 100f)); invalidate()
+        changed(response.channel(position, vertical)); invalidate()
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled) return false
