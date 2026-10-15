@@ -29,9 +29,21 @@ def bounds(node):
 
 
 def nodes():
-    shell('uiautomator dump /data/local/tmp/telerc-ui.xml')
-    xml = shell('cat /data/local/tmp/telerc-ui.xml')
-    return xml, list(ET.fromstring(xml).iter('node'))
+    # A cold API 35 emulator can surface its own launcher ANR over the app.
+    # Only dismiss that exact external dialog; TeleRC ANRs/crashes still fail.
+    for attempt in range(3):
+        shell('uiautomator dump /data/local/tmp/telerc-ui.xml')
+        xml = shell('cat /data/local/tmp/telerc-ui.xml')
+        items = list(ET.fromstring(xml).iter('node'))
+        launcher_anr = any(n.attrib.get('package') == 'android' and
+                           n.attrib.get('text') == "Pixel Launcher isn't responding" for n in items)
+        if not launcher_anr:
+            return xml, items
+        close = next(n for n in items if n.attrib.get('package') == 'android' and
+                     n.attrib.get('resource-id') == 'android:id/aerr_close')
+        tap(close)
+        print('EXTERNAL_EMULATOR_DIALOG_DISMISSED Pixel Launcher', attempt + 1, flush=True)
+    raise AssertionError('Emulator launcher ANR repeatedly obstructed the app')
 
 
 def find(items, key, value):
