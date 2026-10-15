@@ -611,7 +611,7 @@ class MainActivity : Activity() {
         panel.addView(body, LinearLayout.LayoutParams(-1, -2))
         updateStatus = text("", 11f, muted).apply { maxLines = 2 }
         panel.addView(updateStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
-        viewport.addView(centered, ScrollView.LayoutParams(-1, -2))
+        viewport.addView(centered, FrameLayout.LayoutParams(-1, -2))
         root.addView(viewport, LinearLayout.LayoutParams(-1, -1))
         setContentView(root)
     }
