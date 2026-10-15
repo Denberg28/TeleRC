@@ -1,3 +1,19 @@
+# Changelog
+
+## 0.8.55
+
+- Dedicated Wi-Fi-only mini rover edition: compact connect/arm/disarm/stop and two joystick controls; separate steering and drive sliders.
+- Removed LoRa/USB/GPS/map/game/update UI and dependencies from this APK.
+- Added matching standalone ESP32-S3 1.2.0 sketch with no receiver/FC dependency, neutral arming, explicit re-arm after loss, independent watchdog and local BOOT stop.
+- Retains TeleRC signing identity; hardware/installation validation remains pending. See docs/MINI_WIFI_ONLY.md.
+
+## 0.8.54
+
+- Add an explicit Mini rover Wi-Fi preset with fixed target/source UDP 14550 and direct ESP32 receiver setup instructions.
+- Require successfully streamed centered controls before mini ARM; preserve explicit Enable/ARM, source permission and failsafe recovery.
+- Explain missing receiver permission and single-client Wi-Fi without flight-controller UART diagnostics.
+- Add neutral arming regressions and Android-to-mini parser compatibility tests. Firmware unchanged; physical installation/Wi-Fi/motor HIL pending.
+
 ## 0.8.53
 
 - Signed test candidate, versionCode 71, with matching compiled ESP32-S3 and LILYGO T3-S3 binaries, source sketches, flash instructions, build evidence and checksums.

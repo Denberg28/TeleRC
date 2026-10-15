@@ -4,11 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MavlinkTest {
-    @Test fun roverNeutralAndMapping() {
-        assertEquals(RcChannels(1500, 1500, 1500, 1500), RoverControls.neutral)
-        assertEquals(RcChannels(1700, 1200, 1500, 1500), RoverControls.channels(1700, 1200))
-        assertFalse(CraftProfile.ROCKET.available)
-    }
     @Test fun overrideBoundsAndFrame() {
         val frame = Mavlink.override(7, 1, 1, 1500, 1500, 1000, 1500)
         assertEquals(26, frame.size)

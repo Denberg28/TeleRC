@@ -1,0 +1,79 @@
+name: Mini Rover Wi-Fi signed build
+on:
+  push:
+    branches: ['work/mini-rover-wifi-only-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Host safety and regression gates
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Compile actual ESP32-S3 target
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          mkdir -p deliverables/firmware
+          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --output-dir deliverables/firmware bridge/TeleRC_MiniRover_WiFi
+          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property 'compiler.cpp.extra_flags=-DTELERC_MOTOR_COUNT=2' bridge/TeleRC_MiniRover_WiFi
+          for profile in '2' '3' '4 -DTELERC_SUPPLY_MAX_MV=6000 -DTELERC_BTS_LOGIC_VERIFIED=1' '5'; do
+            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property "compiler.cpp.extra_flags=-DTELERC_DRIVER=$profile" bridge/TeleRC_MiniRover_WiFi
+          done
+      - name: Prepare existing signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: Android unit tests, lint and signed APK
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease --no-daemon
+          bridge/mini_wifi_tests/run.sh ../../app/build/mini-rover-interop
+      - name: Package and verify signer
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.55-WiFi-only.apk
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.53/TeleRC-v0.8.53.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/telerc-baseline.apk" > "$RUNNER_TEMP/baseline-certs.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs deliverables/TeleRC-v0.8.55-WiFi-only.apk > deliverables/APK_CERT.txt
+          diff <(grep 'certificate SHA-256 digest:' "$RUNNER_TEMP/baseline-certs.txt") <(grep 'certificate SHA-256 digest:' deliverables/APK_CERT.txt)
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging deliverables/TeleRC-v0.8.55-WiFi-only.apk | head -1 > deliverables/APK_IDENTITY.txt
+          grep "versionCode='73' versionName='0.8.55'" deliverables/APK_IDENTITY.txt
+          cp -R bridge/TeleRC_MiniRover_WiFi deliverables/
+          cp docs/MINI_WIFI_ONLY.md deliverables/START_HERE.md
+          git archive --format=zip --output=deliverables/TeleRC-v0.8.55-WiFi-only-source.zip HEAD
+          printf 'Source commit: %s\nESP32 core: 3.3.2\nBoard: ESP32S3 Dev Module, native USB CDC\nHardware tests: BLOCKED (no attached rover/phone)\n' "$GITHUB_SHA" > deliverables/BUILD_INFO.txt
+          cd deliverables
+          zip -r TeleRC-MiniRover-WiFi-only-v1.2.0.zip TeleRC_MiniRover_WiFi firmware START_HERE.md BUILD_INFO.txt
+          sha256sum *.apk *.zip BUILD_INFO.txt > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-v0.8.55-WiFi-only
+          path: deliverables/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mini-WiFi-build-evidence
+          path: |
+            app/build/reports/
+            app/build/test-results/
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
