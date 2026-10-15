@@ -4,7 +4,7 @@ on:
     branches: ['work/mini-rover-wifi-only-*']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -49,13 +49,16 @@ jobs:
           ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease --no-daemon
           bridge/mini_wifi_tests/run.sh ../../app/build/mini-rover-interop
       - name: Package and verify signer
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.55-WiFi-only.apk
-          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.53/TeleRC-v0.8.53.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          gh release download v0.8.53 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.53.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/telerc-baseline.apk" > "$RUNNER_TEMP/baseline-certs.txt"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs deliverables/TeleRC-v0.8.55-WiFi-only.apk > deliverables/APK_CERT.txt
           diff <(grep 'certificate SHA-256 digest:' "$RUNNER_TEMP/baseline-certs.txt") <(grep 'certificate SHA-256 digest:' deliverables/APK_CERT.txt)
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging deliverables/TeleRC-v0.8.55-WiFi-only.apk | head -1 > deliverables/APK_IDENTITY.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging deliverables/TeleRC-v0.8.55-WiFi-only.apk > "$RUNNER_TEMP/apk-badging.txt"
+          head -1 "$RUNNER_TEMP/apk-badging.txt" > deliverables/APK_IDENTITY.txt
           grep "versionCode='73' versionName='0.8.55'" deliverables/APK_IDENTITY.txt
           cp -R bridge/TeleRC_MiniRover_WiFi deliverables/
           cp docs/MINI_WIFI_ONLY.md deliverables/START_HERE.md
@@ -64,16 +67,15 @@ jobs:
           cd deliverables
           zip -r TeleRC-MiniRover-WiFi-only-v1.2.0.zip TeleRC_MiniRover_WiFi firmware START_HERE.md BUILD_INFO.txt
           sha256sum *.apk *.zip BUILD_INFO.txt > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: TeleRC-v0.8.55-WiFi-only
-          path: deliverables/
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Mini-WiFi-build-evidence
-          path: |
-            app/build/reports/
-            app/build/test-results/
+      - name: Publish verified test candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd app/build && zip -r "$RUNNER_TEMP/build-evidence.zip" reports test-results)
+          cp "$RUNNER_TEMP/build-evidence.zip" deliverables/TeleRC-v0.8.55-build-evidence.zip
+          cd deliverables
+          zip TeleRC-v0.8.55-build-evidence.zip APK_CERT.txt APK_IDENTITY.txt
+          sha256sum *.apk *.zip BUILD_INFO.txt > SHA256SUMS.txt
+          gh release create v0.8.55 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.55 Wi-Fi-only mini rover test candidate" --notes "Wi-Fi-only Android controls with confirmed arm/disarm, independent sensitivities and matching standalone ESP32-S3 firmware 1.2.0. No receiver or flight controller required. Software checks and retained signing identity verified. Hardware and phone installation tests remain pending; test with raised wheels first. Default: four motors through two MX1508 boards; SSID TeleRC-MiniRover, password telerc123." *.apk *.zip SHA256SUMS.txt BUILD_INFO.txt
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"
