@@ -1,3 +1,7 @@
+# TeleRC 0.8.61 — pastel themes
+
+Pastel backgrounds, softly colored buttons and light panels now cover Setup and Controls. The old Dark setting switches to Pastel once; later theme choices remain saved. Blue, mint Teal, lavender Violet, Slate, Light, warm Sepia and optional Dark remain available. See [installation and verification](docs/PASTEL_THEME_061.md). No firmware reflash needed; signed test candidate pending phone/rover acceptance.
+
 # TeleRC 0.8.60 — muted themes and balanced Setup
 
 Setup now uses two centered, equal columns sized to their contents, with aligned rows and subdued tonal buttons. Light, Sepia and Dark plus all four accents remain available. Controls, settings and firmware behavior are preserved. See [installation and verification](docs/MUTED_SETUP_060.md). Signed test candidate; physical phone/receiver/rover checks remain pending.

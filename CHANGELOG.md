@@ -1,3 +1,10 @@
+## 0.8.61
+
+- Add Pastel as the default background with powder-blue, mint, lavender and slate tonal fills; brighten Light and warm Sepia panels.
+- Migrate the existing Dark setting to Pastel once while preserving later explicit theme choices and all control/connection preferences.
+- Lighten the launch background and idle joystick knobs; retain readable slate text and stronger enabled knobs.
+- Verify theme migration/persistence and attempt native Setup/Controls captures for all 16 background/accent combinations. No firmware or control-protocol changes.
+
 ## 0.8.60 — muted themes and balanced Setup
 
 - Add desaturated accents and tonal buttons across Light/Sepia/Dark with readable foregrounds.

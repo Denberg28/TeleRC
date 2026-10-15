@@ -1,3 +1,18 @@
+# 0.8.61 pastel theme qualification
+
+Baseline: released 0.8.60/code78 `c3a7aff56912eed000066ed8f3a7f8cb80f31f7f`. Scope: pastel appearance and one-time Dark migration; no firmware/protocol changes. See PASTEL_THEME_061.md for acceptance, installation and rollback.
+
+| Gate | Before final workflow | Required result |
+| --- | --- | --- |
+| A source/build | Reviewed; local Android BLOCKED (Gradle network/SDK) | Cloud JVM/debug/release lint/build |
+| B behavior/UI | Migration source reviewed; native NOT TESTED | JVM migration tests; attempt 16 Setup/Controls combinations, migration/persistence, geometry and brightness; actual app/assertion failure blocks release |
+| C regression | Local sync and legacy/mini host PASS; ASan/UBSan PASS with leak inspection disabled; default leak check BLOCKED locally | Cloud default sanitizer and full host regression |
+| D integration | Protocol unchanged; physical NOT TESTED | Kotlin-to-actual-mini-parser check; phone/receiver/rover validation pending |
+| E HIL | BLOCKED | Raised-wheel procedure in PASTEL_THEME_061.md and full procedure below |
+| F delivery | Pending | Code79 > code78; retained signing identity, native/ZIP alignment, source/evidence/checksums; prerelease only |
+
+The final workflow's BUILD_INFO and evidence supersede pending software statuses only after success. Physical acceptance remains pending. Next check: install over the screenshot's 0.8.60 without clearing data and verify it opens in Pastel, then check Setup/Controls and the selected theme after restart.
+
 # 0.8.60 verification
 
 Baseline: released 0.8.59/code77 commit `450fdb86331ffad27c8d8b2720abfe3702fa4dfc`. The user supplied actual phone screenshots showing excessive saturation and stretched Setup cards. Scope: tonal palette, symmetric content-sized Setup and UI evidence. Firmware/protocol/control behavior is unchanged; no actual-target firmware compilation is required for this app-only update.

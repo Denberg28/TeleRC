@@ -183,6 +183,7 @@ class MainActivity : Activity() {
         addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
     }
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppColors.migrate(this)
         setTheme(if (darkTheme) android.R.style.Theme_Material_NoActionBar else android.R.style.Theme_Material_Light_NoActionBar)
         super.onCreate(savedInstanceState)
         ControlResponseStore.migrate(this)
@@ -590,7 +591,7 @@ class MainActivity : Activity() {
                     appearance.edit().putString("background", selected.name).putBoolean("dark", selected == BackgroundTheme.DARK).apply()
                     dialog.dismiss(); recreate()
                 }.setNegativeButton("Cancel", null).show()
-        }.apply { contentDescription = "Choose Light, Sepia or Dark background" })
+        }.apply { contentDescription = "Choose Pastel, Light, Sepia or Dark background" })
         val choices = LinearLayout(this)
         val selected = appearance.getString("accent", "Blue")
         AppColors.names.forEachIndexed { index, name ->

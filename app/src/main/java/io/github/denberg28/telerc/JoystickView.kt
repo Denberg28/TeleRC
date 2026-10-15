@@ -11,7 +11,7 @@ import kotlin.math.min
 /** Spring-return rover input. Axis output is neutral immediately on release. */
 class JoystickView(context: Context, private val vertical: Boolean, private val changed: (Int) -> Unit) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val purple = AppColors.accent(context)
+    private val accent = AppColors.accent(context)
     private val track = AppColors.softAccent(context)
     private var position = StickPosition(0f, 0f)
     private var pointer = -1
@@ -32,15 +32,15 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
         paint.color = track
         canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.STROKE; paint.strokeWidth = dp(2f)
-        paint.color = purple
+        paint.color = accent
         canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.FILL
-        paint.color = if (isEnabled) purple else Color.rgb(126, 157, 185)
+        paint.color = if (isEnabled) accent else AppColors.buttonFill(context)
         val travel = radius * 0.62f
         val knobX = cx + position.x * travel
         val knobY = cy + position.y * travel
         canvas.drawCircle(knobX, knobY, radius * 0.33f, paint)
-        paint.color = Color.WHITE
+        paint.color = if (isEnabled) Color.WHITE else accent
         canvas.drawCircle(knobX, knobY, radius * 0.12f, paint)
     }
     private fun input(x: Float, y: Float) {
