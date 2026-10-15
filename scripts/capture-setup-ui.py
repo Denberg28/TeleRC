@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 PKG = 'io.github.denberg28.telerc'
 OUT = Path('app/build/ui-evidence')
 OUT.mkdir(parents=True, exist_ok=True)
+(OUT / 'ATTEMPT_STARTED.txt').write_text('Native capture script reached; subsequent failures block packaging.\n')
 
 def adb(*args, **kwargs):
     return subprocess.check_output(['adb', *args], timeout=45, **kwargs)

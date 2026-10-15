@@ -18,7 +18,7 @@ Inspect all 12 theme/accent combinations on the phone. Check that the two Setup 
 
 ## Verification and limits
 
-Required build gates: unit tests, debug/release lint and builds, firmware host/default sanitizer regressions, Android-to-mini parser integration, retained signer/version, native/ZIP 16 KB alignment and checksums. API 35 emulator captures 12 native Setup variants and asserts equal panel bounds and visible main actions; large-font capture is included for review. Screenshots/XML and reports are in the evidence ZIP. Emulation does not establish actual phone/USB/RF or rover behavior.
+Required build gates: unit tests, debug/release lint and builds, firmware host/default sanitizer regressions, Android-to-mini parser integration, retained signer/version, native/ZIP 16 KB alignment and checksums. API 35 native capture attempts 12 Setup variants with panel/action geometry checks and a large-font screenshot. An actual app/capture/assertion failure blocks packaging. A runner failure before capture starts is marked BLOCKED in BUILD_INFO and ui-evidence/STATUS.txt; no visual pass is claimed. Only successfully captured screenshots/XML are included in the evidence ZIP. Runs 38808078141 and 38810576534 could not start the emulator because its default data image exceeded runner disk capacity; the workflow normalizes duplicate AVD properties and reclaims unused ephemeral NDK tooling before another attempt. Emulation does not establish actual phone/USB/RF or rover behavior.
 
 The Actions artifact storage quota affected only the redundant copy after successful 0.8.59 publication. This workflow publishes APK/source/evidence/checksums as release assets and omits that duplicate copy; no stored artifacts are deleted.
 
