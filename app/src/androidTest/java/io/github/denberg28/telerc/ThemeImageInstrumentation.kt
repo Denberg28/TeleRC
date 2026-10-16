@@ -18,6 +18,11 @@ class ThemeImageInstrumentation : Instrumentation() {
     override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
     override fun onStart() {
         try {
+            val automation = uiAutomation
+            automation.serviceInfo = automation.serviceInfo.apply {
+                flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+            }
             val app = targetContext
             val input = File(app.cacheDir, "theme-test.png")
             val bitmap = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
@@ -45,8 +50,9 @@ class ThemeImageInstrumentation : Instrumentation() {
                 waitUntil { onMain { root(activity).background is ThemeImageDrawable && find(root(activity), "Connect FPV") != null } }
                 screenshot("photo-${theme.lowercase()}-controls.png")
                 onMain { find(root(activity), "Connect FPV")!!.performLongClick() }
-                waitUntil { uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("YUYV compatibility")?.isNotEmpty() == true }
-                val option = uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText("YUYV compatibility").first()
+                waitUntil { dismissLauncherAnr(); videoOption() != null }
+                var option = videoOption() ?: error("FPV compatibility option missing")
+                while (!option.isClickable && option.parent != null) option = option.parent
                 check(option.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
                 waitUntil { app.getSharedPreferences("fpv", 0).getString("mode", "") == "YUYV" }
                 onMain { activity.finish() }
@@ -61,7 +67,24 @@ class ThemeImageInstrumentation : Instrumentation() {
             onMain { activity.finish() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu\n") })
         } catch (error: Throwable) {
-            finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n") })
+            val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
+                "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
+            } }.getOrDefault("Accessibility unavailable")
+            finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
+        }
+    }
+    private fun videoOption(): android.view.accessibility.AccessibilityNodeInfo? = uiAutomation.windows
+        .mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText("YUYV compatibility") }
+        .firstOrNull { it.packageName?.toString() == targetContext.packageName && it.isVisibleToUser }
+    private fun nodeText(node: android.view.accessibility.AccessibilityNodeInfo?): String {
+        if (node == null) return "null"
+        return "${node.packageName}:${node.text}" + (0 until node.childCount).joinToString(" ") { nodeText(node.getChild(it)) }
+    }
+    private fun dismissLauncherAnr() {
+        val root = uiAutomation.rootInActiveWindow ?: return
+        if (root.packageName?.toString() == "android" && root.findAccessibilityNodeInfosByText("Pixel Launcher isn't responding").isNotEmpty()) {
+            root.findAccessibilityNodeInfosByViewId("android:id/aerr_close").firstOrNull()
+                ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
         }
     }
     private fun root(activity: Activity) = activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
