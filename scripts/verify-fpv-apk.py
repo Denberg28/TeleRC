@@ -33,7 +33,18 @@ manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManif
 attach_attributes = [line for line in manifest.splitlines() if 'A: android:name' in line and 'android.hardware.usb.action.USB_DEVICE_ATTACHED' in line]
 assert len(attach_attributes) == 2, 'USB intent/metadata pair missing'
 assert re.search(r'android:launchMode[^\n]*0x1\b', manifest), 'Expected singleTop Activity'
-device_filter = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'res/xml/usb_fpv_devices.xml')
+# Release optimization can shorten resource ZIP paths. Resolve the named XML
+# through the compiled table instead of assuming its source filename survives.
+resource_table = run(build_tools / 'aapt', 'dump', '--values', 'resources', candidate)
+resource_lines = resource_table.splitlines()
+filter_paths = set()
+for index, line in enumerate(resource_lines):
+    if ':xml/usb_fpv_devices' in line:
+        filter_paths.update(re.findall(r'res/[^\s"<>]+\.xml', '\n'.join(resource_lines[index:index + 2])))
+with zipfile.ZipFile(candidate) as archive:
+    filter_paths.intersection_update(archive.namelist())
+assert len(filter_paths) == 1, f'Could not resolve compiled USB filter: {filter_paths}'
+device_filter = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, filter_paths.pop())
 assert re.search(r'A: class(?:[^\n]*0xe\b|=\"14\")', device_filter), 'Missing video class filter'
 assert device_filter.count('E: usb-device') == 1, 'Unexpected USB filter expansion'
 permissions = run(build_tools / 'aapt', 'dump', 'permissions', candidate)
