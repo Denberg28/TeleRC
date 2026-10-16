@@ -31,8 +31,16 @@ def bounds(node):
 def nodes():
     # A cold API 35 emulator can surface its own launcher ANR over the app.
     # Only dismiss that exact external dialog; TeleRC ANRs/crashes still fail.
-    for attempt in range(3):
-        shell('uiautomator dump /data/local/tmp/telerc-ui.xml')
+    for attempt in range(8):
+        # uiautomator can return exit 0 without writing when the window is busy.
+        # Never reuse a hierarchy left by the previous screen.
+        shell('rm -f /data/local/tmp/telerc-ui.xml')
+        result = shell('uiautomator dump /data/local/tmp/telerc-ui.xml')
+        fresh = shell('if [ -s /data/local/tmp/telerc-ui.xml ]; then echo fresh; fi').strip()
+        if fresh != b'fresh':
+            print('NATIVE_UI_WAIT fresh hierarchy', result.decode().strip(), flush=True)
+            time.sleep(.5)
+            continue
         xml = shell('cat /data/local/tmp/telerc-ui.xml')
         items = list(ET.fromstring(xml).iter('node'))
         launcher_anr = any(n.attrib.get('package') == 'android' and
@@ -43,11 +51,23 @@ def nodes():
                      n.attrib.get('resource-id') == 'android:id/aerr_close')
         tap(close)
         print('EXTERNAL_EMULATOR_DIALOG_DISMISSED Pixel Launcher', attempt + 1, flush=True)
-    raise AssertionError('Emulator launcher ANR repeatedly obstructed the app')
+    raise AssertionError('Could not obtain a fresh unobstructed emulator hierarchy')
 
 
 def find(items, key, value):
-    return next(n for n in items if n.attrib.get(key) == value)
+    node = next((n for n in items if n.attrib.get(key) == value), None)
+    assert node is not None, (key, value, [n.attrib.get('text') for n in items])
+    return node
+
+
+def screen(key, value):
+    for attempt in range(5):
+        xml, items = nodes()
+        if any(n.attrib.get(key) == value for n in items):
+            return xml, items
+        time.sleep(.5)
+    raise AssertionError(('Expected screen did not appear', key, value,
+                          [n.attrib.get('text') for n in items]))
 
 
 def tap(node):
@@ -86,6 +106,8 @@ shell(f'pm grant {PKG} android.permission.ACCESS_FINE_LOCATION')
 shell('wm size 1536x720')
 shell('wm density 320')
 shell('settings put system font_scale 1.0')
+for setting in ('window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'):
+    shell(f'settings put global {setting} 0')
 shell('input keyevent 82')
 
 
@@ -101,16 +123,14 @@ def capture_failure(kind, value, traceback):
 sys.excepthook = capture_failure
 # Upgrade the exact dark preference represented by the user's screenshot.
 set_prefs('<string name="background">DARK</string><boolean name="dark" value="true"/>')
-xml, items = nodes()
-find(items, 'text', 'Background · Pastel ▾')
+xml, items = screen('text', 'Background · Pastel ▾')
 screenshot('upgrade-dark-to-pastel', 'PASTEL')
 shell(f'am force-stop {PKG}')
 launch()
-xml, items = nodes()
-find(items, 'text', 'Background · Pastel ▾')
+xml, items = screen('text', 'Background · Pastel ▾')
 # A later explicit Dark choice must survive activity recreation and process restart.
 tap(find(items, 'text', 'Background · Pastel ▾'))
-_, items = nodes()
+_, items = screen('resource-id', 'android:id/alertTitle')
 # The native theme menu is scrollable on short landscape windows.
 for attempt in range(3):
     dark = next((n for n in items if n.attrib.get('text') == 'Dark'), None)
@@ -129,15 +149,14 @@ else:
     raise AssertionError('Dark theme could not be reached by scrolling the native menu')
 shell(f'am force-stop {PKG}')
 launch()
-_, items = nodes()
-find(items, 'text', 'Background · Dark ▾')
+_, items = screen('text', 'Background · Dark ▾')
 print('NATIVE_UI_PASS one-time dark-to-pastel migration and later Dark persistence', flush=True)
 
 shots = []
 for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
     for theme in ('PASTEL', 'LIGHT', 'SEPIA', 'DARK'):
         set_prefs(f'<string name="background">{theme}</string><string name="accent">{accent}</string><boolean name="pastel_theme_v1" value="true"/>')
-        xml, items = nodes()
+        xml, items = screen('text', f'Background · {theme.title()} ▾')
         name = f'{theme.lower()}-{accent.lower()}'
         (OUT / f'{name}-setup.xml').write_bytes(xml)
         find(items, 'text', f'Background · {theme.title()} ▾')
@@ -152,7 +171,7 @@ for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
         if theme == 'PASTEL':
             shots.append((name+' setup', image))
         tap(find(items, 'text', 'Controls ›'))
-        xml, items = nodes()
+        xml, items = screen('text', 'STEER')
         (OUT / f'{name}-controls.xml').write_bytes(xml)
         for label in ('STEER', 'DRIVE', 'ARM / DISARM', 'ENABLE CONTROL', 'Show camera', 'Connect FPV', 'F1', 'F2', 'F3'):
             x1, y1, x2, y2 = bounds(find(items, 'text', label))
@@ -167,6 +186,7 @@ set_prefs('<string name="background">PASTEL</string><boolean name="pastel_theme_
 shell('settings put system font_scale 1.3')
 shell(f'am force-stop {PKG}')
 launch()
+screen('text', 'Background · Pastel ▾')
 screenshot('large-font-pastel', 'PASTEL')
 shell('settings put system font_scale 1.0')
 shell(f'am force-stop {PKG}')
