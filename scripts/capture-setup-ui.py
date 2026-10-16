@@ -128,25 +128,42 @@ screenshot('upgrade-pastel-to-light', 'LIGHT')
 shell(f'am force-stop {PKG}')
 launch()
 xml, items = screen('text', 'Background · Light ▾')
-# A later explicit Dark choice must survive activity recreation and process restart.
-tap(find(items, 'text', 'Background · Light ▾'))
-_, items = screen('resource-id', 'android:id/alertTitle')
-# The native theme menu is scrollable on short landscape windows.
-for attempt in range(3):
-    dark = next((n for n in items if n.attrib.get('text') == 'Dark'), None)
-    if dark is not None:
-        x1, y1, x2, y2 = bounds(dark)
-        if y2 - y1 >= 40:
-            tap(dark)
+# Confirm a real, fully visible Dark selection before testing process persistence.
+# A partly clipped last row can overlap the dialog footer on this short screen.
+for selection_attempt in range(3):
+    _, items=screen('text','Background · Light ▾')
+    tap(find(items,'text','Background · Light ▾'))
+    _, items=screen('resource-id','android:id/alertTitle')
+    for scroll_attempt in range(5):
+        dark=next((n for n in items if n.attrib.get('text')=='Dark'),None)
+        if dark is not None:
+            x1,y1,x2,y2=bounds(dark)
+            if y2-y1>=72:
+                tap(dark)
+                break
+        menu=next(n for n in items if n.attrib.get('scrollable')=='true')
+        x1,y1,x2,y2=bounds(menu); x=(x1+x2)//2
+        shell(f'input swipe {x} {y2-24} {x} {y1+24} 350')
+        time.sleep(.5)
+        _,items=nodes()
+    else:
+        raise AssertionError('Dark choice never became fully visible')
+    # Await Activity recreation, then inspect the actual saved value. Never force a
+    # preference here: this qualifies the app's native selection and persistence.
+    for settled in range(8):
+        _,items=nodes()
+        saved=shell(f'run-as {PKG} cat shared_prefs/appearance.xml').decode()
+        if any(n.attrib.get('text')=='Background · Dark ▾' for n in items) and                 '<string name="background">DARK</string>' in saved:
             break
-    menu = next(n for n in items if n.attrib.get('scrollable') == 'true')
-    x1, y1, x2, y2 = bounds(menu)
-    x = (x1+x2)//2
-    shell(f'input swipe {x} {y2-24} {x} {y1+24} 300')
-    time.sleep(.5)
-    _, items = nodes()
+        time.sleep(.4)
+    else:
+        if any(n.attrib.get('text')=='Background · Light ▾' for n in items):
+            print('NATIVE_UI_RETRY Dark picker tap did not select the clipped row',flush=True)
+            continue
+        raise AssertionError('Dark selection did not settle/save')
+    break
 else:
-    raise AssertionError('Dark theme could not be reached by scrolling the native menu')
+    raise AssertionError('Native Dark selection failed after bounded input retries')
 shell(f'am force-stop {PKG}')
 launch()
 _, items = screen('text', 'Background · Dark ▾')
