@@ -91,7 +91,10 @@ class ThemeImageInstrumentation : Instrumentation() {
         }
     }
     private fun checkWallpaper(activity:Activity) {
-        waitUntil { onMain { root(activity).width>0 && root(activity).height>0 && !root(activity).isLayoutRequested } }
+        waitUntil { onMain {
+            val view=root(activity)
+            view.width>0 && view.height>0 && !view.isLayoutRequested && view.background.bounds.width()==view.width
+        } }
         onMain {
             val view=root(activity)
             val bitmap=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
