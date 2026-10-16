@@ -61,13 +61,14 @@ class ThemeImageInstrumentation : Instrumentation() {
                 check(ThemeImageStore.exists(app)) { "Background did not persist across activity restart" }
             }
             checkMazeLevels()
+            checkMarket()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             val activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
@@ -154,6 +155,91 @@ class ThemeImageInstrumentation : Instrumentation() {
         clickWindow("Cancel")
         onMain { activity.finish() }; waitForIdleSync()
     }
+    private fun checkMarket() {
+        val app=targetContext
+        val prefs=app.getSharedPreferences("maze_practice",0)
+        var fixture=MazeWallet.decode("")
+        for(level in 2..5) for(slot in 0 until MazeMarket.quota(level)) fixture=fixture.claim(level,slot)!!
+        for(slot in 0..2) fixture=fixture.claim(6,slot)!!
+        check(fixture.balance==35)
+        prefs.edit().clear().putString("wallet",fixture.encode()).commit()
+        var activity=startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        fun enter() {
+            onMain { find(root(activity),"Setup ▾")!!.performClick() }
+            waitUntil { windowText("Test")!=null }; clickWindow("Test")
+            waitUntil { onMain { findMaze(root(activity))!=null } }
+        }
+        enter()
+        val scene=onMain { findMaze(root(activity))!! }
+        check(onMain { scene.practice.coins.size }==8)
+        screenshot("maze-coins.png")
+        onMain { find(root(activity),"Market · 35")!!.performClick() }
+        waitUntil { windowText("Market · offline cosmetics")!=null }
+        check(onMain { scene.practice.state!=MazePractice.State.RUNNING })
+        showMarketItem("Buy Rally · 20")
+        screenshot("market-vehicles.png")
+        clickWindow("Buy Rally · 20")
+        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).vehicle=="rally" }
+        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==15)
+        showMarketItem("Buy Hauler · 50")
+        check(windowText("Buy Hauler · 50")?.isEnabled==false)
+        showMarketItem("Buy Forest · 15"); clickWindow("Buy Forest · 15")
+        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).theme=="forest" }
+        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==0)
+        showMarketItem("Forest · Equipped")
+        screenshot("market-colors.png")
+        clickWindow("Done")
+        onMain { check(scene.vehicleId=="rally" && scene.themeId=="forest") }
+        screenshot("maze-equipped.png")
+        val target=onMain { scene.practice.coins.first() }
+        onMain {
+            find(root(activity),"Start practice")!!.performClick()
+            approachFinish(scene.practice,target.x.toInt() to target.y.toInt(),.60f)
+            scene.changed()
+        }
+        val targetKey=MazeMarket.key(1,target.slot)!!
+        waitUntil { targetKey in MazeWallet.decode(prefs.getString("wallet","").orEmpty()).claimed }
+        val earned=MazeWallet.decode(prefs.getString("wallet","").orEmpty())
+        check(earned.balance in 1..8)
+        onMain {
+            scene.pause()
+            check(scene.practice.coins.none { it.slot==target.slot })
+            scene.practice.reset(); scene.changed()
+            check(scene.practice.coins.none { MazeMarket.key(1,it.slot) in earned.claimed })
+        }
+        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).encode()==earned.encode())
+        onMain { activity.finish() }; waitForIdleSync()
+        activity=startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        enter()
+        onMain {
+            val restored=findMaze(root(activity))!!
+            check(restored.vehicleId=="rally" && restored.themeId=="forest")
+            check(restored.practice.coins.none { MazeMarket.key(1,it.slot) in earned.claimed })
+            check(find(root(activity),"Market · ${earned.balance}")!=null)
+        }
+        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).encode()==earned.encode())
+        onMain { activity.finish() }; waitForIdleSync()
+    }
+    private fun showMarketItem(text:String) {
+        repeat(12) {
+            if(windowText(text)!=null) return
+            val roots=uiAutomation.windows.mapNotNull { it.root }.filter { it.packageName?.toString()==targetContext.packageName }
+            val node=roots.flatMap { root -> root.findAccessibilityNodeInfosByText(text)+
+                root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT)) }
+                .firstOrNull { it.text?.toString()?.equals(text,ignoreCase=true)==true }
+            node?.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+            SystemClock.sleep(150)
+            if(windowText(text)!=null) return
+            fun scrollable(n:android.view.accessibility.AccessibilityNodeInfo):android.view.accessibility.AccessibilityNodeInfo? {
+                if(n.isScrollable) return n
+                for(i in 0 until n.childCount) n.getChild(i)?.let { scrollable(it)?.let { found -> return found } }
+                return null
+            }
+            roots.firstNotNullOfOrNull(::scrollable)?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(150)
+        }
+        error("Market item not visible after scrolling: $text")
+    }
     private fun checkBumpPixel(scene:MazePracticeView, mark:MazeBump?=null, expectRed:Boolean=true) = onMain {
         val point=mark ?: scene.practice.bumpMarks.first()
         val bitmap=Bitmap.createBitmap(scene.width,scene.height,Bitmap.Config.ARGB_8888)
@@ -167,8 +253,9 @@ class ThemeImageInstrumentation : Instrumentation() {
         val red=Color.red(color)>200 && Color.green(color)<100 && Color.blue(color)<100
         check(red==expectRed) { "Persistent bump pixel: expected red=$expectRed, got $color" }
     }
-    private fun approachFinish(p:MazePractice) {
-        val maze=p.maze; val start=1 to maze.height-2; val end=maze.endX.toInt() to maze.endY.toInt()
+    private fun approachFinish(p:MazePractice,target:Pair<Int,Int>?=null,lastTolerance:Float=.43f) {
+        val maze=p.maze; val start=p.pose.x.toInt() to p.pose.y.toInt()
+        val end=target ?: (maze.endX.toInt() to maze.endY.toInt())
         val previous=mutableMapOf<Pair<Int,Int>,Pair<Int,Int>>()
         val seen=mutableSetOf(start); val queue=java.util.ArrayDeque<Pair<Int,Int>>().apply { add(start) }
         while(queue.isNotEmpty()) {
@@ -183,7 +270,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         path.reverse()
         for(cell in path.drop(1)) {
             var frames=0
-            val tolerance=if(cell==end) .43f else .12f
+            val tolerance=if(cell==end) lastTolerance else .12f
             while(hypot(cell.first+.5f-p.pose.x,cell.second+.5f-p.pose.y)>tolerance) {
                 check(frames++<1500 && p.state==MazePractice.State.RUNNING)
                 val angle=atan2(cell.first+.5f-p.pose.x,-(cell.second+.5f-p.pose.y))-p.pose.heading

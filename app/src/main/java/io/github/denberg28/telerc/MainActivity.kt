@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private var mazePractice: MazePractice? = null
     private var mazeView: MazePracticeView? = null
     private var mazeRestartDialog: AlertDialog? = null
+    private var mazeMarketDialog: AlertDialog? = null
     private var practiceSteer: JoystickView? = null
     private var practiceDrive: JoystickView? = null
     @Volatile private var socket: LinkTransport? = null
@@ -305,7 +306,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
-        mazeRestartDialog?.dismiss(); mazeRestartDialog = null
+        mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null
         mazeView?.pause(); mazeView = null
         practiceSteer?.reset(); practiceDrive?.reset()
         practiceSteer = null; practiceDrive = null
@@ -727,18 +728,29 @@ class MainActivity : Activity() {
         steeringStick=null; driveStick=null
         val prefs=getSharedPreferences("maze_practice",MODE_PRIVATE)
         var progress=MazeProgress.restore(prefs.getInt("level",1),prefs.getInt("completed_level",0))
-        val practice=mazePractice ?: MazePractice(MazeLevels.layout(progress.current)).also { mazePractice=it }
+        var wallet=MazeWallet.decode(prefs.getString("wallet","").orEmpty())
+        fun newPractice(level:Int)=MazePractice(MazeLevels.layout(level),MazeMarket.available(level,wallet))
+        val practice=mazePractice ?: newPractice(progress.current).also { mazePractice=it }
         fun saveProgress() {
             prefs.edit().putInt("level",progress.current).putInt("completed_level",progress.completed).apply()
         }
         saveProgress()
         val root=shell()
-        val scene=MazePracticeView(this,practice)
+        val scene=MazePracticeView(this,practice).apply { vehicleId=wallet.vehicle; themeId=wallet.theme }
         mazeView=scene
         val timer=text("",14f,ink,true)
         val start=button("Start practice") {}
         val levels=button("Levels",false) {}.apply { textSize=12f }
         val summary=text("",11f,muted,true)
+        val market=button("Market · ${wallet.balance}") {}.apply { textSize=13f }
+        fun saveWallet(next:MazeWallet) {
+            wallet=next
+            prefs.edit().putString("wallet",wallet.encode()).apply()
+            scene.vehicleId=wallet.vehicle; scene.themeId=wallet.theme; scene.invalidate()
+            market.text="Market · ${wallet.balance}"
+            market.contentDescription="Market, ${wallet.balance} coins, offline practice"
+        }
+        scene.onCoin={ slot -> wallet.claim(practice.maze.level,slot)?.let(::saveWallet) }
         fun update() {
             timer.text="Lv ${practice.maze.level} · ${MazeRecords.time(practice.elapsedMillis)}"
             summary.text="OFFLINE · Bumps ${practice.bumps}/${MazePractice.BUMP_LIMIT}"
@@ -778,7 +790,7 @@ class MainActivity : Activity() {
         fun openLevel(level:Int) {
             scene.pause(); resetSticks()
             progress=progress.select(level); saveProgress()
-            mazePractice=MazePractice(MazeLevels.layout(progress.current))
+            mazePractice=newPractice(progress.current)
             render()
         }
         fun chooseLevel() {
@@ -824,14 +836,64 @@ class MainActivity : Activity() {
             }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f).apply { leftMargin=dp(4) })
             addView(actions,LinearLayout.LayoutParams(-1,dp(36)).apply { topMargin=dp(4) })
         }
-        val offline=text("OFFLINE",13f,accent,true).apply {
-            background=shape(softAccent,10)
-            contentDescription="Offline practice, rover disconnected"
+        market.contentDescription="Market, ${wallet.balance} coins, offline practice"
+        market.setOnClickListener {
+            scene.pause(); resetSticks()
+            val content=LinearLayout(this).apply {
+                orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(8))
+            }
+            val balance=text("",15f,ink,true)
+            content.addView(balance)
+            content.addView(text("Collect gold coins in the maze. Each is worth 1. Lv ${practice.maze.level}: ${practice.coins.size} coins remain this attempt.\nEvery level has a fixed lifetime supply; retries move uncollected coins. Cosmetics keep the same handling.",12f,muted))
+            val controls=mutableListOf<Pair<MazeMarketItem,Button>>()
+            fun refreshMarket() {
+                balance.text="Coins · ${wallet.balance}"
+                for((item,action) in controls) {
+                    val equipped=item.id==wallet.vehicle || item.id==wallet.theme
+                    val owned=item.id in wallet.owned
+                    action.text=when { equipped -> "${item.name} · Equipped"
+                        owned -> "Use ${item.name}"; else -> "Buy ${item.name} · ${item.price}" }
+                    action.isEnabled=!equipped && (owned || wallet.balance>=item.price)
+                }
+            }
+            for(kind in MazeItemKind.entries) {
+                content.addView(text(if(kind==MazeItemKind.VEHICLE) "Vehicles" else "Maze colors",14f,ink,true),
+                    LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(10) })
+                for(item in MazeMarket.items.filter { it.kind==kind }) {
+                    val rowItem=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+                    rowItem.addView(MazeMarketPreview(this,item),LinearLayout.LayoutParams(dp(62),dp(62)))
+                    val description=LinearLayout(this).apply {
+                        orientation=LinearLayout.VERTICAL
+                        addView(text(item.name,14f,ink,true))
+                        addView(text(when(item.id) {
+                            "rally" -> "Striped racing body"; "buggy" -> "Open roll cage"; "hauler" -> "Pickup cargo bed"
+                            "scout" -> "Classic rover · free"; "navy" -> "Original maze palette · free"
+                            else -> "Wall and passage palette"
+                        },11f,muted))
+                    }
+                    rowItem.addView(description,LinearLayout.LayoutParams(0,-2,1f))
+                    val action=button("") {
+                        val next=if(item.id in wallet.owned) wallet.equip(item.id) else wallet.buy(item.id)?.equip(item.id)
+                        if(next!=null) saveWallet(next)
+                        refreshMarket()
+                    }.apply { textSize=12f }
+                    controls.add(item to action)
+                    rowItem.addView(action,LinearLayout.LayoutParams(dp(168),dp(44)))
+                    content.addView(rowItem,LinearLayout.LayoutParams(-1,dp(68)))
+                }
+            }
+            refreshMarket()
+            val scroll=ScrollView(this).apply { addView(content) }
+            mazeMarketDialog=AlertDialog.Builder(this).setTitle("Market · offline cosmetics")
+                .setView(scroll).setPositiveButton("Done") { _, _ -> mazeMarketDialog=null }.create()
+            mazeMarketDialog?.show()
+            mazeMarketDialog?.window?.setLayout((resources.displayMetrics.widthPixels*.78f).toInt(),
+                (resources.displayMetrics.heightPixels*.84f).toInt())
         }
         val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         row.addView(controlColumn(pageDropdown("Test"),steerPanel),LinearLayout.LayoutParams(0,-1,1.6f).apply { rightMargin=dp(8) })
         row.addView(center,LinearLayout.LayoutParams(0,-1,3.8f).apply { rightMargin=dp(8) })
-        row.addView(controlColumn(offline,drivePanel),LinearLayout.LayoutParams(0,-1,1.6f))
+        row.addView(controlColumn(market,drivePanel),LinearLayout.LayoutParams(0,-1,1.6f))
         root.addView(row,LinearLayout.LayoutParams(-1,0,1f))
         val footer=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         start.textSize=13f
@@ -1652,5 +1714,5 @@ class MainActivity : Activity() {
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { mazeRestartDialog?.dismiss(); mazeRestartDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }

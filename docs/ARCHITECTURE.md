@@ -1,3 +1,7 @@
+# Offline economy — 0.8.70
+
+`MazeMarket` fixes catalog IDs/prices and level coin quotas. `MazeWallet` records at most 220 unique lifetime claims and known owned/equipped IDs; balance derives from claims minus fixed purchase prices, with a bounded versioned codec. `MazeCoins` samples unique safe passage centers. `MazePractice` collects only while running and preserves remaining-slot identity across retry; `MazePracticeView` drains collection events before clear callbacks. MainActivity persists one whole wallet snapshot, pauses/neutralizes on Market entry and applies cosmetics without resetting the attempt. `MazeVehicleRenderer` shares silhouettes between the maze and Market previews; physics is unchanged. See [economy, gates and migration/rollback](MAZE_MARKET_070.md). Live transport, FPV/photo and firmware are unchanged.
+
 # Persistent impact positions — 0.8.69
 
 `MazePractice` owns at most three immutable world-coordinate `MazeBump` values; the bump count derives from their list. `MazeLayout.bumpPoint` projects a counted collision onto the nearest shared wall rectangle. `MazePracticeView` paints opaque outlined red dots after the rover without a timer or fade. Only attempt reset/new-level construction removes them; pause and view recreation retain the model. No persistence format, course version, live transport or firmware changes. See [gates and acceptance](MAZE_BUMPS_069.md).

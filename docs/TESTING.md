@@ -1,3 +1,7 @@
+# Maze Market and coins — 0.8.70 test build
+
+Market replaces the Test page's OFFLINE control; its button shows the saved coin balance. Collect randomly placed gold coins to unlock cosmetic vehicles and maze palettes. Fixed lifetime quotas total 220 coins against 180 for all paid items; retry/reload cannot duplicate rewards. Opening Market pauses practice. [Use, prices, A–F gates, phone acceptance and rollback](MAZE_MARKET_070.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software results; phone/HIL remains BLOCKED. No stable promotion.
+
 # Persistent wall-bump dots — 0.8.69 test build
 
 Counted maze impacts leave opaque red dots with white outlines on the struck wall. They do not fade; pause/resume and navigation retain them for the current attempt. Restart/level changes clear them. [Scope, A–F evidence, phone checks and rollback](MAZE_BUMPS_069.md). Android-only; fixed levels, FPV/photo and firmware retained. Final workflow/BUILD_INFO supplies software results; phone/HIL remains BLOCKED. No stable promotion.

@@ -11,6 +11,10 @@ import android.view.View
 /** Entire course fits in the Controls center panel. No map, GPS, USB or network access. */
 internal class MazePracticeView(context: Context, val practice: MazePractice) : View(context) {
     var onUpdate: (() -> Unit)? = null
+    var vehicleId="scout"
+    var themeId="navy"
+    var onCoin: ((Int) -> Unit)? = null
+    private fun collectCoins() { for(slot in practice.drainCollectedCoins()) onCoin?.invoke(slot) }
     var onClear: ((Long) -> Unit)? = null
     var onFailure: (() -> Unit)? = null
     private var failureReported = false
@@ -30,6 +34,7 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
             val oldBumps = practice.bumps
             val cleared = previous != 0L && practice.advance(now-previous)
             previous = now
+            collectCoins()
             if (cleared) onClear?.invoke(practice.elapsedMillis)
             reportFailure()
             if (cleared || oldBumps != practice.bumps || practice.elapsedMillis/100 != lastLabel) {
@@ -51,7 +56,7 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
     fun pause() {
         active=false; removeCallbacks(frame); previous=0L; practice.pause(); onUpdate?.invoke(); invalidate()
     }
-    fun changed() { previous=0L; onUpdate?.invoke(); reportFailure(); invalidate(); resume() }
+    fun changed() { previous=0L; collectCoins(); onUpdate?.invoke(); reportFailure(); invalidate(); resume() }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); post { if (isAttachedToWindow) reportFailure() }; resume() }
     override fun onDetachedFromWindow() { pause(); super.onDetachedFromWindow() }
     override fun onDraw(canvas: Canvas) {
@@ -63,13 +68,24 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
         paint.style=Paint.Style.FILL
         paint.color=surface
         canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
-        paint.color=passageColor
+        val theme=MazeMarket.item(themeId)
+        paint.color=theme?.floor?.takeIf { it!=0 } ?: passageColor
         canvas.drawRect(ox+.5f*scale,oy+.5f*scale,ox+(maze.width-.5f)*scale,oy+(maze.height-.5f)*scale,paint)
-        paint.color=wallColor
+        paint.color=theme?.wall?.takeIf { it!=0 } ?: wallColor
         for (wall in maze.wallShapes) {
             canvas.drawRect(ox+wall.left*scale,oy+wall.top*scale,
                 ox+wall.right*scale,oy+wall.bottom*scale,paint)
         }
+        for(coin in practice.coins) {
+            val cx=ox+coin.x*scale; val cy=oy+coin.y*scale
+            paint.style=Paint.Style.FILL; paint.color=Color.rgb(255,222,112)
+            canvas.drawCircle(cx,cy,scale*.23f,paint)
+            paint.style=Paint.Style.STROKE; paint.strokeWidth=(scale*.035f).coerceAtLeast(1f)
+            paint.color=Color.rgb(181,119,25)
+            canvas.drawCircle(cx,cy,scale*.18f,paint)
+            canvas.drawLine(cx,cy-scale*.10f,cx,cy+scale*.10f,paint)
+        }
+        paint.style=Paint.Style.FILL
         fun marker(x:Float,y:Float,label:String) {
             paint.color=roverColor
             canvas.drawRoundRect(ox+(x-.68f)*scale,oy+(y-.30f)*scale,
@@ -80,43 +96,10 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
             canvas.drawText(label,ox+x*scale,oy+y*scale-(paint.ascent()+paint.descent())/2,paint)
         }
         marker(maze.startX,maze.startY,"START"); marker(maze.endX,maze.endY,"END")
-        val p=practice.pose
-        canvas.save()
-        canvas.translate(ox+p.x*scale,oy+p.y*scale)
-        canvas.rotate(Math.toDegrees(p.heading.toDouble()).toFloat())
-        // Restore the earlier top-view rover: four wheels, colored body,
-        // cyan windshield and a yellow front. A white outline stays visible in Dark.
-        fun rect(color:Int,l:Float,t:Float,r:Float,b:Float) {
-            paint.style=Paint.Style.FILL; paint.color=color
-            canvas.drawRoundRect(l*scale,t*scale,r*scale,b*scale,scale*.055f,scale*.055f,paint)
-        }
-        fun wheel(l:Float,t:Float,r:Float,b:Float,output:Float) {
-            rect(Color.rgb(22,25,35),l,t,r,b)
-            paint.style=Paint.Style.STROKE; paint.strokeWidth=(scale*.035f).coerceAtLeast(1f)
-            paint.color=when { output>.08f -> Color.rgb(54,207,176)
-                output<-.08f -> Color.rgb(238,147,88); else -> Color.rgb(211,224,237) }
-            canvas.drawRoundRect(l*scale,t*scale,r*scale,b*scale,scale*.055f,scale*.055f,paint)
-        }
-        wheel(-.51f,-.40f,-.34f,-.12f,p.leftTrack)
-        wheel(-.51f,.12f,-.34f,.40f,p.leftTrack)
-        wheel(.34f,-.40f,.51f,-.12f,p.rightTrack)
-        wheel(.34f,.12f,.51f,.40f,p.rightTrack)
-        rect(roverColor,-.35f,-.54f,.35f,.54f)
-        paint.style=Paint.Style.STROKE; paint.color=Color.WHITE
-        paint.strokeWidth=(scale*.045f).coerceAtLeast(1.2f)
-        canvas.drawRoundRect(-.35f*scale,-.54f*scale,.35f*scale,.54f*scale,scale*.07f,scale*.07f,paint)
-        rect(Color.rgb(178,232,239),-.25f,-.29f,.25f,-.04f)
-        rect(Color.rgb(244,208,117),-.27f,-.51f,.27f,-.40f)
-        rect(Color.rgb(238,147,88),-.25f,.39f,-.11f,.47f)
-        rect(Color.rgb(238,147,88),.11f,.39f,.25f,.47f)
-        // Large front-pointing chevron; it rotates with the body, including in reverse.
-        paint.style=Paint.Style.STROKE; paint.color=Color.WHITE
-        paint.strokeWidth=(scale*.055f).coerceAtLeast(1.5f)
-        paint.strokeCap=Paint.Cap.ROUND; paint.strokeJoin=Paint.Join.ROUND
-        nose.reset(); nose.moveTo(-.14f*scale,.19f*scale)
-        nose.lineTo(0f,.05f*scale); nose.lineTo(.14f*scale,.19f*scale)
-        canvas.drawPath(nose,paint)
-        paint.style=Paint.Style.FILL
+        canvas.save(); canvas.translate(ox,oy)
+        val vehicle=MazeMarket.item(vehicleId) ?: MazeMarket.items.first()
+        MazeVehicleRenderer.draw(canvas,paint,nose,practice.pose,scale,
+            if(vehicle.id=="scout") roverColor else vehicle.color,vehicle.id)
         canvas.restore()
         // World-anchored, opaque impact dots have no timer or fade. Only reset clears them.
         paint.style=Paint.Style.FILL

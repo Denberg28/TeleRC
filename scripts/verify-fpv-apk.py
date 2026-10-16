@@ -26,7 +26,7 @@ def identity(apk):
 
 current, signer = identity(candidate)
 previous, old_signer = identity(baseline)
-assert current == ('io.github.denberg28.telerc', '87', '0.8.69'), current
+assert current == ('io.github.denberg28.telerc', '88', '0.8.70'), current
 assert previous[0] == current[0] and int(previous[1]) < int(current[1])
 assert signer == old_signer, 'Signing continuity failed'
 manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManifest.xml')
@@ -54,13 +54,15 @@ assert not any(p in permissions for p in ('RECORD_AUDIO', 'MANAGE_EXTERNAL_STORA
 run(build_tools / 'zipalign', '-c', '-P', '16', '4', candidate)
 with zipfile.ZipFile(candidate) as archive:
     assert archive.testzip() is None, 'APK CRC failure'
-print('TeleRC 0.8.69/code87 persistent wall bump dots test build')
+print('TeleRC 0.8.70/code88 maze market and coins test build')
 print('Source:', os.environ['GITHUB_SHA'])
 print('JVM, debug/release lint/build, host regression and full sanitizers: PASS (preceding required steps)')
 print('Compiled USB video attach intent/metadata/class filter/singleTop: PASS')
 assert 'PASS: native photo' in Path('app/build/photo-evidence/result.txt').read_text()
 assert 'PASS: native maze' in Path('app/build/photo-evidence/result.txt').read_text()
 assert 'PASS: persistent red bump pixels' in Path('app/build/photo-evidence/result.txt').read_text()
+assert 'PASS: native market' in Path('app/build/photo-evidence/result.txt').read_text()
+print('Native Market buy/equip, insufficient funds, coin collection and wallet persistence: PASS')
 print('Native red impact pixels, no fade after pause/delay, reset removal: PASS')
 print('Native API 35 maze restart, clear/unlock/next level and persistence: PASS')
 print('Native API 35 photo import/rollback/persistence/render/removal and FPV options: PASS')
