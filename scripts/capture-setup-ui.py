@@ -92,10 +92,10 @@ def set_prefs(body):
 
 def screenshot(name, theme):
     image = Image.open(io.BytesIO(adb('exec-out', 'screencap', '-p'))).convert('RGB')
-    if theme == 'PASTEL':
+    if theme == 'LIGHT':
         # Most of either page must be visibly light, rather than the old charcoal.
         mean = ImageStat.Stat(image).mean
-        assert min(mean) > 190, (name, 'pastel unexpectedly dark', mean)
+        assert min(mean) > 190, (name, 'Light unexpectedly dark', mean)
     image.save(OUT / f'{name}.png')
     return image
 
@@ -121,15 +121,15 @@ def capture_failure(kind, value, traceback):
 
 
 sys.excepthook = capture_failure
-# Upgrade the exact dark preference represented by the user's screenshot.
-set_prefs('<string name="background">DARK</string><boolean name="dark" value="true"/>')
-xml, items = screen('text', 'Background · Pastel ▾')
-screenshot('upgrade-dark-to-pastel', 'PASTEL')
+# Upgrade the former Pastel setting; keep later explicit Dark choices.
+set_prefs('<string name="background">PASTEL</string><boolean name="dark" value="false"/><boolean name="pastel_theme_v1" value="true"/>')
+xml, items = screen('text', 'Background · Light ▾')
+screenshot('upgrade-pastel-to-light', 'LIGHT')
 shell(f'am force-stop {PKG}')
 launch()
-xml, items = screen('text', 'Background · Pastel ▾')
+xml, items = screen('text', 'Background · Light ▾')
 # A later explicit Dark choice must survive activity recreation and process restart.
-tap(find(items, 'text', 'Background · Pastel ▾'))
+tap(find(items, 'text', 'Background · Light ▾'))
 _, items = screen('resource-id', 'android:id/alertTitle')
 # The native theme menu is scrollable on short landscape windows.
 for attempt in range(3):
@@ -150,11 +150,11 @@ else:
 shell(f'am force-stop {PKG}')
 launch()
 _, items = screen('text', 'Background · Dark ▾')
-print('NATIVE_UI_PASS one-time dark-to-pastel migration and later Dark persistence', flush=True)
+print('NATIVE_UI_PASS Pastel-to-Light migration and explicit Dark persistence', flush=True)
 
 shots = []
 for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
-    for theme in ('PASTEL', 'LIGHT', 'SEPIA', 'DARK'):
+    for theme in ('LIGHT', 'SEPIA', 'DARK'):
         set_prefs(f'<string name="background">{theme}</string><string name="accent">{accent}</string><boolean name="pastel_theme_v1" value="true"/>')
         xml, items = screen('text', f'Background · {theme.title()} ▾')
         name = f'{theme.lower()}-{accent.lower()}'
@@ -168,7 +168,7 @@ for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
             x1, y1, x2, y2 = bounds(find(items, 'text', label))
             assert x2>x1 and 0<=y1<y2<=720, (name,label,(x1,y1,x2,y2))
         image = screenshot(name+'-setup', theme)
-        if theme == 'PASTEL':
+        if theme == 'LIGHT':
             shots.append((name+' setup', image))
         tap(find(items, 'text', 'Controls ›'))
         xml, items = screen('text', 'STEER')
@@ -177,28 +177,28 @@ for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
             x1, y1, x2, y2 = bounds(find(items, 'text', label))
             assert x2>x1 and 0<=y1<y2<=720, (name,label,(x1,y1,x2,y2))
         image = screenshot(name+'-controls', theme)
-        if theme == 'PASTEL':
+        if theme == 'LIGHT':
             shots.append((name+' controls', image))
         print('NATIVE_UI_PASS', name, 'Setup + Controls; equal panels', left, right, flush=True)
 
-# Large-font capture starts in Setup on the preferred Pastel background.
-set_prefs('<string name="background">PASTEL</string><boolean name="pastel_theme_v1" value="true"/>')
+# Large-font capture starts in Setup on the restored Light background.
+set_prefs('<string name="background">LIGHT</string>')
 shell('settings put system font_scale 1.3')
 shell(f'am force-stop {PKG}')
 launch()
-screen('text', 'Background · Pastel ▾')
-screenshot('large-font-pastel', 'PASTEL')
+screen('text', 'Background · Light ▾')
+screenshot('large-font-light', 'LIGHT')
 shell('settings put system font_scale 1.0')
 shell(f'am force-stop {PKG}')
-# Eight native pastel views in one compact review sheet; raw captures stay in evidence.
-sheet = Image.new('RGB', (1536, 1600), '#e8eff8')
+# Eight native restored-color views in one compact review sheet; raw captures stay in evidence.
+sheet = Image.new('RGB', (1536, 1600), '#eaeef2')
 draw = ImageDraw.Draw(sheet)
 for index, (name, shot) in enumerate(shots):
     x = index % 2 * 768
     y = index // 2 * 400
     draw.text((x+12, y+8), name, fill='#344256')
     sheet.paste(shot.resize((768, 360)), (x, y+30))
-sheet.save(OUT / 'pastel-contact-sheet.png')
+sheet.save(OUT / 'classic-color-contact-sheet.png')
 buffer = io.BytesIO()
 sheet.save(buffer, format='PNG')
 print('SETUP_REVIEW_PNG_BASE64=' + base64.b64encode(buffer.getvalue()).decode(), flush=True)

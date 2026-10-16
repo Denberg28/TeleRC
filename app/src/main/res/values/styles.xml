@@ -1,9 +1,9 @@
 <resources>
     <style name="TeleRC.Launch" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">#E8EFF8</item>
-        <item name="android:statusBarColor">#E8EFF8</item>
-        <item name="android:navigationBarColor">#E8EFF8</item>
+        <item name="android:windowBackground">#EAEEF2</item>
+        <item name="android:statusBarColor">#EAEEF2</item>
+        <item name="android:navigationBarColor">#EAEEF2</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:colorAccent">#4B6686</item>
+        <item name="android:colorAccent">#005DB4</item>
     </style>
 </resources>

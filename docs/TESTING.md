@@ -1,3 +1,18 @@
+# 0.8.62 color-only restoration
+
+Baseline: released 0.8.61/code79 `0428b6f08b895e53aeefc9c660a7fa1f4a54b900`. Color reference: pre-compact 0.8.58. Scope: original palette with slightly deeper shades, former Pastel-to-Light migration, no layout/control/firmware rollback. See CLASSIC_COLORS_062.md.
+
+| Gate | Before final cloud run | Required evidence |
+| --- | --- | --- |
+| A source/build | Reviewed; local Gradle/SDK BLOCKED | Cloud JVM/debug/release lint/build |
+| B appearance | Contrast calculation PASS; source layout diff reviewed | 12 native Setup/Controls combinations, migration/restart, symmetry and large-font capture |
+| C regression | Local host and sync PASS; final sanitizers pending | Cloud default ASan/UBSan and host suites; local leak inspection restricted |
+| D integration | Protocol unchanged; physical NOT TESTED | Kotlin frames into actual mini parser |
+| E HIL | BLOCKED | Phone/receiver/rover unavailable; executable procedure in CLASSIC_COLORS_062.md |
+| F delivery | Pending | Code80 > code79, same signer, native/ZIP alignment, source/evidence/checksums; prerelease only |
+
+The successful final workflow and BUILD_INFO supersede pending software results. Next check: install over 0.8.61, compare original stronger colors, confirm current layout and retained settings, then perform restrained-wheel acceptance. No stable promotion.
+
 # 0.8.61 pastel theme qualification
 
 Baseline: released 0.8.60/code78 `c3a7aff56912eed000066ed8f3a7f8cb80f31f7f`. Scope: pastel appearance and one-time Dark migration; no firmware/protocol changes. See PASTEL_THEME_061.md for acceptance, installation and rollback.

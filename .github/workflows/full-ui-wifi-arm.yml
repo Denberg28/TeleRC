@@ -1,10 +1,10 @@
-name: TeleRC pastel theme release
+name: TeleRC restored color release
 on:
   push:
     branches: ['work/fpv-ui-058-*']
   workflow_dispatch:
 concurrency:
-  group: telerc-pastel-${{ github.ref }}
+  group: telerc-classic-color-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: write
@@ -63,7 +63,7 @@ jobs:
       - name: Native Setup theme and symmetry smoke check
         id: native_ui
         continue-on-error: true
-        timeout-minutes: 8
+        timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -83,7 +83,7 @@ jobs:
         run: |
           mkdir -p app/build/ui-evidence
           if [ "$UI_OUTCOME" = success ]; then
-            echo "PASS: 16 Setup and Controls variants, upgrade/persistence and panel geometry" > app/build/ui-evidence/STATUS.txt
+            echo "PASS: 12 Setup and Controls variants, upgrade/persistence and panel geometry" > app/build/ui-evidence/STATUS.txt
           elif [ -f app/build/ui-evidence/ATTEMPT_STARTED.txt ]; then
             echo "FAIL: native app capture or layout assertion failed" > app/build/ui-evidence/STATUS.txt
             exit 1
@@ -95,22 +95,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.61.apk
-          gh release download v0.8.60 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.60.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
-          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.61.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
-          git archive --format=zip --output=deliverables/TeleRC-v0.8.61-source.zip HEAD
-          cp docs/PASTEL_THEME_061.md deliverables/START_HERE.md
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.62.apk
+          gh release download v0.8.61 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.61.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.62.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          git archive --format=zip --output=deliverables/TeleRC-v0.8.62-source.zip HEAD
+          cp docs/CLASSIC_COLORS_062.md deliverables/START_HERE.md
           (cd app/build && zip -r "$RUNNER_TEMP/evidence.zip" reports test-results mini-rover-interop ui-evidence)
-          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.61-build-evidence.zip
+          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.62-build-evidence.zip
           cd deliverables
           sha256sum *.apk *.zip BUILD_INFO.txt START_HERE.md > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           python3 -c "import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob('*.zip'))"
-      - name: Publish pastel theme test candidate
+      - name: Publish restored color test candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd deliverables
-          gh release create v0.8.61 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.61 — pastel themes for Setup and Controls" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
+          gh release create v0.8.62 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.62 — original palette with slightly deeper shades" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

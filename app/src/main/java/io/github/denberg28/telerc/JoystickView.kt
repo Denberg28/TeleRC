@@ -35,12 +35,12 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
         paint.color = accent
         canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.FILL
-        paint.color = if (isEnabled) accent else AppColors.buttonFill(context)
+        paint.color = if (isEnabled) accent else Color.rgb(116, 144, 170)
         val travel = radius * 0.62f
         val knobX = cx + position.x * travel
         val knobY = cy + position.y * travel
         canvas.drawCircle(knobX, knobY, radius * 0.33f, paint)
-        paint.color = if (isEnabled) Color.WHITE else accent
+        paint.color = Color.WHITE
         canvas.drawCircle(knobX, knobY, radius * 0.12f, paint)
     }
     private fun input(x: Float, y: Float) {

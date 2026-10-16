@@ -1,3 +1,9 @@
+## 0.8.62
+
+- Restore the pre-compact palette with slightly deeper surfaces/action fills, white action labels and original joystick colors.
+- Keep the current compact layout, dimensions and controls; remove Pastel and migrate that setting to Light. Preserve explicit Light/Sepia/Dark selections.
+- Retain all rover, map/FPV, connection and sensitivity/expo behavior; no firmware change.
+
 ## 0.8.61
 
 - Add Pastel as the default background with powder-blue, mint, lavender and slate tonal fills; brighten Light and warm Sepia panels.

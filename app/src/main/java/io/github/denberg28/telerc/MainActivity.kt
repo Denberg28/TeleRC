@@ -167,7 +167,7 @@ class MainActivity : Activity() {
         text = value; isAllCaps = false; textSize = 15f
         minimumWidth = 0; minimumHeight = 0
         setPadding(dp(8), 0, dp(8), 0)
-        setTextColor(if (filled) ink else accent)
+        setTextColor(if (filled) Color.WHITE else accent)
         stateListAnimator = null; elevation = 0f
         background = android.graphics.drawable.RippleDrawable(
             android.content.res.ColorStateList.valueOf((accent and 0x00ffffff) or 0x24000000),
@@ -591,7 +591,7 @@ class MainActivity : Activity() {
                     appearance.edit().putString("background", selected.name).putBoolean("dark", selected == BackgroundTheme.DARK).apply()
                     dialog.dismiss(); recreate()
                 }.setNegativeButton("Cancel", null).show()
-        }.apply { contentDescription = "Choose Pastel, Light, Sepia or Dark background" })
+        }.apply { contentDescription = "Choose Light, Sepia or Dark background" })
         val choices = LinearLayout(this)
         val selected = appearance.getString("accent", "Blue")
         AppColors.names.forEachIndexed { index, name ->
