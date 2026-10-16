@@ -86,9 +86,11 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
             override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
                 if (!previewing || !foreground || !visiblePreview) return
                 lastFrameAt = SystemClock.elapsedRealtime()
-                status.text = "USB FPV · $profileText"
-                status.gravity = Gravity.TOP or Gravity.START
-                status.setBackgroundColor(Color.TRANSPARENT)
+                val caption = "USB FPV · $profileText"
+                if (status.text != caption) {
+                    status.text = caption; status.gravity = Gravity.TOP or Gravity.START
+                    status.setBackgroundColor(Color.TRANSPARENT)
+                }
             }
         }
         showMessage("Connect a USB UVC receiver, then tap Connect FPV · hold for video options")

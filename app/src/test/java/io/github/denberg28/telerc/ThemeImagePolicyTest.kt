@@ -14,6 +14,6 @@ class ThemeImagePolicyTest {
     }
     @Test fun invalidBoundsAreRejectedBeforeAllocating() {
         assertNull(ThemeImagePolicy.target(-1,480)); assertNull(ThemeImagePolicy.target(0,0))
-        assertNull(ThemeImagePolicy.target(Int.MAX_VALUE,200)); assertEquals(0,ThemeImagePolicy.sample(-1,300))
+        assertNull(ThemeImagePolicy.target(100000,100000)); assertNull(ThemeImagePolicy.target(Int.MAX_VALUE,200)); assertEquals(0,ThemeImagePolicy.sample(-1,300))
     }
 }

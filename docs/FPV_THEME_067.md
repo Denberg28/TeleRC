@@ -8,7 +8,7 @@ Hold Connect FPV → choose Auto, YUYV compatibility, MJPEG or USB diagnostics. 
 
 The screenshot proves frames are being rendered, not which component corrupts them. A format/decoder mismatch, RF channel/signal/PAL/NTSC, receiver/camera power or USB transport may be responsible. Fresh USB frames can carry static, broken, frozen or no-signal video. This update does not classify RF health or automatically detect image corruption. Use diagnostics to record actual format, advertised profiles and last error; compare the same receiver/channel in its known-working viewer.
 
-Setup → Background → Choose image imports a private offline copy. The current Light/Sepia/Dark tone overlays the image for readable text; controls/cards and the live video remain distinct. Remove image restores the plain theme. Cancel/invalid/oversized import retains the previous image. Input is limited to 20 MiB and decoded longest edge to 1920 pixels; the saved copy is a still JPEG. Modern Android honors image orientation; Android 8 uses bounded sampling and EXIF transforms. No broad storage permission or persistent gallery access is needed.
+Setup → Background → Choose image imports a private offline copy. The current Light/Sepia/Dark tone overlays the image for readable text; controls/cards and the live video remain distinct. Remove image restores the plain theme. Cancel/invalid/oversized import retains the previous image. Input is limited to 20 MiB / 100 megapixels and decoded longest edge to 1920 pixels; the saved copy is a still JPEG. Modern Android honors image orientation; Android 8 uses bounded sampling and EXIF transforms. No broad storage permission or persistent gallery access is needed.
 
 ## Review and verification gates
 

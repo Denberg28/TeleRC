@@ -4,7 +4,7 @@ object ThemeImagePolicy {
     const val MAX_BYTES = 20 * 1024 * 1024
     const val MAX_EDGE = 1920
     fun target(width: Int, height: Int): Pair<Int, Int>? {
-        if (width !in 1..100000 || height !in 1..100000) return null
+        if (width !in 1..100000 || height !in 1..100000 || width.toLong() * height > 100_000_000L) return null
         val scale = minOf(1.0, MAX_EDGE.toDouble() / maxOf(width, height))
         return maxOf(1, (width * scale).toInt()) to maxOf(1, (height * scale).toInt())
     }
