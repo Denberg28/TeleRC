@@ -69,7 +69,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: padded practice dialogs, three themes and large font, level selection/restart and version footer\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
@@ -150,7 +150,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(root(activity),"Lv 2 · 00:00.00")!=null)
             find(root(activity),"Levels")!!.performClick()
         }
-        waitUntil { windowText("2 levels unlocked · Select a level")!=null }
+        waitUntil { windowText("2/20")!=null }
         screenshot("maze-levels-dialog.png")
         check(uiAutomation.windows.mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText("Level 3") }
             .none { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser }) { "A locked level was selectable" }
@@ -176,7 +176,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(onMain { scene.practice.coins.size }==8)
         screenshot("maze-coins.png")
         onMain { find(root(activity),"Market · 35")!!.performClick() }
-        waitUntil { windowText("Market · offline cosmetics")!=null }
+        waitUntil { windowText("Market")!=null }
         check(onMain { scene.practice.state!=MazePractice.State.RUNNING })
         showMarketItem("Buy Rally · 20")
         screenshot("market-vehicles.png")
@@ -185,6 +185,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==15)
         showMarketItem("Buy Hauler · 50")
         check(windowText("Buy Hauler · 50")?.isEnabled==false)
+        clickWindow("Colors")
         showMarketItem("Buy Forest · 15"); clickWindow("Buy Forest · 15")
         waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).theme=="forest" }
         check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==0)
@@ -228,7 +229,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             val roots=uiAutomation.windows.mapNotNull { it.root }.filter { it.packageName?.toString()==targetContext.packageName }
             val node=roots.flatMap { root -> root.findAccessibilityNodeInfosByText(text)+
                 root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT)) }
-                .firstOrNull { it.text?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true }
+                .firstOrNull { it.text?.toString()?.equals(text,ignoreCase=true)==true || (it.contentDescription?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true) }
             node?.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
             SystemClock.sleep(150)
             if(windowText(text)!=null) return
@@ -258,7 +259,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                 var chosen=0
                 val levels=onMain { MazePracticeDialogs(activity).levels(MazeProgress.restore(1,20),
                     listOf(MazeClear(37,65430,1000,3,1))) { chosen=it } }
-                waitUntil { windowText("20 levels unlocked · Select a level")!=null }
+                waitUntil { windowText("20/20")!=null }
                 checkDialogButton(activity,levels,"Done")
                 screenshot("dialogs-${theme.lowercase()}-levels.png")
                 showMarketItem("Level 20"); clickWindow("Level 20")
@@ -270,6 +271,24 @@ class ThemeImageInstrumentation : Instrumentation() {
                 screenshot("dialogs-${theme.lowercase()}-restart.png")
                 clickWindow("Restart level")
                 waitUntil { onMain { restarted } }
+                var wallet=MazeWallet.decode("")
+                for(level in 2..5) for(slot in 0 until MazeMarket.quota(level)) wallet=wallet.claim(level,slot)!!
+                for(slot in 0..2) wallet=wallet.claim(6,slot)!!
+                val market=onMain { MazePracticeDialogs(activity).market({ wallet }) { wallet=it } }
+                waitUntil { windowText("35 coins")!=null }
+                checkDialogButton(activity,market,"Done")
+                checkDialogButton(activity,market,"Vehicles")
+                showMarketItem("Buy Rally · 20")
+                screenshot("dialogs-${theme.lowercase()}-market-vehicles.png")
+                clickWindow("Buy Rally · 20")
+                waitUntil { onMain { wallet.vehicle=="rally" && wallet.balance==15 } }
+                clickWindow("Colors")
+                checkDialogButton(activity,market,"Colors")
+                showMarketItem("Buy Forest · 15")
+                screenshot("dialogs-${theme.lowercase()}-market-colors.png")
+                clickWindow("Buy Forest · 15")
+                waitUntil { onMain { wallet.theme=="forest" && wallet.balance==0 } }
+                clickWindow("Done")
                 onMain { activity.finish() }; waitForIdleSync()
             }
         } finally { font("1.0") }
@@ -334,7 +353,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         .mapNotNull { it.root }.flatMap { root ->
             root.findAccessibilityNodeInfosByText(text) + root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT))
         }
-        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && (it.text?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true) }
+        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && (it.text?.toString()?.equals(text,ignoreCase=true)==true || (it.contentDescription?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true)) }
     private fun clickWindow(text:String) {
         var node=windowText(text) ?: error("Missing UI: $text")
         while(!node.isClickable && node.parent!=null) node=node.parent

@@ -6,7 +6,10 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
 import android.view.Gravity
+import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.widget.Button
@@ -14,7 +17,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-/** Sized within the visible window: scrolling content, fixed header/actions, shared spacing. */
+/** Flat practice popups: one header, quiet dividers and 48 dp touch targets. */
 internal class MazePracticeDialogs(private val activity:Activity) {
     private val ink=AppColors.ink(activity)
     private val muted=AppColors.muted(activity)
@@ -22,46 +25,42 @@ internal class MazePracticeDialogs(private val activity:Activity) {
     private val surface=AppColors.surface(activity)
     private val soft=AppColors.softAccent(activity)
     private fun dp(value:Int)=(value*activity.resources.displayMetrics.density+.5f).toInt()
-    private fun shape(color:Int,radius:Int=12,stroke:Boolean=false)=GradientDrawable().apply {
+    private fun shape(color:Int,radius:Int=8)=GradientDrawable().apply {
         setColor(color); cornerRadius=dp(radius).toFloat()
-        if(stroke) setStroke(dp(1),accent)
     }
-    private fun label(value:String,size:Float,color:Int=ink,bold:Boolean=false)=TextView(activity).apply {
-        text=value; textSize=size; setTextColor(color)
+    private fun label(value:String,size:Float=14f,color:Int=ink,bold:Boolean=false)=TextView(activity).apply {
+        text=value; textSize=size; setTextColor(color); includeFontPadding=false
         if(bold) setTypeface(typeface,android.graphics.Typeface.BOLD)
     }
-    private fun action(value:String,primary:Boolean,clicked:()->Unit)=Button(activity).apply {
-        text=value; textSize=14f; isAllCaps=false
-        minimumWidth=0; minimumHeight=dp(48); setPadding(dp(16),dp(10),dp(16),dp(10))
-        setTextColor(if(primary) Color.WHITE else ink)
-        background=shape(if(primary) AppColors.buttonFill(activity) else soft)
+    private fun action(value:String,clicked:()->Unit)=Button(activity).apply {
+        text=value; textSize=13f; isAllCaps=false; includeFontPadding=false
+        minimumWidth=dp(64); minimumHeight=dp(48); setPadding(dp(12),dp(6),dp(12),dp(6))
+        setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled),intArrayOf()),intArrayOf(muted,accent)))
+        background=RippleDrawable(ColorStateList.valueOf(soft),ColorDrawable(Color.TRANSPARENT),shape(Color.WHITE,4))
         elevation=0f; stateListAnimator=null
         setOnClickListener { clicked() }
     }
-    private class Sheet(val dialog:Dialog,val body:LinearLayout,val footer:LinearLayout)
-    private fun sheet(title:String,subtitle:String,badge:String,width:Int,height:Int,cancelable:Boolean):Sheet {
+    private fun divider(parent:LinearLayout) {
+        parent.addView(View(activity).apply { setBackgroundColor(ink); alpha=.12f },LinearLayout.LayoutParams(-1,dp(1)))
+    }
+    private class Sheet(val dialog:Dialog,val root:LinearLayout,val header:LinearLayout,val body:LinearLayout,val scroll:ScrollView)
+    private fun sheet(title:String,width:Int,height:Int,cancelable:Boolean=true):Sheet {
         val dialog=Dialog(activity).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             setCancelable(cancelable); setCanceledOnTouchOutside(cancelable)
         }
         val root=LinearLayout(activity).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(20),dp(20),dp(20))
-            background=shape(surface,20)
+            orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(8))
+            background=shape(surface)
         }
-        val heading=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL }
-        heading.addView(label(title,20f,ink,true),LinearLayout.LayoutParams(0,-2,1f))
-        heading.addView(label(badge,12f,accent,true).apply {
-            gravity=Gravity.CENTER; setPadding(dp(10),dp(6),dp(10),dp(6)); background=shape(soft,10)
-        },LinearLayout.LayoutParams(-2,-2).apply { leftMargin=dp(12) })
-        root.addView(heading,LinearLayout.LayoutParams(-1,-2))
-        root.addView(label(subtitle,12f,muted),LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
+        val header=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL }
+        header.addView(label(title,16f,ink,true),LinearLayout.LayoutParams(0,-2,1f))
+        root.addView(header,LinearLayout.LayoutParams(-1,dp(48)))
+        divider(root)
         val body=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
         val scroll=ScrollView(activity).apply { isFillViewport=false; addView(body) }
-        root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f).apply { topMargin=dp(16) })
-        val footer=LinearLayout(activity).apply { orientation=LinearLayout.HORIZONTAL }
-        root.addView(footer,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(16) })
+        root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         dialog.setContentView(root)
-        // Add actions before first measure, so the scrolling region yields space to them.
         dialog.setOnShowListener {
             val visible=Rect()
             activity.window.decorView.getWindowVisibleDisplayFrame(visible)
@@ -70,64 +69,108 @@ internal class MazePracticeDialogs(private val activity:Activity) {
             val availableHeight=if(visible.height()>0) visible.height() else metrics.heightPixels
             dialog.window?.apply {
                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                setDimAmount(.62f)
-                setLayout(minOf(dp(width),(availableWidth-dp(40)).coerceAtLeast(1)),
-                    minOf(dp(height),(availableHeight-dp(32)).coerceAtLeast(1)))
+                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND); setDimAmount(.48f)
+                setLayout(minOf(dp(width),(availableWidth-dp(32)).coerceAtLeast(1)),
+                    minOf(dp(height),(availableHeight-dp(24)).coerceAtLeast(1)))
             }
         }
-        return Sheet(dialog,body,footer)
+        return Sheet(dialog,root,header,body,scroll)
+    }
+    private fun close(sheet:Sheet) {
+        sheet.header.addView(action("Done") { sheet.dialog.dismiss() },LinearLayout.LayoutParams(-2,dp(48)))
     }
     fun levels(progress:MazeProgress,records:List<MazeClear>,selected:(Int)->Unit):Dialog {
-        val sheet=sheet("Levels","${progress.unlocked} levels unlocked · Select a level",
-            "${progress.unlocked} / ${MazeLevels.COUNT}",520,340,true)
+        val sheet=sheet("Levels",420,minOf(340,68+progress.unlocked*53))
+        sheet.header.addView(label("${progress.unlocked}/${MazeLevels.COUNT}",12f,muted))
+        close(sheet)
         for(level in 1..progress.unlocked) {
             val current=level==progress.current
             val best=records.filter { it.level==level && it.courseVersion==MazeLayout.COURSE_VERSION }.minOfOrNull { it.millis }
             val state=when { current -> "Current"; level<=progress.completed -> "Cleared"; else -> "Play" }
             val row=LinearLayout(activity).apply {
-                orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
-                minimumHeight=dp(68); setPadding(dp(12),dp(12),dp(12),dp(12))
-                background=shape(if(current) soft else surface,12,true)
+                gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(52)
+                setPadding(dp(4),dp(6),dp(4),dp(6))
+                background=RippleDrawable(ColorStateList.valueOf(soft),ColorDrawable(Color.TRANSPARENT),null)
                 isClickable=true; isFocusable=true
                 contentDescription="Level $level, $state, best ${best?.let(MazeRecords::time) ?: "not set"}"
                 setOnClickListener { sheet.dialog.dismiss(); selected(level) }
             }
-            row.addView(label(java.lang.String.format(java.util.Locale.US,"%02d",level),16f,Color.WHITE,true).apply {
-                gravity=Gravity.CENTER; background=shape(AppColors.buttonFill(activity),10)
-            },LinearLayout.LayoutParams(dp(44),dp(44)))
-            val detail=LinearLayout(activity).apply {
-                orientation=LinearLayout.VERTICAL
-                addView(label("Level $level",15f,ink,true))
-                addView(label("Best ${best?.let(MazeRecords::time) ?: "—"}",12f,muted),
-                    LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(4) })
-            }
-            row.addView(detail,LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(12); rightMargin=dp(12) })
-            row.addView(label(state,12f,if(current) accent else muted,current),LinearLayout.LayoutParams(-2,-2))
-            sheet.body.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+            row.addView(label(if(current) "•" else if(level<=progress.completed) "✓" else "",14f,accent),LinearLayout.LayoutParams(dp(24),-2))
+            row.addView(label("Level $level",14f,if(current) accent else ink,current),LinearLayout.LayoutParams(0,-2,1f))
+            row.addView(label(best?.let(MazeRecords::time) ?: "—",12f,muted),LinearLayout.LayoutParams(-2,-2))
+            sheet.body.addView(row,LinearLayout.LayoutParams(-1,-2))
+            if(level<progress.unlocked) divider(sheet.body)
         }
-        sheet.footer.addView(action("Done",false) { sheet.dialog.dismiss() },LinearLayout.LayoutParams(-1,-2))
         sheet.dialog.show()
         return sheet.dialog
     }
     fun restart(level:Int,millis:Long,bumps:Int,restart:()->Unit):Dialog {
-        val sheet=sheet("Restart level $level?","Wall-bump limit reached","$bumps / ${MazePractice.BUMP_LIMIT}",460,310,false)
-        val stats=LinearLayout(activity).apply {
-            setPadding(dp(16),dp(12),dp(16),dp(12)); background=shape(soft)
+        val sheet=sheet("Restart level $level?",360,184,false)
+        sheet.body.addView(label("$bumps bumps · ${MazeRecords.time(millis)}",13f,muted),
+            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
+        sheet.body.addView(label("Coins kept. Fresh start.",13f,muted),
+            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
+        val footer=LinearLayout(activity).apply { gravity=Gravity.END }
+        footer.addView(action("Restart level") { sheet.dialog.dismiss(); restart() },LinearLayout.LayoutParams(-2,dp(48)))
+        sheet.root.addView(footer,LinearLayout.LayoutParams(-1,dp(48)))
+        sheet.dialog.show()
+        return sheet.dialog
+    }
+    fun market(wallet:()->MazeWallet,changed:(MazeWallet)->Unit):Dialog {
+        val sheet=sheet("Market",440,328)
+        val balance=label("",12f,muted)
+        sheet.header.addView(balance); close(sheet)
+        val tabs=LinearLayout(activity)
+        sheet.root.addView(tabs,2,LinearLayout.LayoutParams(-1,dp(48)))
+        val controls=mutableListOf<Pair<MazeMarketItem,Button>>()
+        val tabButtons=mutableListOf<Pair<MazeItemKind,Button>>()
+        fun refresh() {
+            val current=wallet()
+            balance.text="${current.balance} coins"
+            for((item,button) in controls) {
+                val equipped=item.id==current.vehicle || item.id==current.theme
+                val owned=item.id in current.owned
+                button.text=when { equipped -> "Selected"; owned -> "Use"; else -> "Buy · ${item.price}" }
+                button.contentDescription=when { equipped -> "${item.name} · Equipped"; owned -> "Use ${item.name}"; else -> "Buy ${item.name} · ${item.price}" }
+                button.isEnabled=!equipped && (owned || current.balance>=item.price)
+            }
         }
-        fun stat(title:String,value:String):LinearLayout = LinearLayout(activity).apply {
-            orientation=LinearLayout.VERTICAL
-            addView(label(title,11f,muted,true))
-            addView(label(value,20f,ink,true),LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(4) })
+        fun category(kind:MazeItemKind) {
+            for((tab,button) in tabButtons) {
+                button.isSelected=tab==kind
+                button.setTextColor(if(tab==kind) accent else muted)
+                button.setTypeface(null,if(tab==kind) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                // A quiet underline replaces filled tab pills.
+                button.background=GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                }.let { base -> android.graphics.drawable.LayerDrawable(arrayOf(base,ColorDrawable(if(tab==kind) accent else Color.TRANSPARENT))).apply {
+                    setLayerHeight(1,dp(2)); setLayerGravity(1,Gravity.BOTTOM)
+                } }
+            }
+            controls.clear(); sheet.body.removeAllViews()
+            for(item in MazeMarket.items.filter { it.kind==kind }) {
+                val row=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(52) }
+                row.addView(MazeMarketPreview(activity,item),LinearLayout.LayoutParams(dp(36),dp(36)).apply { rightMargin=dp(12) })
+                row.addView(label(item.name),LinearLayout.LayoutParams(0,-2,1f))
+                val buy=action("") {
+                    val current=wallet()
+                    val next=if(item.id in current.owned) current.equip(item.id) else current.buy(item.id)?.equip(item.id)
+                    if(next!=null) changed(next)
+                    refresh()
+                }
+                row.addView(buy,LinearLayout.LayoutParams(-2,dp(48)))
+                controls.add(item to buy)
+                sheet.body.addView(row,LinearLayout.LayoutParams(-1,dp(52)))
+                if(item!=MazeMarket.items.last { it.kind==kind }) divider(sheet.body)
+            }
+            sheet.scroll.scrollTo(0,0); refresh()
         }
-        stats.addView(stat("TIME",MazeRecords.time(millis)),LinearLayout.LayoutParams(0,-2,1f))
-        stats.addView(stat("BUMPS","$bumps / ${MazePractice.BUMP_LIMIT}"),LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(16) })
-        sheet.body.addView(stats,LinearLayout.LayoutParams(-1,-2))
-        sheet.body.addView(label("Return to START with a fresh timer and no wall marks.",14f),
-            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) })
-        sheet.body.addView(label("Collected coins stay in your wallet.",12f,muted),
-            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
-        sheet.footer.addView(action("Restart level",true) { sheet.dialog.dismiss(); restart() },LinearLayout.LayoutParams(-1,-2))
+        for(kind in MazeItemKind.entries) {
+            val button=action(if(kind==MazeItemKind.VEHICLE) "Vehicles" else "Colors") { category(kind) }
+            tabButtons.add(kind to button)
+            tabs.addView(button,LinearLayout.LayoutParams(0,dp(48),1f))
+        }
+        category(MazeItemKind.VEHICLE)
         sheet.dialog.show()
         return sheet.dialog
     }

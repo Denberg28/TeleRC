@@ -1,3 +1,7 @@
+# Flat Test presentation — 0.8.72
+
+`MazePracticeDialogs` now also owns the Market shell and tabbed cosmetic catalog. Levels, mandatory restart and Market share flat styling, visible-window caps, small fixed headers/actions and scrolling bodies. MainActivity supplies wallet reads/writes and retains the pause/reset/selection callbacks; no model or persistence changes. Accessible purchase labels include the item and price while visual labels stay short. See [gates and acceptance](MAZE_DIALOGS_072.md).
+
 # Practice dialog presentation — 0.8.71
 
 `MazePracticeDialogs` shares themed rounded surfaces, visible-window bounds, fixed header/actions and a weighted scrolling body for Levels and mandatory restart. MainActivity retains existing level/reset callbacks, dismisses these dialogs on render/destroy, and derives the Test footer from `BuildConfig.VERSION_NAME`. No gameplay, wallet, persistence or transport model changes. See [scope, evidence and rollback](MAZE_DIALOGS_071.md).

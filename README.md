@@ -1,3 +1,7 @@
+# Flat Test popups — 0.8.72 test build
+
+Restart, Levels and Market now use small headings, flat rows, quiet dividers and short text actions. Market has Vehicles/Colors tabs, smaller previews and a compact balance; restart drops the boxed statistics and long instructions. All actions retain 48 dp touch targets. [Scope, A–F gates, phone checks and rollback](docs/MAZE_DIALOGS_072.md). Gameplay, wallet/prices, FPV/photo and firmware retained; no reflash. Final workflow/BUILD_INFO supplies software evidence; phone/HIL remains BLOCKED. No stable promotion.
+
 # Practice dialogs and version — 0.8.71 test build
 
 Levels and the three-bump restart popup now use padded, rounded themed layouts, scrolling content and fixed full-width actions. Level cards show current status and best times; restart separates time/bumps and confirms coins are kept. Test's bottom text is now the TeleRC version. [Scope, A–F gates, phone checks and rollback](docs/MAZE_DIALOGS_071.md). App-only, no reflash; Market/wallet, FPV/photo and game behavior retained. Final workflow/BUILD_INFO supplies software evidence; phone/HIL remains BLOCKED. No stable promotion.

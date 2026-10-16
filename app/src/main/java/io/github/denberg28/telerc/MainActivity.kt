@@ -47,7 +47,7 @@ class MainActivity : Activity() {
     private var mazeView: MazePracticeView? = null
     private var mazeRestartDialog: android.app.Dialog? = null
     private var mazeLevelsDialog: android.app.Dialog? = null
-    private var mazeMarketDialog: AlertDialog? = null
+    private var mazeMarketDialog: android.app.Dialog? = null
     private var practiceSteer: JoystickView? = null
     private var practiceDrive: JoystickView? = null
     @Volatile private var socket: LinkTransport? = null
@@ -830,56 +830,8 @@ class MainActivity : Activity() {
         market.contentDescription="Market, ${wallet.balance} coins, offline practice"
         market.setOnClickListener {
             scene.pause(); resetSticks()
-            val content=LinearLayout(this).apply {
-                orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(8))
-            }
-            val balance=text("",15f,ink,true)
-            content.addView(balance)
-            content.addView(text("Collect gold coins in the maze. Each is worth 1. Lv ${practice.maze.level}: ${practice.coins.size} coins remain this attempt.\nEvery level has a fixed lifetime supply; retries move uncollected coins. Cosmetics keep the same handling.",12f,muted))
-            val controls=mutableListOf<Pair<MazeMarketItem,Button>>()
-            fun refreshMarket() {
-                balance.text="Coins · ${wallet.balance}"
-                for((item,action) in controls) {
-                    val equipped=item.id==wallet.vehicle || item.id==wallet.theme
-                    val owned=item.id in wallet.owned
-                    action.text=when { equipped -> "${item.name} · Equipped"
-                        owned -> "Use ${item.name}"; else -> "Buy ${item.name} · ${item.price}" }
-                    action.isEnabled=!equipped && (owned || wallet.balance>=item.price)
-                }
-            }
-            for(kind in MazeItemKind.entries) {
-                content.addView(text(if(kind==MazeItemKind.VEHICLE) "Vehicles" else "Maze colors",14f,ink,true),
-                    LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(10) })
-                for(item in MazeMarket.items.filter { it.kind==kind }) {
-                    val rowItem=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-                    rowItem.addView(MazeMarketPreview(this,item),LinearLayout.LayoutParams(dp(62),dp(62)))
-                    val description=LinearLayout(this).apply {
-                        orientation=LinearLayout.VERTICAL
-                        addView(text(item.name,14f,ink,true))
-                        addView(text(when(item.id) {
-                            "rally" -> "Striped racing body"; "buggy" -> "Open roll cage"; "hauler" -> "Pickup cargo bed"
-                            "scout" -> "Classic rover · free"; "navy" -> "Original maze palette · free"
-                            else -> "Wall and passage palette"
-                        },11f,muted))
-                    }
-                    rowItem.addView(description,LinearLayout.LayoutParams(0,-2,1f))
-                    val action=button("") {
-                        val next=if(item.id in wallet.owned) wallet.equip(item.id) else wallet.buy(item.id)?.equip(item.id)
-                        if(next!=null) saveWallet(next)
-                        refreshMarket()
-                    }.apply { textSize=12f }
-                    controls.add(item to action)
-                    rowItem.addView(action,LinearLayout.LayoutParams(dp(168),dp(44)))
-                    content.addView(rowItem,LinearLayout.LayoutParams(-1,dp(68)))
-                }
-            }
-            refreshMarket()
-            val scroll=ScrollView(this).apply { addView(content) }
-            mazeMarketDialog=AlertDialog.Builder(this).setTitle("Market · offline cosmetics")
-                .setView(scroll).setPositiveButton("Done") { _, _ -> mazeMarketDialog=null }.create()
-            mazeMarketDialog?.show()
-            mazeMarketDialog?.window?.setLayout((resources.displayMetrics.widthPixels*.78f).toInt(),
-                (resources.displayMetrics.heightPixels*.84f).toInt())
+            mazeMarketDialog=MazePracticeDialogs(this).market({ wallet },::saveWallet)
+            mazeMarketDialog?.setOnDismissListener { mazeMarketDialog=null }
         }
         val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         row.addView(controlColumn(pageDropdown("Test"),steerPanel),LinearLayout.LayoutParams(0,-1,1.6f).apply { rightMargin=dp(8) })
