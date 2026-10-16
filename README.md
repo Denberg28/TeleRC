@@ -1,3 +1,7 @@
+## 0.8.65 — thinner maze walls and a readable rover
+
+Offline Test now uses thin continuous walls and a much larger top-view rover with four wheels, windshield, yellow front bar, white outline and rotating arrow. Heading is visible beside the maze time information. Collision geometry matches the drawn walls; existing Classic clear times are preserved separately from best times for the new geometry. [Setup, acceptance and rollback](docs/READABLE_ROVER_065.md). App-only candidate; no firmware reflash. v0.8.64 remains Latest stable.
+
 ## 0.8.64 navy, offline Test and mini 95% output
 
 The Blue preference now displays as Navy. Open the page dropdown → Test for offline maze practice with the Controls joysticks, shuffle/retry and saved clear times. Test disconnects the live link and requires explicit Connect when returning. Mini rover 1.2.3 caps MX1508 PWM at 242/255; it must be flashed separately to apply that ceiling. App sensitivity still multiplies it. See [setup, acceptance and rollback](docs/NAVY_MAZE_064.md). Owner-requested Latest stable channel promotion: [release and qualification](docs/STABLE_064.md). Phone/rover HIL remains pending.

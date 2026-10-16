@@ -689,8 +689,9 @@ class MainActivity : Activity() {
         fun update() {
             timer.text="${if (practice.state==MazePractice.State.CLEARED) "CLEARED" else "TIME"} · ${MazeRecords.time(practice.elapsedMillis)}"
             val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
-            val best=records.filter { it.seed==practice.maze.seed }.minOfOrNull { it.millis }
-            detail.text="Maze ${practice.maze.seed.toUInt().toString(16)} · Best ${best?.let { MazeRecords.time(it) } ?: "—"}"
+            val best=records.filter { it.seed==practice.maze.seed && it.courseVersion==MazeLayout.COURSE_VERSION }.minOfOrNull { it.millis }
+            val heading=((Math.toDegrees(practice.pose.heading.toDouble())+360)%360).toInt()
+            detail.text="Maze ${practice.maze.seed.toUInt().toString(16)} · Best ${best?.let { MazeRecords.time(it) } ?: "—"} · H ${heading}°"
             start.text=when(practice.state) {
                 MazePractice.State.READY -> "Start practice"
                 MazePractice.State.RUNNING -> "Pause"
@@ -705,7 +706,7 @@ class MainActivity : Activity() {
         scene.onUpdate=::update
         scene.onClear={ millis ->
             val records=MazeRecords.add(MazeRecords.decode(prefs.getString("records","").orEmpty()),
-                MazeClear(practice.maze.seed,millis,System.currentTimeMillis()))
+                MazeClear(practice.maze.seed,millis,System.currentTimeMillis(),MazeLayout.COURSE_VERSION))
             prefs.edit().putString("records",MazeRecords.encode(records)).apply()
             update()
         }
@@ -767,7 +768,7 @@ class MainActivity : Activity() {
             val message=if(records.isEmpty()) "No clears yet. Drive from START to END to save your time."
                 else records.take(20).joinToString("\n\n") { record ->
                     val date=java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(record.at))
-                    "${MazeRecords.time(record.millis)} · Maze ${record.seed.toUInt().toString(16)}\n$date"
+                    "${MazeRecords.time(record.millis)} · Maze ${record.seed.toUInt().toString(16)}${if(record.courseVersion==1) " · Classic" else ""}\n$date"
                 }
             AlertDialog.Builder(this).setTitle("Clear times · latest ${records.size}")
                 .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; compare best times on the same maze.")

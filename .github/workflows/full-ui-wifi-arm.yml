@@ -1,4 +1,4 @@
-name: TeleRC navy and offline maze release
+name: TeleRC readable maze rover release
 on:
   push:
     branches: ['work/fpv-ui-058-*']
@@ -55,17 +55,6 @@ jobs:
           cmp /tmp/mini-heartbeat.hex tests/mini-rover/heartbeat.hex
           g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer tests/mini-rover/interop.cpp -o /tmp/mini-interop
           /tmp/mini-interop app/build/mini-rover-interop
-      - uses: arduino/setup-arduino-cli@v2
-      - name: Compile six actual ESP32-S3 mini rover configurations
-        run: |
-          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          mkdir -p deliverables/firmware app/build/firmware-evidence
-          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --output-dir deliverables/firmware bridge/TeleRC_MiniRover_WiFi 2>&1 | tee app/build/firmware-evidence/mx1508-four.txt
-          arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property 'compiler.cpp.extra_flags=-DTELERC_MOTOR_COUNT=2' bridge/TeleRC_MiniRover_WiFi 2>&1 | tee app/build/firmware-evidence/mx1508-two.txt
-          for profile in '2' '3' '4 -DTELERC_SUPPLY_MAX_MV=6000 -DTELERC_BTS_LOGIC_VERIFIED=1' '5'; do
-            arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property "compiler.cpp.extra_flags=-DTELERC_DRIVER=$profile" bridge/TeleRC_MiniRover_WiFi 2>&1 | tee "app/build/firmware-evidence/profile-${profile%% *}.txt"
-          done
       - name: Reclaim completed toolchains before emulator image download
         run: python3 scripts/reclaim-ui-runner.py
       - name: Enable emulator KVM
@@ -107,16 +96,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.64.apk
-          gh release download v0.8.63 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.63.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
-          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.64.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
-          git archive --format=zip --output=deliverables/TeleRC-v0.8.64-source.zip HEAD
-          cp docs/NAVY_MAZE_064.md deliverables/START_HERE.md
-          (cd app/build && zip -r "$RUNNER_TEMP/evidence.zip" reports test-results mini-rover-interop ui-evidence firmware-evidence)
-          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.64-build-evidence.zip
-          cp -R bridge/TeleRC_MiniRover_WiFi deliverables/
-          (cd deliverables && zip -r TeleRC-MiniRover-MX1508-v1.2.3-sketch.zip TeleRC_MiniRover_WiFi START_HERE.md BUILD_INFO.txt)
-          (cd deliverables && zip -r TeleRC-MiniRover-MX1508-v1.2.3-firmware.zip TeleRC_MiniRover_WiFi firmware START_HERE.md BUILD_INFO.txt)
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.65.apk
+          gh release download v0.8.64 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.64.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.65.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          git archive --format=zip --output=deliverables/TeleRC-v0.8.65-source.zip HEAD
+          cp docs/READABLE_ROVER_065.md deliverables/START_HERE.md
+          (cd app/build && zip -r "$RUNNER_TEMP/evidence.zip" reports test-results mini-rover-interop ui-evidence)
+          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.65-build-evidence.zip
           cd deliverables
           sha256sum *.apk *.zip BUILD_INFO.txt START_HERE.md > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
@@ -126,6 +112,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd deliverables
-          gh release create v0.8.64 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.64 — dark navy, offline maze practice and 95% MX1508 output" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
+          gh release create v0.8.65 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.65 — thinner maze walls and a larger directional rover" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

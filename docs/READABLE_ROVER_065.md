@@ -1,0 +1,21 @@
+# TeleRC 0.8.65 — readable maze rover
+
+Baseline: stable v0.8.64/code82, source cee84f40ad7ebf99bfd2152f7fd0c339ca423639, plus the preserved stable-promotion audit branch. Candidate: 0.8.65/code83. Scope is offline practice geometry/representation and clear-record format compatibility. Firmware, live controls, theme colors and physical command behavior are unchanged. No firmware reflash is needed; retain mini 1.2.3 if installed.
+
+The random course is now 15×7 rather than 15×11, fitting the wide center panel more efficiently and making the entire course and rover larger on screen. Walls are now continuous 0.18-cell strips, 82% thinner than the old solid cells. Passage width between parallel wall centerlines grows from 1.0 to 1.82 cells. Rendering and collision use the same precomputed wall rectangles, including posts at junctions and ends. The outer frame stays closed, and the seeded maze topology remains solvable.
+
+The rover is about 2.7 times wider and 2.2 times longer than the old sprite. It adapts the previous top-view rover: four wheels, navy/accent body, cyan windshield and yellow front bar, with rear lamps, a white outline and a large front-pointing chevron for Dark visibility. Wheels show track demand colors. The entire sprite rotates with heading, including when reversing. H degrees appears beside the maze information; 0° points up, 90° right, 180° down, 270° left in the maze. This is simulated heading, not GPS.
+
+A conservative 0.68-cell collision radius encloses the enlarged rover in every orientation. The simulation blocks against actual thin walls, rather than invisible old cell blocks, and does not let the rover shortcut through wall junctions or leave the course. Steering, drive response, Shuffle/Retry, active timer and offline transport isolation remain as before.
+
+Old clear records are preserved and displayed as Classic. New geometry records carry course version 2, and best times compare the same seed and geometry only. This prevents the old narrower-passage/dot-rover times from being presented as equivalent records. The bounded record decoder accepts both the old three-field entries and versioned entries. Up to 50 recent records remain retained.
+
+## Qualification and acceptance
+
+A source/build: JVM tests, debug/release lint and signed build required. B behavior: generated course connectivity, expanded free-space and wall-end collision, larger-rover path completion, pause/retry/timing/finish-once and legacy/versioned record preservation required. Native Setup/Controls/Test coverage for 12 theme/accent combinations, drive movement, steering capture, background pause, record restart and Light/Sepia/Dark close-up evidence required. C regression: host/default sanitizer suites and synchronization required. D software integration: Kotlin-to-mini parser required; physical phone/rover not tested. E physical HIL/device readability: BLOCKED until measured. F package: retained signer, code83, checksum/ZIP/native alignment and source/evidence required; prerelease candidate. Existing v0.8.64 remains Latest stable until separately promoted.
+
+Local Android SDK/Gradle downloads are unavailable; cloud CI supplies actual Android verification. Firmware is untouched, so no affected ESP32 target rebuild or new firmware binary is claimed. The existing mini 1.2.3 actual-board evidence remains in v0.8.64. Final workflow and BUILD_INFO supersede pending software statuses; no physical reliability claim.
+
+Install over 0.8.64 without uninstalling. On the actual phone, open Test in Light/Sepia/Dark, verify the front is easy to identify with the rover facing all four directions and while reversing, then drive along walls and through turns. Check thin walls block without invisible full-cell collisions; Shuffle/Retry and pause/background remain neutral; finish once, verify the same-geometry best and retained Classic records. Live Controls must require explicit reconnection after practice. This is the next concrete acceptance check.
+
+Rollback retains stable v0.8.64 and its assets. Android normally rejects a lower version code; use a future same-signer higher-code restoration to preserve app data. No firmware rollback is required for this app-only change.

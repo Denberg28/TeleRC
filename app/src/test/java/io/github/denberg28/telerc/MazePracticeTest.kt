@@ -113,6 +113,27 @@ class MazePracticeTest {
         }
         assertEquals(MazePractice.State.CLEARED,p.state)
     }
+    @Test fun thinWallsLeaveVisibleFreeSpaceAndBlockSegmentsAndCorners() {
+        val maze=course("#####","#...#","###.#","#...#","#####").maze
+        assertTrue(maze.fits(1.5f,2.25f,.1f)) // Space the old full-cell wall filled.
+        assertFalse(maze.fits(1.5f,2.35f,.1f)) // The actual thin wall still blocks.
+        assertFalse(maze.fits(2.5f,2.5f,.1f)) // Junction center.
+        assertFalse(maze.fits(2.68f,2.68f,.2f)) // No diagonal gap at an end/corner.
+        assertTrue(maze.fits(1.5f,1.30f)) // Full larger rover fits near the outer wall.
+        assertFalse(maze.fits(1.5f,1.20f))
+        assertFalse(maze.fits(-10f,-10f))
+        assertFalse(maze.fits(Float.NaN,1.5f))
+        assertFalse(maze.fits(1.5f,1.5f,Float.NaN))
+    }
+    @Test fun classicRecordsRemainReadableAndKeepTheirCourseVersion() {
+        val classic=MazeRecords.decode("42,12340,1792110000000").single()
+        assertEquals(1,classic.courseVersion)
+        val modern=MazeClear(42,11000,1792111000000,MazeLayout.COURSE_VERSION)
+        val all=MazeRecords.add(listOf(classic),modern)
+        assertEquals(all,MazeRecords.decode(MazeRecords.encode(all)))
+        assertEquals(listOf(modern),all.filter { it.courseVersion==MazeLayout.COURSE_VERSION })
+        assertTrue(MazeRecords.decode("42,12340,1792110000000,999").isEmpty())
+    }
     @Test fun boundedRecordsRoundTripAndRejectCorruptRows() {
         var records=emptyList<MazeClear>()
         for(i in 1..60) records=MazeRecords.add(records,MazeClear(i,i*100L,i*1000L))

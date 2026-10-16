@@ -1,3 +1,7 @@
+# Readable maze rover 0.8.65
+
+Baseline stable 0.8.64/code82; candidate 0.8.65/code83. [Scope, A–F gates, acceptance and rollback](READABLE_ROVER_065.md). Thin wall drawing and collision share rectangles; the larger oriented rover uses the earlier top-view design. Old records remain Classic; new geometry has separate best times. Required cloud Android/native/host/sanitizer/parser/signing/package checks remain pending until the final workflow succeeds. Phone readability and physical HIL remain BLOCKED. App-only: firmware unchanged, no affected ESP32 target. Latest stable 0.8.64 stays retained. Next check: phone upgrade and four-direction/reverse/wall-contact practice in all backgrounds.
+
 # v0.8.64 stable-channel promotion
 
 The owner explicitly requested Latest stable publication on 16 October 2026. [Promotion record and unchanged-build provenance](STABLE_064.md). This version-specific instruction overrides the default candidate-only channel restriction; it does not turn absent physical evidence into PASS. The scoped promotion workflow verifies the exact release/source/tag, all pinned asset hashes/CRC, original successful qualification, native UI evidence, and unchanged inventory before/after selecting Latest. A/B/C, software D and package F passed run 38844598235. Physical D, installation and E/HIL remain NOT TESTED/BLOCKED. The next check remains the guide's restrained-wheel/phone acceptance sequence. No app/firmware code or signing identity changes during promotion.

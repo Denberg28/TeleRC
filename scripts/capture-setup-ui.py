@@ -231,9 +231,18 @@ tap(find(items, 'text', 'Shuffle maze'))
 _, items = screen('text', 'Start practice')
 seed_after = next(n.attrib['text'] for n in items if n.attrib.get('text','').startswith('Maze '))
 assert seed_after != seed_before
+# Turn in place with the actual steering stick and verify that the body rotates.
+tap(find(items, 'text', 'Start practice'))
+shell('input swipe 236 376 320 376 450')
+shell('input keyevent KEYCODE_HOME')
+time.sleep(.5)
+launch()
+_, items = screen('text','Resume')
+screenshot('practice-direction-after-steering','LIGHT')
+print('NATIVE_UI_PASS larger rover steering and heading capture',flush=True)
 # A recorded clear is loaded from app storage and remains visible after a restart.
 shell(f'am force-stop {PKG}')
-record_xml = '<map><int name="seed" value="42"/><string name="records">42,12340,1792110000000</string></map>'
+record_xml = '<map><int name="seed" value="42"/><string name="records">42,12340,1792110000000,2</string></map>'
 encoded = base64.b64encode(record_xml.encode()).decode()
 shell(f'run-as {PKG} sh -c ' + shlex.quote(f'echo {encoded} | base64 -d > shared_prefs/maze_practice.xml'))
 for attempt in range(2):
@@ -243,7 +252,7 @@ for attempt in range(2):
     _, items = screen('text', 'Test')
     tap(find(items, 'text', 'Test'))
     _, items = screen('text', 'Start practice')
-    find(items, 'text', 'Maze 2a · Best 00:12.34')
+    assert any(n.attrib.get('text','').startswith('Maze 2a · Best 00:12.34 · H ') for n in items)
     tap(find(items, 'text', 'Clear times'))
     _, items = screen('text', 'Clear times · latest 1')
     assert any('00:12.34 · Maze 2a' in n.attrib.get('text','') for n in items)
@@ -272,3 +281,10 @@ sheet.save(OUT / 'navy-maze-contact-sheet.png')
 buffer = io.BytesIO()
 sheet.save(buffer, format='PNG')
 print('SETUP_REVIEW_PNG_BASE64=' + base64.b64encode(buffer.getvalue()).decode(), flush=True)
+
+practice_sheet=Image.new('RGB',(1536,2160),'#eaeef2')
+for index, (_,shot) in enumerate(practice_shots):
+    practice_sheet.paste(shot,(0,index*720))
+practice_sheet.save(OUT/'readable-rover-review.png')
+review=io.BytesIO(); practice_sheet.save(review,format='PNG')
+print('PRACTICE_REVIEW_PNG_BASE64='+base64.b64encode(review.getvalue()).decode(),flush=True)
