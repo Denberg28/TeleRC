@@ -215,7 +215,29 @@ class MainActivity : Activity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         if (page == Page.TEST) goOfflineForPractice()
         render()
+        handleFpvAttachment(intent)
     }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleFpvAttachment(intent)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun handleFpvAttachment(attachment: Intent?) {
+        if (attachment?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        val supplied = attachment.getParcelableExtra<android.hardware.usb.UsbDevice>(UsbManager.EXTRA_DEVICE) ?: return
+        // Resolve against the current bus; never trust an exported Activity's extras alone.
+        val manager = getSystemService(USB_SERVICE) as UsbManager
+        val device = manager.deviceList[supplied.deviceName] ?: return
+        if (device.deviceId != supplied.deviceId || !UsbFpvView.isVideoDevice(device)) return
+        disableControl()
+        switchTo(Page.CONTROLS)
+        showingCamera = true
+        updateControlsScene()
+        if (resumed) connectFpv() else connectFpvOnResume = true
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("page", page.name); super.onSaveInstanceState(outState)
     }
@@ -846,7 +868,17 @@ class MainActivity : Activity() {
                 showingCamera = !showingCamera
                 if (!showingCamera && !mapActive) showRecoveryMap() else updateControlsScene()
             }.apply { textSize = 12f; contentDescription = "Swap map and FPV camera view" }
-            fpvConnect = button("Connect FPV", false) { connectFpv() }.apply { textSize = 12f }
+            fpvConnect = button("Connect FPV", false) { connectFpv() }.apply {
+                textSize = 12f
+                contentDescription = "Connect FPV; hold for USB receiver diagnostics"
+                setOnLongClickListener {
+                    disableControl()
+                    AlertDialog.Builder(this@MainActivity).setTitle("USB FPV diagnostics")
+                        .setMessage(UsbFpvView.usbDiagnosis(this@MainActivity))
+                        .setPositiveButton("Close", null).show()
+                    true
+                }
+            }
             viewButtons.addView(fpvSwap, LinearLayout.LayoutParams(0, -1, 1f))
             viewButtons.addView(fpvConnect, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(4) })
             addView(viewButtons, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
@@ -1517,7 +1549,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onPause() { mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; fpvCamera?.connectCamera() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; connectFpv() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.close(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }

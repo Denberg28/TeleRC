@@ -1,3 +1,10 @@
+## 0.8.66 — USB FPV default handler and diagnostics
+
+- Register USB video-class attachment handling, including composite UVC devices.
+- Reuse the running Activity and open FPV after validating the device against the USB bus; neutralize control before permission prompts.
+- Distinguish no USB enumeration from non-UVC devices. Hold Connect FPV for VID/PID/interface/permission diagnostics.
+- Keep camera dependency, Wi-Fi/LoRa control and firmware unchanged. Actual Skydroid/phone verification pending.
+
 ## 0.8.62
 
 - Restore the pre-compact palette with slightly deeper surfaces/action fills, white action labels and original joystick colors.
