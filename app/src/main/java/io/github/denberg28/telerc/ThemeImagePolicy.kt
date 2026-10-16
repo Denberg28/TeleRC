@@ -5,8 +5,9 @@ object ThemeImagePolicy {
     const val MAX_EDGE = 1920
     fun target(width: Int, height: Int): Pair<Int, Int>? {
         if (width !in 1..100000 || height !in 1..100000 || width.toLong() * height > 100_000_000L) return null
-        val scale = minOf(1.0, MAX_EDGE.toDouble() / maxOf(width, height))
-        return maxOf(1, (width * scale).toInt()) to maxOf(1, (height * scale).toInt())
+        if (maxOf(width, height) <= MAX_EDGE) return width to height
+        return if (width >= height) MAX_EDGE to maxOf(1, (height.toLong() * MAX_EDGE / width).toInt())
+            else maxOf(1, (width.toLong() * MAX_EDGE / height).toInt()) to MAX_EDGE
     }
     fun sample(width: Int, height: Int): Int {
         if (target(width, height) == null) return 0
