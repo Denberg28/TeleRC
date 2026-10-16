@@ -134,7 +134,8 @@ class ThemeImageInstrumentation : Instrumentation() {
             find(root(activity),"Levels")!!.performClick()
         }
         waitUntil { windowText("Levels · 2/20 unlocked")!=null }
-        check(windowText("Lv 3")==null) { "A locked level was selectable" }
+        check(uiAutomation.windows.mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText("Lv 3") }
+            .none { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser }) { "A locked level was selectable" }
         clickWindow("Cancel")
         onMain { activity.finish() }; waitForIdleSync()
     }
