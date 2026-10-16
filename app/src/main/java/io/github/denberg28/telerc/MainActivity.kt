@@ -700,6 +700,13 @@ class MainActivity : Activity() {
             (connect!!.parent as? android.view.ViewGroup)?.removeView(connect)
             (checkUpdates.parent as? android.view.ViewGroup)?.removeView(checkUpdates)
             if (minimized) {
+                currentFocus?.let { focus ->
+                    focus.windowToken?.let { token ->
+                        (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                            .hideSoftInputFromWindow(token, 0)
+                    }
+                    focus.clearFocus()
+                }
                 // Shared views/listeners/state: collapsing never reconnects or loses draft inputs.
                 corners.addView(connect, 0, LinearLayout.LayoutParams(dp(176), -1).apply { rightMargin = dp(8) })
                 corners.addView(checkUpdates, LinearLayout.LayoutParams(dp(176), -1).apply { leftMargin = dp(8) })
@@ -1317,7 +1324,7 @@ class MainActivity : Activity() {
             else -> "Connect"
         } else if (wantsLink) "Disconnect" else "Connect"
         connect?.contentDescription = if (compact && wantsLink)
-            "${connect?.text}; tap to disconnect. ${status?.text.orEmpty()}" else connect?.text
+            "${connect?.text}; tap to disconnect. ${status?.text?.toString().orEmpty()}" else connect?.text
         connect?.tooltipText = if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"

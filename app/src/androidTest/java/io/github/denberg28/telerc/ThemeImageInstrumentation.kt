@@ -145,17 +145,19 @@ class ThemeImageInstrumentation : Instrumentation() {
         val updates=onMain { find(root(first),"Check for updates")!! }
         val host=onMain { description(root(first),"Bridge IPv4 address") as TextView }
         onMain {
-            host.text="192.168.4.42"
+            host.text="192.168.4.42"; host.requestFocus()
             description(root(first),"Minimize setup panels")!!.performClick()
         }
         checkSetupCorners(first)
         screenshot("setup-${theme.lowercase()}-minimized.png")
         onMain {
             check(find(root(first),"Connect")===connect && find(root(first),"Check for updates")===updates)
+            check(!host.hasFocus()) { "Hidden endpoint retained input focus" }
             description(root(first),"Show setup panels")!!.performClick()
             check(description(root(first),"Connection settings")!!.isShown)
             check(host.text.toString()=="192.168.4.42") { "Collapse lost a draft endpoint" }
             check(find(root(first),"Connect")===connect && find(root(first),"Check for updates")===updates)
+            check(!host.hasFocus()) { "Hidden endpoint retained input focus" }
             description(root(first),"Minimize setup panels")!!.performClick()
             first.finish()
         }
