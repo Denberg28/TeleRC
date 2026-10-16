@@ -33,7 +33,7 @@ manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManif
 assert manifest.count('android.hardware.usb.action.USB_DEVICE_ATTACHED') == 2, 'USB intent/metadata pair missing'
 assert re.search(r'android:launchMode[^\n]*0x1\b', manifest), 'Expected singleTop Activity'
 device_filter = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'res/xml/usb_fpv_devices.xml')
-assert re.search(r'class[^\n]*0xe\b', device_filter), 'Missing video class filter'
+assert re.search(r'A: class(?:[^\n]*0xe\b|=\"14\")', device_filter), 'Missing video class filter'
 assert device_filter.count('E: usb-device') == 1, 'Unexpected USB filter expansion'
 permissions = run(build_tools / 'aapt', 'dump', 'permissions', candidate)
 assert 'android.permission.CAMERA' in permissions
