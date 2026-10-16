@@ -231,6 +231,8 @@ class MainActivity : Activity() {
         val manager = getSystemService(USB_SERVICE) as UsbManager
         val device = manager.deviceList[supplied.deviceName] ?: return
         if (device.deviceId != supplied.deviceId || !UsbFpvView.isVideoDevice(device)) return
+        // Consume this launch so a later theme/process recreation cannot replay it.
+        setIntent(Intent(attachment).apply { action = Intent.ACTION_MAIN; removeExtra(UsbManager.EXTRA_DEVICE) })
         disableControl()
         switchTo(Page.CONTROLS)
         showingCamera = true
