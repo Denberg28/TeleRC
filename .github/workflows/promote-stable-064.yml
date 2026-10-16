@@ -23,9 +23,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/promote-stable-064.py
-      - name: Save promotion audit
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: telerc-stable-promotion-064
-          path: stable-promotion-064.json
+      - name: Record promotion audit in workflow log
+        run: cat stable-promotion-064.json

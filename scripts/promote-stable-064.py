@@ -87,8 +87,11 @@ notes = Path('docs/STABLE_064.md').read_text()
 notes += f'\nPromotion audit source: https://github.com/{REPO}/blob/{os.environ["GITHUB_SHA"]}/docs/STABLE_064.md\n'
 notes_path = root / 'stable-notes.md'
 notes_path.write_text(notes)
-run('gh', 'release', 'edit', TAG, '--repo', REPO, '--prerelease=false', '--latest',
-    '--title', 'TeleRC v0.8.64 — stable: navy, offline maze and 95% mini output', '--notes-file', str(notes_path))
+if current['prerelease'] or previous_latest != TAG:
+    run('gh', 'release', 'edit', TAG, '--repo', REPO, '--prerelease=false', '--latest',
+        '--title', 'TeleRC v0.8.64 — stable: navy, offline maze and 95% mini output', '--notes-file', str(notes_path))
+else:
+    print('Existing Latest stable promotion retained; verifying without further release mutation')
 after = api(f'releases/tags/{TAG}')
 latest = api('releases/latest')
 require(not after['prerelease'] and not after['draft'], 'Stable classification did not persist')
@@ -98,7 +101,9 @@ require(api(f'git/ref/tags/{TAG}')['object']['sha'] == SOURCE, 'Promotion moved 
 report = {
     'release': after['html_url'], 'latest': latest['tag_name'], 'prerelease': after['prerelease'],
     'source': SOURCE, 'qualification_run': RUN_ID, 'promotion_commit': os.environ['GITHUB_SHA'],
-    'previous_latest': previous_latest, 'asset_digests': EXPECTED,
+    'latest_before_this_verification': previous_latest, 'asset_digests': EXPECTED,
+    'initial_promotion_previous_latest': 'v0.8.50',
+    'initial_promotion_run': 'https://github.com/Denberg28/TeleRC/actions/runs/38846938591',
     'hardware_installation_HIL': 'BLOCKED; owner-requested channel promotion, no physical validation claim',
 }
 Path('stable-promotion-064.json').write_text(json.dumps(report, indent=2) + '\n')
