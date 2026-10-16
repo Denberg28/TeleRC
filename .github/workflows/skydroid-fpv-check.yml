@@ -3,7 +3,7 @@ on:
   push:
     branches: ['fix/skydroid-usb-fpv-*']
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -45,15 +45,12 @@ jobs:
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: TeleRC-Skydroid-check-evidence
-          path: |
-            app/build/reports/tests/
-            app/build/reports/lint-results-*
-      - uses: actions/upload-artifact@v4
-        with:
-          name: TeleRC-v0.8.66-Skydroid-test
-          path: deliverables/
-          retention-days: 30
+      - name: Preserve evidence with verified draft download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip -qr deliverables/TeleRC-v0.8.66-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-*
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          gh release create usb-fpv-review-v0.8.66 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "TeleRC 0.8.66 — Skydroid USB FPV test build (draft)" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
