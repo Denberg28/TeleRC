@@ -48,6 +48,9 @@ class MainActivity : Activity() {
     private var mazeRestartDialog: android.app.Dialog? = null
     private var mazeLevelsDialog: android.app.Dialog? = null
     private var mazeMarketDialog: android.app.Dialog? = null
+    private var pageMenu: PopupWindow? = null
+    private var wallpaperDialog: AlertDialog? = null
+    private var wallpaperOpacityButton: Button? = null
     private var practiceSteer: JoystickView? = null
     private var practiceDrive: JoystickView? = null
     @Volatile private var socket: LinkTransport? = null
@@ -156,6 +159,7 @@ class MainActivity : Activity() {
     private lateinit var updater: AppUpdater
     private var endpoint: InetAddress? = null
     private var endpointPort = 0
+    private val wallpaperOpacity get() = getSharedPreferences("appearance", MODE_PRIVATE).getInt("console_wallpaper_opacity", 70).coerceIn(0, 100)
     private val setupMinimized get() = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("setup_minimized", false)
     private val darkTheme get() = AppColors.theme(this) == BackgroundTheme.DARK
     private val ink get() = AppColors.ink(this)
@@ -187,9 +191,24 @@ class MainActivity : Activity() {
             shape(Color.WHITE, 10))
         setOnClickListener { action() }
     }
-    private fun joystickLabel(value: String, size: Float, color: Int, bold: Boolean = false) = text(value, size, color, bold).apply {
-        // Local edge contrast keeps labels legible over photos without filling the panel.
-        setShadowLayer(dp(2).toFloat(), 0f, 0f, if (darkTheme) Color.BLACK else Color.WHITE)
+    private fun barHeight() = dp((48 * maxOf(1f, resources.configuration.fontScale)).toInt())
+    private fun photoBackground(console: Boolean = page != Page.SETUP, opacity: Int = wallpaperOpacity): android.graphics.drawable.Drawable =
+        themeBitmap?.let { ThemeImageDrawable(it, pale, if (console) opacity else 100) }
+            ?: android.graphics.drawable.ColorDrawable(pale)
+    private fun joystickCaption(title: String, hint: String): Pair<LinearLayout, TextView> {
+        val feedback = text("$hint · 1500", 11f, muted).apply {
+            includeFontPadding = false
+            // Reserve equal space so wrapping never shifts one joystick above the other.
+            minLines = 2
+        }
+        val caption = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+            background = shape(surface, 6)
+            addView(text(title, 13f, ink, true).apply { includeFontPadding = false })
+            addView(feedback, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        }
+        return caption to feedback
     }
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
@@ -279,8 +298,8 @@ class MainActivity : Activity() {
     private fun shell(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         currentShell = this
-        background = themeBitmap?.let { ThemeImageDrawable(it) } ?: android.graphics.drawable.ColorDrawable(pale)
-        setPadding(dp(8), dp(6), dp(8), dp(6))
+        background = photoBackground()
+        setPadding(dp(8), dp(8), dp(8), dp(8))
         setOnApplyWindowInsetsListener { view, insets ->
             val left: Int; val top: Int; val right: Int; val bottom: Int
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -290,32 +309,54 @@ class MainActivity : Activity() {
                 left = insets.systemWindowInsetLeft; top = insets.systemWindowInsetTop
                 right = insets.systemWindowInsetRight; bottom = insets.systemWindowInsetBottom
             }
-            view.setPadding(dp(8) + left, dp(6) + top, dp(8) + right, dp(6) + bottom)
+            view.setPadding(dp(8) + left, dp(8) + top, dp(8) + right, dp(8) + bottom)
             insets
         }
     }
     private fun pageDropdown(label: String): Button {
         lateinit var anchor: Button
         anchor = button("$label ▾", true) {
-            PopupMenu(this, anchor).apply {
-                menu.add(0, 1, 0, "Setup")
-                menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test")
-                setOnMenuItemClickListener { item ->
-                    switchTo(when (item.itemId) { 2 -> Page.CONTROLS; 3 -> Page.TEST; else -> Page.SETUP })
-                    true
-                }
-            }.show()
+            pageMenu?.dismiss()
+            val rows = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(4))
+            }
+            val scroll = ScrollView(this).apply {
+                contentDescription = "Tab menu"; addView(rows)
+            }
+            val popup = PopupWindow(scroll, anchor.width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+                setBackgroundDrawable(shape(surface, 6))
+                elevation = dp(4).toFloat(); isOutsideTouchable = true
+                inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
+                animationStyle = 0
+            }
+            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST)) {
+                rows.addView(text(name, 14f, if (destination == page) accent else ink, destination == page).apply {
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), 0, dp(12), 0)
+                    isClickable = true; isFocusable = true; isSelected = destination == page
+                    contentDescription = "$name tab${if (destination == page) ", current" else ""}"
+                    background = android.graphics.drawable.RippleDrawable(
+                        android.content.res.ColorStateList.valueOf(softAccent),
+                        android.graphics.drawable.ColorDrawable(Color.TRANSPARENT), null)
+                    setOnClickListener { popup.dismiss(); switchTo(destination) }
+                }, LinearLayout.LayoutParams(-1, barHeight()))
+            }
+            popup.setOnDismissListener { if (pageMenu === popup) pageMenu = null }
+            pageMenu = popup
+            popup.showAsDropDown(anchor, 0, dp(4), Gravity.START)
         }
+        anchor.contentDescription = "$label tab menu"
         return anchor
     }
     private fun controlColumn(top: View, joystick: View): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        addView(top, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(8) })
+        addView(top, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
         addView(joystick, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
     private fun render() {
+        pageMenu?.dismiss(); pageMenu = null
+        wallpaperDialog?.dismiss(); wallpaperDialog = null; wallpaperOpacityButton = null
         mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null
         mazeView?.pause(); mazeView = null
         practiceSteer?.reset(); practiceDrive?.reset()
@@ -572,8 +613,8 @@ class MainActivity : Activity() {
         header.addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 12f, muted), LinearLayout.LayoutParams(0, -1, 1f))
         header.addView(button("Controls ›", false) { switchTo(Page.CONTROLS) }, LinearLayout.LayoutParams(dp(112), -1))
         val collapse = button("−", false) {}.apply { textSize = 20f }
-        header.addView(collapse, 2, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(6) })
-        root.addView(header, LinearLayout.LayoutParams(-1, height(48)).apply { bottomMargin = dp(8) })
+        header.addView(collapse, 2, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
+        root.addView(header, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
 
         val wide = resources.configuration.screenWidthDp >= 600
         val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
@@ -644,7 +685,7 @@ class MainActivity : Activity() {
                 }.show()
         }, 36)
 
-        row(preferences, button("Background · ${if (ThemeImageStore.exists(this)) "Photo / " else ""}${AppColors.theme(this).label} ▾", false) {
+        val backgroundButton = button("${if (ThemeImageStore.exists(this)) "Photo" else "Background"} · ${AppColors.theme(this).label} ▾", false) {
             if (imageWork) return@button
             val dialog = AlertDialog.Builder(this).setTitle("Background")
                 .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(), AppColors.theme(this).ordinal) { d, index ->
@@ -664,7 +705,14 @@ class MainActivity : Activity() {
                 }
             }
             dialog.show()
-        }.apply { contentDescription = "Choose Light, Sepia or Dark background" })
+        }.apply { textSize = 13f; contentDescription = "Choose Light, Sepia or Dark background" }
+        val backgroundRow = LinearLayout(this)
+        backgroundRow.addView(backgroundButton, LinearLayout.LayoutParams(0, -1, 2f).apply { rightMargin = dp(4) })
+        wallpaperOpacityButton = button("Opacity · $wallpaperOpacity%", false) { showWallpaperOpacity() }.apply {
+            textSize = 12f; contentDescription = "Wallpaper opacity in Controls and Test"
+        }
+        backgroundRow.addView(wallpaperOpacityButton, LinearLayout.LayoutParams(0, -1, 1.3f))
+        row(preferences, backgroundRow)
         val choices = LinearLayout(this)
         val selected = appearance.getString("accent", "Blue")
         AppColors.names.forEachIndexed { index, name ->
@@ -855,9 +903,8 @@ class MainActivity : Activity() {
             return card().apply {
                 background=null
                 setPadding(dp(8),dp(8),dp(8),dp(8))
-                addView(joystickLabel(title,13f,ink,true))
-                val feedback=joystickLabel("$hint · 1500",11f,muted)
-                addView(feedback)
+                val (caption,feedback)=joystickCaption(title,hint)
+                addView(caption,LinearLayout.LayoutParams(-1,-2))
                 val stick=JoystickView(this@MainActivity,vertical) { value ->
                     changed(value); feedback.text="$hint · $value"
                 }
@@ -876,7 +923,7 @@ class MainActivity : Activity() {
             actions.addView(button("Restart level",false) {
                 resetSticks(); practice.reset(); scene.changed()
             }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f).apply { leftMargin=dp(4) })
-            addView(actions,LinearLayout.LayoutParams(-1,dp(36)).apply { topMargin=dp(4) })
+            addView(actions,LinearLayout.LayoutParams(-1,dp(40)).apply { topMargin=dp(4) })
         }
         market.contentDescription="Market, ${wallet.balance} coins, offline practice"
         market.setOnClickListener {
@@ -911,7 +958,7 @@ class MainActivity : Activity() {
                 .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; best times for fixed levels are shown in Levels. Legacy random clears stay separate.")
                 .setPositiveButton("Done",null).show()
         }.apply { textSize=13f },LinearLayout.LayoutParams(0,-1,1f))
-        root.addView(footer,LinearLayout.LayoutParams(-1,dp(42)).apply { topMargin=dp(8) })
+        root.addView(footer,LinearLayout.LayoutParams(-1,barHeight()).apply { topMargin=dp(8) })
         update(); setContentView(root)
     }
 
@@ -927,13 +974,12 @@ class MainActivity : Activity() {
             val panel = card().apply {
                 background = null
                 setPadding(dp(8), dp(8), dp(8), dp(8))
-                addView(joystickLabel(title, 13f, ink, true))
-                val feedback = joystickLabel("$hint  ·  1500", 11f, muted)
-                addView(feedback)
+                val (caption, feedback) = joystickCaption(title, hint)
+                addView(caption, LinearLayout.LayoutParams(-1, -2))
                 stick = JoystickView(this@MainActivity, vertical) { value ->
                     if (controlEnabled.get() || value == 1500) {
                         changed(value)
-                        feedback.text = "$hint  ·  $value"
+                        feedback.text = "$hint · $value"
                     }
                 }
                 addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -991,7 +1037,7 @@ class MainActivity : Activity() {
             }
             viewButtons.addView(fpvSwap, LinearLayout.LayoutParams(0, -1, 1f))
             viewButtons.addView(fpvConnect, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(4) })
-            addView(viewButtons, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+            addView(viewButtons, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
         }
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (synchronized(commandLock) {
@@ -1036,7 +1082,7 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
         }
         toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, barHeight()).apply { topMargin = dp(8) })
         setContentView(root)
         if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
         updateControlsScene()
@@ -1064,7 +1110,39 @@ class MainActivity : Activity() {
     }
 
     private fun applyThemeImage() {
-        currentShell?.background = themeBitmap?.let { ThemeImageDrawable(it) } ?: android.graphics.drawable.ColorDrawable(pale)
+        currentShell?.background = photoBackground()
+    }
+    private fun showWallpaperOpacity() {
+        var draft = wallpaperOpacity
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        val preview = View(this).apply { background = photoBackground(console = true, opacity = draft) }
+        val value = text("Controls / Test · $draft%", 14f, ink, true)
+        content.addView(preview, LinearLayout.LayoutParams(-1, dp(72)))
+        content.addView(value, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        content.addView(SeekBar(this).apply {
+            max = 100; progress = draft; contentDescription = "Wallpaper opacity percentage"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seek: SeekBar?, progress: Int, fromUser: Boolean) {
+                    draft = progress; value.text = "Controls / Test · $draft%"
+                    preview.background = photoBackground(console = true, opacity = draft)
+                }
+                override fun onStartTrackingTouch(seek: SeekBar?) {}
+                override fun onStopTrackingTouch(seek: SeekBar?) {}
+            })
+        }, LinearLayout.LayoutParams(-1, dp(48)))
+        content.addView(text("Setup stays clear", 12f, muted))
+        val dialog = AlertDialog.Builder(this).setTitle("Wallpaper opacity").setView(content)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Apply") { _, _ ->
+                getSharedPreferences("appearance", MODE_PRIVATE).edit().putInt("console_wallpaper_opacity", draft).apply()
+                wallpaperOpacityButton?.text = "Opacity · $draft%"
+                wallpaperDialog = null
+            }.create()
+        wallpaperDialog = dialog
+        dialog.setOnDismissListener { if (wallpaperDialog === dialog) wallpaperDialog = null }
+        dialog.show()
     }
     private fun chooseThemeImage() {
         if (imageWork) return
@@ -1713,10 +1791,10 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onPause() { pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
     override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; connectFpv() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }

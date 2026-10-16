@@ -47,11 +47,13 @@ class ThemeImageInstrumentation : Instrumentation() {
                 var activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 waitUntil { onMain { root(activity).background is ThemeImageDrawable } }
                 checkWallpaper(activity)
+                checkTabMenu(activity,"Setup","tabs-${theme.lowercase()}-setup.png")
                 screenshot("photo-${theme.lowercase()}-setup.png")
                 activity = checkSetupCollapse(activity,theme)
                 onMain { find(root(activity), "Controls ›")!!.performClick() }
                 waitUntil { onMain { root(activity).background is ThemeImageDrawable && find(root(activity), "Connect FPV") != null } }
                 checkWallpaper(activity); checkJoystickPanels(activity)
+                checkTabMenu(activity,"Controls","tabs-${theme.lowercase()}-controls.png")
                 screenshot("photo-${theme.lowercase()}-controls.png")
                 onMain { find(root(activity), "Connect FPV")!!.performLongClick() }
                 waitUntil { dismissLauncherAnr(); videoOption() != null }
@@ -63,6 +65,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                 waitUntil { windowText("Test")!=null }; clickWindow("Test")
                 waitUntil { onMain { findMaze(root(activity))!=null } }
                 checkWallpaper(activity); checkJoystickPanels(activity)
+                checkTabMenu(activity,"Test","tabs-${theme.lowercase()}-test.png")
                 screenshot("photo-${theme.lowercase()}-test.png")
                 onMain { find(root(activity),"Test ▾")!!.performClick() }
                 waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
@@ -73,6 +76,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                 waitForIdleSync()
                 check(ThemeImageStore.exists(app)) { "Background did not persist across activity restart" }
             }
+            checkWallpaperOpacity()
             checkMazeLevels()
             checkMarket()
             checkPracticeDialogLayouts()
@@ -82,7 +86,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer; PASS: wallpaper fidelity on all tabs, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
@@ -99,11 +103,17 @@ class ThemeImageInstrumentation : Instrumentation() {
             val view=root(activity)
             val bitmap=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
             view.background.draw(android.graphics.Canvas(bitmap))
-            // The two imported flat colors must survive every theme/tab without a scrim.
-            for((fraction,expected) in listOf(.25f to Color.rgb(230,80,60),.75f to Color.rgb(40,160,210))) {
+            val percent=if(find(view,"Setup ▾")!=null) 100 else targetContext.getSharedPreferences("appearance",0)
+                .getInt("console_wallpaper_opacity",70).coerceIn(0,100)
+            val alpha=(percent*255/100)/255.0
+            val base=AppColors.background(activity)
+            for((fraction,photo) in listOf(.25f to Color.rgb(230,80,60),.75f to Color.rgb(40,160,210))) {
+                val expected=Color.rgb((Color.red(photo)*alpha+Color.red(base)*(1-alpha)).roundToInt(),
+                    (Color.green(photo)*alpha+Color.green(base)*(1-alpha)).roundToInt(),
+                    (Color.blue(photo)*alpha+Color.blue(base)*(1-alpha)).roundToInt())
                 val actual=bitmap.getPixel((view.width*fraction).toInt(),view.height/2)
                 check(abs(Color.red(actual)-Color.red(expected))<=4 && abs(Color.green(actual)-Color.green(expected))<=4 &&
-                    abs(Color.blue(actual)-Color.blue(expected))<=4) { "Wallpaper is tinted: $actual vs $expected" }
+                    abs(Color.blue(actual)-Color.blue(expected))<=4) { "Wallpaper blend mismatch at $percent%: $actual vs $expected" }
             }
             bitmap.recycle()
         }
@@ -113,13 +123,90 @@ class ThemeImageInstrumentation : Instrumentation() {
             (0 until view.childCount).flatMap { sticks(view.getChildAt(it)) } else emptyList()
         val inputs=sticks(root(activity))
         check(inputs.size==2)
+        val centers=mutableListOf<Float>()
+        fun luminance(color:Int):Double {
+            fun component(value:Int):Double { val v=value/255.0; return if(v<=.04045) v/12.92 else ((v+.055)/1.055).pow(2.4) }
+            return .2126*component(Color.red(color))+.7152*component(Color.green(color))+.0722*component(Color.blue(color))
+        }
+        fun contrast(a:Int,b:Int):Double {
+            val first=luminance(a); val second=luminance(b)
+            return (maxOf(first,second)+.05)/(minOf(first,second)+.05)
+        }
         for(input in inputs) {
-            val panel=input.parent as View
+            val panel=input.parent as ViewGroup
             val bitmap=Bitmap.createBitmap(panel.width,panel.height,Bitmap.Config.ARGB_8888)
             panel.draw(android.graphics.Canvas(bitmap))
             check(Color.alpha(bitmap.getPixel(1,1))==0) { "Joystick rectangle is opaque" }
             bitmap.recycle()
+            val title=find(panel,"STEER") ?: find(panel,"DRIVE")!!
+            val caption=title.parent as ViewGroup
+            val feedback=caption.getChildAt(1) as TextView
+            check(title.shadowRadius==0f && feedback.shadowRadius==0f) { "Joystick label has a blurred shadow" }
+            val plate=Bitmap.createBitmap(caption.width,caption.height,Bitmap.Config.ARGB_8888)
+            caption.draw(android.graphics.Canvas(plate))
+            val fill=plate.getPixel(caption.width/2,1)
+            check(Color.alpha(fill)==255) { "Wallpaper can wash out the caption" }
+            check(contrast(title.currentTextColor,fill)>=7 && contrast(feedback.currentTextColor,fill)>=4.5) { "Joystick caption contrast is too low" }
+            check(feedback.layout.lineCount<=2) { "Channel feedback is cramped" }
+            plate.recycle()
+            val xy=IntArray(2); input.getLocationOnScreen(xy); centers.add(xy[1]+input.height/2f)
         }
+        check(abs(centers[0]-centers[1])<=2) { "Joystick centers are not aligned" }
+    }
+    private fun checkTabMenu(activity:Activity,label:String,file:String) {
+        val anchor=onMain { find(root(activity),"$label ▾")!! }
+        val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)); anchor.performClick() } }
+        waitUntil { windowText("Tab menu")!=null }
+        val actual=android.graphics.Rect().also { windowText("Tab menu")!!.getBoundsInScreen(it) }
+        val tolerance=2*activity.resources.displayMetrics.density
+        check(abs(actual.left-expected.left)<=tolerance && abs(actual.width()-expected.width())<=tolerance) { "Tab menu does not match its button: $actual vs $expected" }
+        check(actual.top>=expected.bottom && actual.top-expected.bottom<=6*activity.resources.displayMetrics.density) { "Tab menu is detached from its button" }
+        screenshot(file)
+        clickWindow(label)
+        waitUntil { windowText("Tab menu")==null }
+    }
+    private fun checkWallpaperOpacity() {
+        val prefs=targetContext.getSharedPreferences("appearance",0)
+        var activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitUntil { onMain { root(activity).background is ThemeImageDrawable } }
+        fun choose(percent:Int,apply:Boolean=true) {
+            onMain { description(root(activity),"Wallpaper opacity in Controls and Test")!!.performClick() }
+            waitUntil { windowText("Wallpaper opacity percentage")!=null }
+            val seek=windowText("Wallpaper opacity percentage")!!
+            check(seek.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+                Bundle().apply { putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,percent.toFloat()) }))
+            waitUntil { windowText("Controls / Test · $percent%")!=null }
+            if(percent==0) screenshot("wallpaper-opacity-dialog.png")
+            clickWindow(if(apply) "Apply" else "Cancel")
+            waitUntil { windowText("Wallpaper opacity percentage")==null }
+        }
+        fun visit(percent:Int) {
+            onMain { find(root(activity),"Controls ›")!!.performClick() }
+            checkWallpaper(activity); checkJoystickPanels(activity)
+            screenshot("wallpaper-$percent-controls.png")
+            onMain { find(root(activity),"Controls ▾")!!.performClick() }
+            waitUntil { windowText("Test")!=null }; clickWindow("Test")
+            waitUntil { onMain { findMaze(root(activity))!=null } }
+            checkWallpaper(activity); checkJoystickPanels(activity)
+            screenshot("wallpaper-$percent-test.png")
+            onMain { find(root(activity),"Test ▾")!!.performClick() }
+            waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
+            checkWallpaper(activity)
+        }
+        choose(0)
+        check(prefs.getInt("console_wallpaper_opacity",-1)==0)
+        checkWallpaper(activity) // Setup remains clear even with console opacity zero.
+        visit(0)
+        choose(100,apply=false)
+        check(prefs.getInt("console_wallpaper_opacity",-1)==0) { "Cancel saved a draft opacity" }
+        choose(100)
+        onMain { activity.finish() }; waitForIdleSync()
+        activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitUntil { onMain { root(activity).background is ThemeImageDrawable } }
+        check(prefs.getInt("console_wallpaper_opacity",-1)==100)
+        visit(100)
+        onMain { activity.finish() }; waitForIdleSync()
+        prefs.edit().putInt("console_wallpaper_opacity",70).commit()
     }
     private fun checkSetupCorners(activity:Activity) {
         waitUntil { onMain { !root(activity).isLayoutRequested && find(root(activity),"Connect")?.isShown==true &&
@@ -374,6 +461,19 @@ class ThemeImageInstrumentation : Instrumentation() {
                 checkSetupCorners(activity)
                 screenshot("setup-${theme.lowercase()}-large-minimized.png")
                 onMain { description(root(activity),"Show setup panels")!!.performClick() }
+                checkTabMenu(activity,"Setup","tabs-${theme.lowercase()}-large-setup.png")
+                onMain { find(root(activity),"Controls ›")!!.performClick() }
+                checkWallpaper(activity); checkJoystickPanels(activity)
+                checkTabMenu(activity,"Controls","tabs-${theme.lowercase()}-large-controls.png")
+                screenshot("labels-${theme.lowercase()}-large-controls.png")
+                onMain { find(root(activity),"Controls ▾")!!.performClick() }
+                waitUntil { windowText("Test")!=null }; clickWindow("Test")
+                waitUntil { onMain { findMaze(root(activity))!=null } }
+                checkWallpaper(activity); checkJoystickPanels(activity)
+                checkTabMenu(activity,"Test","tabs-${theme.lowercase()}-large-test.png")
+                screenshot("labels-${theme.lowercase()}-large-test.png")
+                onMain { find(root(activity),"Test ▾")!!.performClick() }
+                waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
                 var chosen=0
                 val levels=onMain { MazePracticeDialogs(activity).levels(MazeProgress.restore(1,20),
                     listOf(MazeClear(37,65430,1000,3,1))) { chosen=it } }
