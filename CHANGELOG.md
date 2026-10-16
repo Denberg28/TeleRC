@@ -1,3 +1,10 @@
+## 0.8.67 — FPV recovery and photo theme
+
+- Select advertised video profiles with Auto/MJPEG/YUYV choices; expose format and error diagnostics.
+- Bound stalled/open-error recovery; guard stale callbacks, duplicate preview/surfaces and background resume. Recovery disables live authority.
+- Import, persist and remove an offline photo background using the system document picker, bounded off-UI decoding and atomic save. Keep theme-colored scrim and readable panels.
+- Add profile/image policy regressions and native Android image storage/render/options checks. Hardware/video quality remains unverified.
+
 ## 0.8.66 — USB FPV default handler and diagnostics
 
 - Register USB video-class attachment handling, including composite UVC devices.

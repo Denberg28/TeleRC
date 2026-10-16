@@ -1,3 +1,7 @@
+# FPV recovery and photo theme — 0.8.67 test build
+
+Hold Connect FPV for advertised video formats (including YUYV compatibility) and diagnostics. Bounded USB recovery, explicit permission gating, single preview ownership and background resume preserve disabled control. Setup → Background → Choose image adds a private offline photo; Remove image restores the plain tone. See [use, gates, acceptance and rollback](FPV_THEME_067.md). Physical Skydroid/video compatibility remains BLOCKED; source and software checks do not establish clean RF/video. Firmware unchanged; no reflash.
+
 # Skydroid USB FPV fix — 0.8.66 test build
 
 USB video attachment registration now allows Android to offer TeleRC as a default handler; cold/warm USB launches open FPV with control disabled. Hold Connect FPV for receiver VID/PID, interfaces and permissions. No USB enumeration and connected non-UVC devices have distinct messages. See [setup, evidence, phone checks and rollback](SKYDROID_FPV_066.md). Firmware unchanged. Phone/Skydroid HIL remains BLOCKED; this is a review/test artifact, no stable promotion.

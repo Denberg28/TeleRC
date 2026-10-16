@@ -117,6 +117,10 @@ class MainActivity : Activity() {
     private var fpvSwap: Button? = null
     private var fpvConnect: Button? = null
     private var showingCamera = false
+    private var themeBitmap: android.graphics.Bitmap? = null
+    private var currentShell: LinearLayout? = null
+    private val imageExecutor = Executors.newSingleThreadExecutor()
+    private var imageWork = false
     private var pendingFpvPermission = false
     private var connectFpvOnResume = false
     private var controlsPlaceholder: View? = null
@@ -215,6 +219,10 @@ class MainActivity : Activity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         if (page == Page.TEST) goOfflineForPractice()
         render()
+        imageExecutor.execute {
+            val loaded = try { ThemeImageStore.load(applicationContext) } catch (_: Exception) { null }
+            runOnUiThread { if (!isDestroyed) { themeBitmap = loaded; applyThemeImage() } }
+        }
         handleFpvAttachment(intent)
     }
     override fun onNewIntent(intent: Intent) {
@@ -257,7 +265,9 @@ class MainActivity : Activity() {
         render()
     }
     private fun shell(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setBackgroundColor(pale)
+        orientation = LinearLayout.VERTICAL
+        currentShell = this
+        background = themeBitmap?.let { ThemeImageDrawable(it, pale) } ?: android.graphics.drawable.ColorDrawable(pale)
         setPadding(dp(8), dp(6), dp(8), dp(6))
         setOnApplyWindowInsetsListener { view, insets ->
             val left: Int; val top: Int; val right: Int; val bottom: Int
@@ -619,14 +629,26 @@ class MainActivity : Activity() {
                 }.show()
         }, 36)
 
-        row(preferences, button("Background · ${AppColors.theme(this).label} ▾", false) {
-            AlertDialog.Builder(this).setTitle("Background")
-                .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(), AppColors.theme(this).ordinal) { dialog, index ->
+        row(preferences, button("Background · ${if (ThemeImageStore.exists(this)) "Photo / " else ""}${AppColors.theme(this).label} ▾", false) {
+            if (imageWork) return@button
+            val dialog = AlertDialog.Builder(this).setTitle("Background")
+                .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(), AppColors.theme(this).ordinal) { d, index ->
                     disableControl()
-                    val selected = BackgroundTheme.entries[index]
-                    appearance.edit().putString("background", selected.name).putBoolean("dark", selected == BackgroundTheme.DARK).apply()
-                    dialog.dismiss(); recreate()
-                }.setNegativeButton("Cancel", null).show()
+                    val selectedTheme = BackgroundTheme.entries[index]
+                    appearance.edit().putString("background", selectedTheme.name).putBoolean("dark", selectedTheme == BackgroundTheme.DARK).apply()
+                    d.dismiss(); recreate()
+                }.setNeutralButton("Choose image") { _, _ -> chooseThemeImage() }
+                .setNegativeButton("Cancel", null)
+            if (ThemeImageStore.exists(this)) dialog.setPositiveButton("Remove image") { _, _ ->
+                if (!imageWork) {
+                    disableControl(); imageWork = true
+                    imageExecutor.execute {
+                        ThemeImageStore.remove(applicationContext)
+                        runOnUiThread { imageWork = false; if (!isDestroyed) { themeBitmap = null; render() } }
+                    }
+                }
+            }
+            dialog.show()
         }.apply { contentDescription = "Choose Light, Sepia or Dark background" })
         val choices = LinearLayout(this)
         val selected = appearance.getString("accent", "Blue")
@@ -842,7 +864,7 @@ class MainActivity : Activity() {
             routeMap = map
             map.view.visibility = View.GONE
             scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
-            fpvCamera = UsbFpvView(this@MainActivity).apply { visibility = View.GONE }
+            fpvCamera = UsbFpvView(this@MainActivity) { disableControl() }.apply { visibility = View.GONE }
             scene.addView(fpvCamera, FrameLayout.LayoutParams(-1, -1))
             val badge = text("CYAN · ESTIMATE FROM SENT RC", 10f, ink, true).apply {
                 background = shape(surface, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
@@ -873,13 +895,7 @@ class MainActivity : Activity() {
             fpvConnect = button("Connect FPV", false) { connectFpv() }.apply {
                 textSize = 12f
                 contentDescription = "Connect FPV; hold for USB receiver diagnostics"
-                setOnLongClickListener {
-                    disableControl()
-                    AlertDialog.Builder(this@MainActivity).setTitle("USB FPV diagnostics")
-                        .setMessage(UsbFpvView.usbDiagnosis(this@MainActivity))
-                        .setPositiveButton("Close", null).show()
-                    true
-                }
+                setOnLongClickListener { showFpvOptions(); true }
             }
             viewButtons.addView(fpvSwap, LinearLayout.LayoutParams(0, -1, 1f))
             viewButtons.addView(fpvConnect, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(4) })
@@ -953,6 +969,34 @@ class MainActivity : Activity() {
         fpvCamera?.visibility = if (showingCamera) View.VISIBLE else View.GONE
         fpvCamera?.setVisiblePreview(showingCamera)
         fpvSwap?.text = if (showingCamera) "Show map" else "Show camera"
+    }
+
+    private fun applyThemeImage() {
+        currentShell?.background = themeBitmap?.let { ThemeImageDrawable(it, pale) } ?: android.graphics.drawable.ColorDrawable(pale)
+    }
+    private fun chooseThemeImage() {
+        if (imageWork) return
+        disableControl()
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+        }, 45)
+    }
+    private fun showFpvOptions() {
+        disableControl()
+        val camera = fpvCamera ?: return
+        val names = FpvStreamPolicy.Mode.entries.map { (if (it == camera.mode()) "✓ " else "") + it.label } + "USB diagnostics"
+        AlertDialog.Builder(this).setTitle("FPV video options")
+            .setItems(names.toTypedArray()) { _, index ->
+                if (index == FpvStreamPolicy.Mode.entries.size) {
+                    AlertDialog.Builder(this).setTitle("USB FPV diagnostics").setMessage(camera.diagnosis())
+                        .setPositiveButton("Close", null).show()
+                } else {
+                    showingCamera = true; updateControlsScene()
+                    // Persist the format before requesting runtime camera access.
+                    getSharedPreferences("fpv", MODE_PRIVATE).edit().putString("mode", FpvStreamPolicy.Mode.entries[index].name).apply()
+                    connectFpv()
+                }
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun connectFpv() {
@@ -1082,6 +1126,24 @@ class MainActivity : Activity() {
     @Deprecated("Activity result used for the Android document picker")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 45 && resultCode == RESULT_OK && data?.data != null && !imageWork) {
+            val uri = data.data!!
+            disableControl(); imageWork = true
+            imageExecutor.execute {
+                var errorMessage: String? = null
+                val image = try { ThemeImageStore.importImage(applicationContext, uri) }
+                    catch (error: Exception) { errorMessage = error.message ?: "Image could not be imported"; null }
+                    catch (_: OutOfMemoryError) { errorMessage = "Image is too large; choose a smaller photo"; null }
+                runOnUiThread {
+                    imageWork = false
+                    if (!isDestroyed) {
+                        if (image != null) { themeBitmap = image; if (page == Page.SETUP) render() else applyThemeImage() }
+                        Toast.makeText(this, errorMessage ?: "Background image saved", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            return
+        }
         if (requestCode == 43 && resultCode == RESULT_OK) {
             try {
                 val uri = data?.data ?: return
@@ -1553,7 +1615,7 @@ class MainActivity : Activity() {
     override fun onPause() { mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
     override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; connectFpv() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
-    override fun onStop() { fpvCamera?.close(); started = false; routeMap?.onStop(); super.onStop() }
+    override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }
