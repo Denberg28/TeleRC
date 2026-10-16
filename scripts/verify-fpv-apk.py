@@ -30,7 +30,8 @@ assert current == ('io.github.denberg28.telerc', '84', '0.8.66'), current
 assert previous[0] == current[0] and int(previous[1]) < int(current[1])
 assert signer == old_signer, 'Signing continuity failed'
 manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManifest.xml')
-assert manifest.count('android.hardware.usb.action.USB_DEVICE_ATTACHED') == 2, 'USB intent/metadata pair missing'
+attach_attributes = [line for line in manifest.splitlines() if 'A: android:name' in line and 'android.hardware.usb.action.USB_DEVICE_ATTACHED' in line]
+assert len(attach_attributes) == 2, 'USB intent/metadata pair missing'
 assert re.search(r'android:launchMode[^\n]*0x1\b', manifest), 'Expected singleTop Activity'
 device_filter = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'res/xml/usb_fpv_devices.xml')
 assert re.search(r'A: class(?:[^\n]*0xe\b|=\"14\")', device_filter), 'Missing video class filter'
