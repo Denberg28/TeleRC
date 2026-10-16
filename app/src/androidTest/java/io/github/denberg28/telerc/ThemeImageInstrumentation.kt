@@ -173,8 +173,10 @@ class ThemeImageInstrumentation : Instrumentation() {
         return null
     }
     private fun windowText(text:String):android.view.accessibility.AccessibilityNodeInfo? = uiAutomation.windows
-        .mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText(text) }
-        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && it.text?.toString()==text }
+        .mapNotNull { it.root }.flatMap { root ->
+            root.findAccessibilityNodeInfosByText(text) + root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT))
+        }
+        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && it.text?.toString()?.equals(text,ignoreCase=true)==true }
     private fun clickWindow(text:String) {
         var node=windowText(text) ?: error("Missing UI: $text")
         while(!node.isClickable && node.parent!=null) node=node.parent
@@ -210,6 +212,8 @@ class ThemeImageInstrumentation : Instrumentation() {
         while (!condition()) { check(SystemClock.elapsedRealtime() < end) { "Native UI condition timed out" }; SystemClock.sleep(150) }
     }
     private fun screenshot(name: String) {
+        waitForIdleSync()
+        SystemClock.sleep(150) // Allow the new hierarchy's display frame to reach SurfaceFlinger.
         val bitmap = uiAutomation.takeScreenshot() ?: error("No native screenshot")
         File(targetContext.filesDir, name).outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         bitmap.recycle()
