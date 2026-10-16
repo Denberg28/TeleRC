@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private var page = Page.SETUP
     private var mazePractice: MazePractice? = null
     private var mazeView: MazePracticeView? = null
+    private var mazeRestartDialog: AlertDialog? = null
     private var practiceSteer: JoystickView? = null
     private var practiceDrive: JoystickView? = null
     @Volatile private var socket: LinkTransport? = null
@@ -304,6 +305,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        mazeRestartDialog?.dismiss(); mazeRestartDialog = null
         mazeView?.pause(); mazeView = null
         practiceSteer?.reset(); practiceDrive?.reset()
         practiceSteer = null; practiceDrive = null
@@ -724,27 +726,31 @@ class MainActivity : Activity() {
         host=null; port=null; connect=null; status=null; enable=null
         steeringStick=null; driveStick=null
         val prefs=getSharedPreferences("maze_practice",MODE_PRIVATE)
-        val practice=mazePractice ?: MazePractice(MazeLayout.generate(prefs.getInt("seed",kotlin.random.Random.nextInt())))
-            .also { mazePractice=it; prefs.edit().putInt("seed",it.maze.seed).apply() }
+        var progress=MazeProgress.restore(prefs.getInt("level",1),prefs.getInt("completed_level",0))
+        val practice=mazePractice ?: MazePractice(MazeLevels.layout(progress.current)).also { mazePractice=it }
+        fun saveProgress() {
+            prefs.edit().putInt("level",progress.current).putInt("completed_level",progress.completed).apply()
+        }
+        saveProgress()
         val root=shell()
         val scene=MazePracticeView(this,practice)
         mazeView=scene
         val timer=text("",14f,ink,true)
-        val detail=text("",10f,muted)
         val start=button("Start practice") {}
+        val levels=button("Levels",false) {}.apply { textSize=12f }
+        val summary=text("",11f,muted,true)
         fun update() {
-            timer.text="${if (practice.state==MazePractice.State.CLEARED) "CLEARED" else "TIME"} · ${MazeRecords.time(practice.elapsedMillis)}"
-            val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
-            val best=records.filter { it.seed==practice.maze.seed && it.courseVersion==MazeLayout.COURSE_VERSION }.minOfOrNull { it.millis }
-            val heading=((Math.toDegrees(practice.pose.heading.toDouble())+360)%360).toInt()
-            detail.text="Maze ${practice.maze.seed.toUInt().toString(16)} · Best ${best?.let { MazeRecords.time(it) } ?: "—"} · H ${heading}°"
+            timer.text="Lv ${practice.maze.level} · ${MazeRecords.time(practice.elapsedMillis)}"
+            summary.text="OFFLINE · Bumps ${practice.bumps}/${MazePractice.BUMP_LIMIT}"
+            levels.text=if(practice.state==MazePractice.State.CLEARED && practice.maze.level<MazeLevels.COUNT) "Next level" else "Levels"
             start.text=when(practice.state) {
                 MazePractice.State.READY -> "Start practice"
                 MazePractice.State.RUNNING -> "Pause"
                 MazePractice.State.PAUSED -> "Resume"
                 MazePractice.State.CLEARED -> "Cleared ✓"
+                MazePractice.State.FAILED -> "3 bumps · Restart"
             }
-            start.isEnabled=practice.state!=MazePractice.State.CLEARED
+            start.isEnabled=practice.state!=MazePractice.State.CLEARED && practice.state!=MazePractice.State.FAILED
             val running=practice.state==MazePractice.State.RUNNING
             practiceSteer?.isEnabled=running; practiceDrive?.isEnabled=running
         }
@@ -752,10 +758,46 @@ class MainActivity : Activity() {
         scene.onUpdate=::update
         scene.onClear={ millis ->
             val records=MazeRecords.add(MazeRecords.decode(prefs.getString("records","").orEmpty()),
-                MazeClear(practice.maze.seed,millis,System.currentTimeMillis(),MazeLayout.COURSE_VERSION))
+                MazeClear(practice.maze.seed,millis,System.currentTimeMillis(),MazeLayout.COURSE_VERSION,practice.maze.level))
             prefs.edit().putString("records",MazeRecords.encode(records)).apply()
-            update()
+            progress=progress.clear(); saveProgress()
+            resetSticks(); update()
         }
+        scene.onFailure={
+            if(mazeView===scene && page==Page.TEST && !isFinishing) {
+                resetSticks(); update()
+                mazeRestartDialog=AlertDialog.Builder(this).setTitle("Restart level ${practice.maze.level}?")
+                    .setMessage("3 wall bumps reached. Restart this level from START; the timer and bump count will reset.")
+                    .setCancelable(false)
+                    .setPositiveButton("Restart level") { _, _ ->
+                        mazeRestartDialog=null
+                        resetSticks(); practice.reset(); scene.changed()
+                    }.show()
+            }
+        }
+        fun openLevel(level:Int) {
+            scene.pause(); resetSticks()
+            progress=progress.select(level); saveProgress()
+            mazePractice=MazePractice(MazeLevels.layout(progress.current))
+            render()
+        }
+        fun chooseLevel() {
+            scene.pause(); resetSticks()
+            val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
+            val choices=(1..progress.unlocked).map { level ->
+                val best=records.filter { it.level==level && it.courseVersion==MazeLayout.COURSE_VERSION }
+                    .minOfOrNull { it.millis }
+                "Lv $level${if(level<=progress.completed) " ✓" else ""} · Best ${best?.let(MazeRecords::time) ?: "—"}"
+            }.toTypedArray()
+            AlertDialog.Builder(this).setTitle("Levels · ${progress.unlocked}/${MazeLevels.COUNT} unlocked")
+                .setItems(choices) { _, index -> openLevel(index+1) }.setNegativeButton("Cancel",null).show()
+        }
+        levels.setOnClickListener {
+            if(practice.state==MazePractice.State.CLEARED && practice.maze.level<MazeLevels.COUNT) openLevel(practice.maze.level+1)
+            else chooseLevel()
+        }
+        levels.contentDescription="Choose an unlocked level; after clearing, advance to the next level"
+        levels.setOnLongClickListener { chooseLevel(); true }
         fun control(title:String,hint:String,vertical:Boolean,changed:(Int)->Unit): LinearLayout {
             return card().apply {
                 setPadding(dp(8),dp(8),dp(8),dp(8))
@@ -774,18 +816,10 @@ class MainActivity : Activity() {
         val center=card().apply {
             setPadding(dp(8),dp(8),dp(8),dp(8))
             addView(timer,LinearLayout.LayoutParams(-1,dp(22)))
-            addView(detail,LinearLayout.LayoutParams(-1,dp(18)))
             addView(scene,LinearLayout.LayoutParams(-1,0,1f))
             val actions=LinearLayout(this@MainActivity)
-            actions.addView(button("Shuffle maze",false) {
-                scene.pause(); resetSticks()
-                var seed=kotlin.random.Random.nextInt()
-                while(seed==practice.maze.seed) seed=kotlin.random.Random.nextInt()
-                mazePractice=MazePractice(MazeLayout.generate(seed))
-                prefs.edit().putInt("seed",seed).apply()
-                render()
-            }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f))
-            actions.addView(button("Retry maze",false) {
+            actions.addView(levels,LinearLayout.LayoutParams(0,-1,1f))
+            actions.addView(button("Restart level",false) {
                 resetSticks(); practice.reset(); scene.changed()
             }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f).apply { leftMargin=dp(4) })
             addView(actions,LinearLayout.LayoutParams(-1,dp(36)).apply { topMargin=dp(4) })
@@ -807,17 +841,18 @@ class MainActivity : Activity() {
             scene.changed()
         }
         footer.addView(start,LinearLayout.LayoutParams(0,-1,1f))
-        footer.addView(text("OFFLINE · START → END",11f,muted,true),LinearLayout.LayoutParams(0,-1,1.5f))
+        footer.addView(summary,LinearLayout.LayoutParams(0,-1,1.5f))
         footer.addView(button("Clear times",false) {
             scene.pause(); resetSticks()
             val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
             val message=if(records.isEmpty()) "No clears yet. Drive from START to END to save your time."
                 else records.take(20).joinToString("\n\n") { record ->
                     val date=java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(record.at))
-                    "${MazeRecords.time(record.millis)} · Maze ${record.seed.toUInt().toString(16)}${if(record.courseVersion==1) " · Classic" else ""}\n$date"
+                    val course=if(record.level>0) "Lv ${record.level}" else "Legacy maze ${record.seed.toUInt().toString(16)}${if(record.courseVersion==1) " · Classic" else ""}"
+                    "${MazeRecords.time(record.millis)} · $course\n$date"
                 }
             AlertDialog.Builder(this).setTitle("Clear times · latest ${records.size}")
-                .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; compare best times on the same maze.")
+                .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; best times for fixed levels are shown in Levels. Legacy random clears stay separate.")
                 .setPositiveButton("Done",null).show()
         }.apply { textSize=13f },LinearLayout.LayoutParams(0,-1,1f))
         root.addView(footer,LinearLayout.LayoutParams(-1,dp(42)).apply { topMargin=dp(8) })
@@ -1617,5 +1652,5 @@ class MainActivity : Activity() {
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { mazeRestartDialog?.dismiss(); mazeRestartDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }

@@ -12,6 +12,8 @@ import android.view.View
 internal class MazePracticeView(context: Context, val practice: MazePractice) : View(context) {
     var onUpdate: (() -> Unit)? = null
     var onClear: ((Long) -> Unit)? = null
+    var onFailure: (() -> Unit)? = null
+    private var failureReported = false
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val surface = AppColors.surface(context)
     private val wallColor = AppColors.muted(context)
@@ -25,17 +27,23 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
         override fun run() {
             if (!active) return
             val now = SystemClock.elapsedRealtime()
+            val oldBumps = practice.bumps
             val cleared = previous != 0L && practice.advance(now-previous)
             previous = now
             if (cleared) onClear?.invoke(practice.elapsedMillis)
-            if (cleared || practice.elapsedMillis/100 != lastLabel) {
+            reportFailure()
+            if (cleared || oldBumps != practice.bumps || practice.elapsedMillis/100 != lastLabel) {
                 lastLabel = practice.elapsedMillis/100; onUpdate?.invoke()
             }
             invalidate()
             if (practice.state == MazePractice.State.RUNNING) postDelayed(this,16) else active=false
         }
     }
-    init { contentDescription = "Offline maze, START at lower left, END at upper right" }
+    init { contentDescription = "Offline level ${practice.maze.level}, START at lower left, END at the longest path from START" }
+    private fun reportFailure() {
+        if (practice.state != MazePractice.State.FAILED) failureReported = false
+        else if (!failureReported) { failureReported = true; onFailure?.invoke() }
+    }
     fun resume() {
         if (active || !isAttachedToWindow || practice.state != MazePractice.State.RUNNING) return
         active = true; previous = 0L; post(frame)
@@ -43,13 +51,13 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
     fun pause() {
         active=false; removeCallbacks(frame); previous=0L; practice.pause(); onUpdate?.invoke(); invalidate()
     }
-    fun changed() { previous=0L; onUpdate?.invoke(); invalidate(); resume() }
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); resume() }
+    fun changed() { previous=0L; onUpdate?.invoke(); reportFailure(); invalidate(); resume() }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); post { if (isAttachedToWindow) reportFailure() }; resume() }
     override fun onDetachedFromWindow() { pause(); super.onDetachedFromWindow() }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val maze=practice.maze
-        val scale = minOf(width/(maze.width+1f),height/(maze.height+1f))
+        val scale = minOf(width/maze.width.toFloat(),height/maze.height.toFloat())
         if (scale<=0) return
         val ox=(width-maze.width*scale)/2; val oy=(height-maze.height*scale)/2
         paint.style=Paint.Style.FILL

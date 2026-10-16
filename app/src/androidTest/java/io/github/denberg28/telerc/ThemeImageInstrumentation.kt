@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import java.io.File
+import kotlin.math.*
 
 /** Native bitmap/storage/render and FPV options checks; no USB hardware is simulated. */
 class ThemeImageInstrumentation : Instrumentation() {
@@ -59,19 +60,124 @@ class ThemeImageInstrumentation : Instrumentation() {
                 waitForIdleSync()
                 check(ThemeImageStore.exists(app)) { "Background did not persist across activity restart" }
             }
+            checkMazeLevels()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             val activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
         }
+    }
+    private fun checkMazeLevels() {
+        val prefs=targetContext.getSharedPreferences("maze_practice",0)
+        prefs.edit().clear().putString("records","37,1200,1000,2").commit()
+        var activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        fun enterTest() {
+            onMain { find(root(activity),"Setup ▾")!!.performClick() }
+            waitUntil { windowText("Test")!=null }
+            clickWindow("Test")
+            waitUntil { onMain { findMaze(root(activity))!=null } }
+        }
+        enterTest()
+        val scene=onMain { findMaze(root(activity))!! }
+        onMain {
+            check(scene.practice.maze.level==1)
+            check(find(root(activity),"Lv 1 · 00:00.00")!=null)
+            check(find(root(activity),"OFFLINE · Bumps 0/3")!=null)
+            check(find(root(activity),"Shuffle maze")==null)
+            check(scene.height>scene.width*.45f) { "Maze has not gained vertical space" }
+            check(root(activity).background is ThemeImageDrawable)
+            check(!targetContext.getSharedPreferences("link",0).getBoolean("auto_connect",true))
+            find(root(activity),"Start practice")!!.performClick()
+            val p=scene.practice
+            p.drive(1900); repeat(350) { p.advance(20) }
+            check(p.bumps==1 && p.state==MazePractice.State.RUNNING)
+            repeat(2) {
+                p.drive(1100); repeat(28) { p.advance(20) }
+                p.drive(1900); repeat(350) { p.advance(20) }
+            }
+            check(p.bumps==3 && p.state==MazePractice.State.FAILED)
+            scene.changed()
+        }
+        waitUntil { windowText("Restart level 1?")!=null }
+        screenshot("maze-three-bumps.png")
+        clickWindow("Restart level")
+        waitUntil { onMain { scene.practice.state==MazePractice.State.READY } }
+        onMain {
+            check(scene.practice.elapsedMillis==0L && scene.practice.bumps==0)
+            check(find(root(activity),"Lv 1 · 00:00.00")!=null)
+            find(root(activity),"Start practice")!!.performClick()
+            approachFinish(scene.practice)
+            scene.changed() // The real animation frame reaches END and invokes the clear callback.
+        }
+        waitUntil { onMain { find(root(activity),"Next level")!=null } }
+        check(prefs.getInt("completed_level",0)==1)
+        check(MazeRecords.decode(prefs.getString("records","").orEmpty()).let { it.size==2 && it.first().level==1 && it.last().courseVersion==2 })
+        screenshot("maze-level-cleared.png")
+        onMain { find(root(activity),"Next level")!!.performClick() }
+        waitUntil { onMain { find(root(activity),"Lv 2 · 00:00.00")!=null } }
+        check(prefs.getInt("level",0)==2)
+        screenshot("maze-level-two.png")
+        onMain { activity.finish() }; waitForIdleSync()
+        activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        enterTest()
+        onMain {
+            check(findMaze(root(activity))!!.practice.maze.level==2)
+            check(find(root(activity),"Lv 2 · 00:00.00")!=null)
+            find(root(activity),"Levels")!!.performClick()
+        }
+        waitUntil { windowText("Levels · 2/20 unlocked")!=null }
+        check(windowText("Lv 3")==null) { "A locked level was selectable" }
+        clickWindow("Cancel")
+        onMain { activity.finish() }; waitForIdleSync()
+    }
+    private fun approachFinish(p:MazePractice) {
+        val maze=p.maze; val start=1 to maze.height-2; val end=maze.endX.toInt() to maze.endY.toInt()
+        val previous=mutableMapOf<Pair<Int,Int>,Pair<Int,Int>>()
+        val seen=mutableSetOf(start); val queue=java.util.ArrayDeque<Pair<Int,Int>>().apply { add(start) }
+        while(queue.isNotEmpty()) {
+            val v=queue.removeFirst()
+            for((dx,dy) in listOf(1 to 0,-1 to 0,0 to 1,0 to -1)) {
+                val n=v.first+dx to v.second+dy
+                if(!maze.wall(n.first,n.second) && seen.add(n)) { previous[n]=v; queue.add(n) }
+            }
+        }
+        val path=mutableListOf(end)
+        while(path.last()!=start) path.add(previous.getValue(path.last()))
+        path.reverse()
+        for(cell in path.drop(1)) {
+            var frames=0
+            val tolerance=if(cell==end) .43f else .12f
+            while(hypot(cell.first+.5f-p.pose.x,cell.second+.5f-p.pose.y)>tolerance) {
+                check(frames++<1500 && p.state==MazePractice.State.RUNNING)
+                val angle=atan2(cell.first+.5f-p.pose.x,-(cell.second+.5f-p.pose.y))-p.pose.heading
+                val error=atan2(sin(angle),cos(angle))
+                p.steering((1500+error.coerceIn(-1f,1f)*400).roundToInt())
+                p.drive(if(abs(error)<.15f) 1740 else 1500)
+                check(!p.advance(20))
+            }
+        }
+        check(p.state==MazePractice.State.RUNNING)
+    }
+    private fun findMaze(view:View):MazePracticeView? {
+        if(view is MazePracticeView) return view
+        if(view is ViewGroup) for(index in 0 until view.childCount) findMaze(view.getChildAt(index))?.let { return it }
+        return null
+    }
+    private fun windowText(text:String):android.view.accessibility.AccessibilityNodeInfo? = uiAutomation.windows
+        .mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText(text) }
+        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && it.text?.toString()==text }
+    private fun clickWindow(text:String) {
+        var node=windowText(text) ?: error("Missing UI: $text")
+        while(!node.isClickable && node.parent!=null) node=node.parent
+        check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
     }
     private fun videoOption(): android.view.accessibility.AccessibilityNodeInfo? = uiAutomation.windows
         .mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText("YUYV compatibility") }

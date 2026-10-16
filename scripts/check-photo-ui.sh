@@ -10,7 +10,8 @@ adb shell pm grant "$PKG" android.permission.ACCESS_COARSE_LOCATION
 adb shell am instrument -r -w "$PKG.test/$PKG.ThemeImageInstrumentation" | tee app/build/photo-evidence/result.txt
 grep 'INSTRUMENTATION_CODE: -1' app/build/photo-evidence/result.txt
 grep 'PASS: native photo' app/build/photo-evidence/result.txt
-for image in photo-light-setup.png photo-light-controls.png photo-sepia-setup.png photo-sepia-controls.png photo-dark-setup.png photo-dark-controls.png photo-removed.png; do
+grep 'PASS: native maze' app/build/photo-evidence/result.txt
+for image in photo-light-setup.png photo-light-controls.png photo-sepia-setup.png photo-sepia-controls.png photo-dark-setup.png photo-dark-controls.png photo-removed.png maze-three-bumps.png maze-level-cleared.png maze-level-two.png; do
   adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
 done
 adb logcat -d -s AndroidRuntime > app/build/photo-evidence/runtime.txt

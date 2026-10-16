@@ -84,9 +84,12 @@ class MazePracticeTest {
         p.reset(); assertEquals(MazePractice.State.READY,p.state)
     }
     @Test fun generatedMazeCanBeClearedUsingSteerAndDriveOnly() {
-        val p=MazePractice(MazeLayout.generate(37)); val maze=p.maze
+        for(level in listOf(1,6,11,16,20)) driveToEnd(MazePractice(MazeLevels.layout(level)))
+    }
+    private fun driveToEnd(p: MazePractice) {
+        val maze=p.maze
         val prev=mutableMapOf<Pair<Int,Int>,Pair<Int,Int>>()
-        val start=1 to maze.height-2; val end=maze.width-2 to 1
+        val start=1 to maze.height-2; val end=maze.endX.toInt() to maze.endY.toInt()
         val queue=java.util.ArrayDeque<Pair<Int,Int>>().apply { add(start) }
         val seen=mutableSetOf(start)
         while(queue.isNotEmpty()) {
@@ -113,6 +116,7 @@ class MazePracticeTest {
             assertTrue("Could not reach $cell from ${p.pose}",steps<1500)
         }
         assertEquals(MazePractice.State.CLEARED,p.state)
+        assertTrue(p.bumps < MazePractice.BUMP_LIMIT)
     }
     @Test fun thinWallsLeaveVisibleFreeSpaceAndBlockSegmentsAndCorners() {
         val maze=course("#####","#...#","###.#","#...#","#####").maze
@@ -125,6 +129,96 @@ class MazePracticeTest {
         assertFalse(maze.fits(-10f,-10f))
         assertFalse(maze.fits(Float.NaN,1.5f))
         assertFalse(maze.fits(1.5f,1.5f,Float.NaN))
+    }
+
+    @Test fun everyLevelIsFixedTallerAndEndsAtTheLongestRouteFromStart() {
+        val signatures=mutableSetOf<String>()
+        for(level in 1..MazeLevels.COUNT) {
+            val maze=MazeLevels.layout(level); val again=MazeLevels.layout(level)
+            assertEquals(level,maze.level)
+            assertTrue(maze.height>=9)
+            val signature=(0 until maze.height).joinToString("\n") { y ->
+                (0 until maze.width).joinToString("") { x ->
+                    assertEquals(maze.wall(x,y),again.wall(x,y))
+                    if(maze.wall(x,y)) "#" else "."
+                }
+            }
+            assertTrue(signatures.add(signature))
+            val start=1 to maze.height-2
+            val distance=mutableMapOf(start to 0)
+            val queue=java.util.ArrayDeque<Pair<Int,Int>>().apply { add(start) }
+            while(queue.isNotEmpty()) {
+                val cell=queue.removeFirst()
+                for((dx,dy) in listOf(1 to 0,-1 to 0,0 to 1,0 to -1)) {
+                    val n=cell.first+dx to cell.second+dy
+                    if(!maze.wall(n.first,n.second) && n !in distance) {
+                        distance[n]=distance.getValue(cell)+1; queue.add(n)
+                    }
+                }
+            }
+            val goal=maze.endX.toInt() to maze.endY.toInt()
+            assertEquals(distance.values.maxOrNull(),distance[goal])
+            assertTrue(maze.fits(maze.endX,maze.endY))
+            var passages=0; var edges=0
+            for(y in 0 until maze.height) for(x in 0 until maze.width) {
+                if(x==0 || y==0 || x==maze.width-1 || y==maze.height-1) assertTrue(maze.wall(x,y))
+                if(!maze.wall(x,y)) {
+                    passages++; if(!maze.wall(x+1,y)) edges++; if(!maze.wall(x,y+1)) edges++
+                }
+            }
+            assertEquals(passages,distance.size); assertEquals(passages-1,edges)
+            assertEquals(maze.endX,again.endX,0f); assertEquals(maze.endY,again.endY,0f)
+        }
+    }
+    @Test fun threeSeparateBumpsStopAndFreezeRunUntilReset() {
+        // Straight lower corridor with the finish beyond a turn: never clear by accident.
+        val p=course("#######","#.....#","#####.#","#.....#","#######")
+        p.start(); p.drive(1900); repeat(300) { p.advance(20) }
+        assertEquals(1,p.bumps) // Holding into the wall is one impact.
+        val atWall=p.pose
+        p.drive(1500); repeat(100) { p.advance(20) }
+        p.drive(1900); repeat(100) { p.advance(20) }
+        assertEquals(1,p.bumps) // Neutral/re-push without retreat is still the same contact.
+        p.pause(); p.start(); p.drive(1900); repeat(100) { p.advance(20) }
+        assertEquals(1,p.bumps) // Pause does not grant a fresh bump at the same wall.
+        p.drive(1100); repeat(28) { p.advance(20) }
+        assertTrue(p.pose.x<atWall.x-.15f)
+        p.drive(1900); repeat(150) { p.advance(20) }
+        assertEquals(2,p.bumps); assertEquals(MazePractice.State.RUNNING,p.state)
+        p.drive(1100); repeat(28) { p.advance(20) }
+        p.drive(1900); repeat(150) { p.advance(20) }
+        assertEquals(3,p.bumps); assertEquals(MazePractice.State.FAILED,p.state)
+        assertEquals(0f,p.pose.speed,0f); assertEquals(0f,p.pose.leftTrack,0f)
+        val stopped=p.pose; val time=p.elapsedMillis
+        p.pause(); p.start(); p.drive(1100); repeat(100) { assertFalse(p.advance(20)) }
+        assertEquals(stopped,p.pose); assertEquals(time,p.elapsedMillis)
+        assertEquals(MazePractice.State.FAILED,p.state)
+        p.reset(); assertEquals(0,p.bumps); assertEquals(0L,p.elapsedMillis)
+        assertEquals(MazePractice.State.READY,p.state)
+        p.start(); repeat(100) { p.advance(20) }
+        assertEquals(1.5f,p.pose.x,0f) // Reset discards held reverse/steer.
+    }
+    @Test fun progressUnlocksSequentiallyPersistsAndSanitizesInvalidValues() {
+        var p=MazeProgress.restore(99,-4)
+        assertEquals(1,p.current); assertEquals(1,p.unlocked)
+        assertEquals(1,p.select(20).current)
+        for(level in 1..MazeLevels.COUNT) {
+            p=p.select(level)
+            assertEquals(level,p.current)
+            p=p.clear()
+            assertEquals(level,p.completed)
+            assertEquals(minOf(level+1,MazeLevels.COUNT),p.unlocked)
+            assertEquals(p,MazeProgress.restore(p.current,p.completed))
+        }
+        assertEquals(20,p.select(1).clear().completed) // Replay never relocks levels.
+        assertEquals(20,MazeProgress.restore(Int.MAX_VALUE,Int.MAX_VALUE).current)
+    }
+    @Test fun levelRecordsRoundTripWithoutReclassifyingLegacyClears() {
+        val legacy=MazeRecords.decode("37,1200,1000,2").single()
+        val current=MazeClear(37,1500,2000,3,1)
+        assertEquals(0,legacy.level)
+        assertEquals(listOf(current,legacy),MazeRecords.decode(MazeRecords.encode(listOf(current,legacy))))
+        assertTrue(MazeRecords.decode("37,1200,1000,3,0\n37,1200,1000,3,21\n37,1200,1000,2,1").isEmpty())
     }
     @Test fun classicRecordsRemainReadableAndKeepTheirCourseVersion() {
         val classic=MazeRecords.decode("42,12340,1792110000000").single()
