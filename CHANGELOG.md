@@ -1,3 +1,10 @@
+## 0.8.75
+
+- Fix theme-switch flashes by updating Light/Sepia/Dark without recreating the Activity or reloading its wallpaper; retain endpoint drafts, native dialog palettes and link session ownership.
+- Ignore repeated current theme/accent selections; remove background-selector window animation and use the active theme for the window fallback.
+- Compact the shared anchored tab dropdown from 48 to 40 dp rows, scaling for larger text.
+- Add repeated native theme/accent transition and draw-frame regressions, retain full UI/control sanitizer qualification, and publish the owner-authorized stable channel with verified signing/source/checksums. Physical phone/receiver/HIL remains untested.
+
 ## 0.8.67 — FPV recovery and photo theme
 
 - Select advertised video profiles with Auto/MJPEG/YUYV choices; expose format and error diagnostics.

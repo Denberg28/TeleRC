@@ -76,22 +76,99 @@ class ThemeImageInstrumentation : Instrumentation() {
                 waitForIdleSync()
                 check(ThemeImageStore.exists(app)) { "Background did not persist across activity restart" }
             }
+            checkThemeTransitions(photo = true)
             checkWallpaperOpacity()
             checkMazeLevels()
             checkMarket()
             checkPracticeDialogLayouts()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
+            checkThemeTransitions(photo = false)
             val activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
+        }
+    }
+    private fun checkThemeTransitions(photo:Boolean) {
+        val prefs=targetContext.getSharedPreferences("appearance",0)
+        prefs.edit().putString("background","LIGHT").putString("accent","Blue")
+            .putBoolean("setup_minimized",false).commit()
+        targetContext.getSharedPreferences("link",0).edit().putString("transport","wifi").putBoolean("auto_connect",false).commit()
+        val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitUntil { onMain { (root(activity).background is ThemeImageDrawable)==photo && root(activity).width>0 } }
+        val bitmapField=MainActivity::class.java.getDeclaredField("themeBitmap").apply { isAccessible=true }
+        val cached=onMain { bitmapField.get(activity) }
+        var frames=0
+        var failure:String?=null
+        var interruptions=0
+        val callbacks=object:android.app.Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(a:Activity,b:Bundle?) { if(a is MainActivity) interruptions++ }
+            override fun onActivityPaused(a:Activity) { if(a===activity) interruptions++ }
+            override fun onActivityDestroyed(a:Activity) { if(a===activity) interruptions++ }
+            override fun onActivityStarted(a:Activity) {}
+            override fun onActivityResumed(a:Activity) {}
+            override fun onActivityStopped(a:Activity) {}
+            override fun onActivitySaveInstanceState(a:Activity,b:Bundle) {}
+        }
+        val observer=android.view.ViewTreeObserver.OnPreDrawListener {
+            frames++
+            if((root(activity).background is ThemeImageDrawable)!=photo) failure="Wallpaper disappeared during a theme frame"
+            if(bitmapField.get(activity)!==cached) failure="Theme change reloaded the wallpaper"
+            true
+        }
+        onMain {
+            activity.application.registerActivityLifecycleCallbacks(callbacks)
+            activity.window.decorView.viewTreeObserver.addOnPreDrawListener(observer)
+            (description(root(activity),"Bridge IPv4 address") as android.widget.EditText).setText("192.168.4.42")
+            (description(root(activity),"UDP port") as android.widget.EditText).setText("14551")
+        }
+        try {
+            for(name in listOf("LIGHT","SEPIA","DARK","SEPIA","LIGHT","DARK","DARK","LIGHT")) {
+                onMain { description(root(activity),"Choose Light, Sepia or Dark background")!!.performClick() }
+                val label=BackgroundTheme.valueOf(name).label
+                waitUntil { windowText(label)!=null }
+                clickWindow(label)
+                waitUntil { onMain { find(root(activity),"${if(photo) "Photo" else "Background"} · $label ▾")!=null } && windowText("Cancel")==null }
+                waitForIdleSync()
+                onMain {
+                    check(!activity.isDestroyed && !activity.isFinishing && interruptions==0) { "Appearance interrupted the Activity/session" }
+                    check(prefs.getString("background",null)==name)
+                    check((description(root(activity),"Bridge IPv4 address") as TextView).text.toString()=="192.168.4.42")
+                    check((description(root(activity),"UDP port") as TextView).text.toString()=="14551")
+                    val attributes=activity.obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
+                    val primary=try { attributes.getColorStateList(0)!!.defaultColor } finally { attributes.recycle() }
+                    check((Color.red(primary)>128)==(name=="DARK")) { "Native dialog theme retained old text attributes" }
+                    check(!targetContext.getSharedPreferences("link",0).getBoolean("auto_connect",false))
+                    check(failure==null) { failure.orEmpty() }
+                }
+                if(photo) checkWallpaper(activity)
+                if(name=="DARK" || name=="SEPIA") screenshot("transition-${if(photo) "photo" else "plain"}-${name.lowercase()}.png")
+            }
+            for(accent in listOf("Teal","Violet","Slate","Navy","Navy")) {
+                onMain { (description(root(activity),"$accent accent") ?: description(root(activity),"$accent accent, selected"))!!.performClick() }
+                waitForIdleSync()
+                onMain {
+                    check(description(root(activity),"$accent accent, selected")!=null)
+                    check(bitmapField.get(activity)===cached && !activity.isDestroyed && interruptions==0)
+                    check((description(root(activity),"Bridge IPv4 address") as TextView).text.toString()=="192.168.4.42")
+                    check(failure==null) { failure.orEmpty() }
+                }
+            }
+            check(onMain { frames>8 }) { "No transition draw frames observed" }
+        } finally {
+            onMain {
+                activity.window.decorView.viewTreeObserver.removeOnPreDrawListener(observer)
+                activity.application.unregisterActivityLifecycleCallbacks(callbacks)
+                activity.finish()
+            }
+            waitForIdleSync()
         }
     }
     private fun checkWallpaper(activity:Activity) {
@@ -161,6 +238,9 @@ class ThemeImageInstrumentation : Instrumentation() {
         val tolerance=2*activity.resources.displayMetrics.density
         check(abs(actual.left-expected.left)<=tolerance && abs(actual.width()-expected.width())<=tolerance) { "Tab menu does not match its button: $actual vs $expected" }
         check(actual.top>=expected.bottom && actual.top-expected.bottom<=6*activity.resources.displayMetrics.density) { "Tab menu is detached from its button" }
+        val density=activity.resources.displayMetrics.density
+        val expectedHeight=(3*(40*maxOf(1f,activity.resources.configuration.fontScale)).toInt()+8)*density
+        check(abs(actual.height()-expectedHeight)<=4*density) { "Tab menu rows are not compact: $actual" }
         screenshot(file)
         clickWindow(label)
         waitUntil { windowText("Tab menu")==null }

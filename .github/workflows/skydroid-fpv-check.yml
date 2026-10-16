@@ -1,7 +1,7 @@
-name: Sharp labels and aligned tabs review build
+name: Stable theme transition qualification
 on:
   push:
-    branches: ['fix/maze-dialogs-*']
+    branches: ['fix/maze-dialogs-theme-075*']
 concurrency:
   group: maze-dialogs-${{ github.ref }}
   cancel-in-progress: true
@@ -17,7 +17,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_REF_NAME&per_page=20" --jq '.workflow_runs[] | select(.name == "Sharp labels and aligned tabs review build" and .id < '${{ github.run_id }}' and .status != "completed") | .id' | while read -r run_id; do
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_REF_NAME&per_page=20" --jq '.workflow_runs[] | select(.name == "Stable theme transition qualification" and .id < '${{ github.run_id }}' and .status != "completed") | .id' | while read -r run_id; do
             gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
           done
       - uses: actions/checkout@v4
@@ -68,20 +68,22 @@ jobs:
         run: |
           gh release download v0.8.64 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.64.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.74-Layout-test.apk
-          python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.74-Layout-test.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
-          cp docs/LABELS_LAYOUT_074.md deliverables/START_HERE.md
-          git archive --format=zip -o deliverables/TeleRC-v0.8.74-source.zip HEAD
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.75.apk
+          python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.75.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          cp docs/STABLE_075.md deliverables/START_HERE.md
+          git archive --format=zip -o deliverables/TeleRC-v0.8.75-source.zip HEAD
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
-      - name: Preserve evidence with verified draft download
+      - name: Publish owner-authorized stable after all checks
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          zip -qr deliverables/TeleRC-v0.8.74-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-* app/build/photo-evidence
+          zip -qr deliverables/TeleRC-v0.8.75-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-* app/build/photo-evidence
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
-          gh release create layout-review-v0.8.74 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "TeleRC 0.8.74 — sharp labels, aligned tabs and wallpaper opacity test build (draft)" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+          python ../scripts/verify-stable-075.py --before
+          gh release create v0.8.75 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest --title "TeleRC v0.8.75 — stable: smooth themes and compact navigation" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+          python ../scripts/verify-stable-075.py --after

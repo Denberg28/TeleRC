@@ -1,3 +1,7 @@
+# Stable theme transitions and compact navigation — 0.8.75
+
+Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.
+
 # Shared captions, anchored navigation and console opacity — 0.8.74
 
 MainActivity uses one opaque caption-strip layout for both joysticks on Controls/Test; normal shadow-free text and reserved feedback space preserve contrast/alignment while the large outer panel stays transparent. A tracked PopupWindow matches the tab anchor width/start edge and closes on lifecycle/render changes; page selection still calls the original switchTo path. Shared bars/gaps respect system insets. ThemeImageDrawable composites a bounded photo alpha over the plain background: saved `appearance.console_wallpaper_opacity` (default 70) applies only to Controls/Test; Setup uses 100. The preview drafts changes; Apply persists and updates the Setup button without rebuilding settings, Cancel discards. [Gates and acceptance](LABELS_LAYOUT_074.md).

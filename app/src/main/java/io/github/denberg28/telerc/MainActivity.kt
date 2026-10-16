@@ -192,6 +192,28 @@ class MainActivity : Activity() {
         setOnClickListener { action() }
     }
     private fun barHeight() = dp((48 * maxOf(1f, resources.configuration.fontScale)).toInt())
+    private fun menuRowHeight() = dp((40 * maxOf(1f, resources.configuration.fontScale)).toInt())
+    private fun applyAppearanceTheme() {
+        val style = if (darkTheme) android.R.style.Theme_Material_NoActionBar else android.R.style.Theme_Material_Light_NoActionBar
+        setTheme(style)
+        // Reset inherited attributes as well as switching the base resource. Repeated
+        // dark/light changes must not retain attributes from the previous theme.
+        theme.setTo(resources.newTheme().apply { applyStyle(style, true) })
+    }
+    private fun refreshAppearance() {
+        val draftHost = host?.text?.toString()
+        val draftPort = port?.text?.toString()
+        val updateMessage = updateStatus?.text
+        applyAppearanceTheme()
+        // One UI-thread replacement retains the Activity, decoded wallpaper and link.
+        // Recreation used to tear down the connection and flash the launch background.
+        render()
+        if (!connected.get()) {
+            draftHost?.let { host?.setText(it) }
+            draftPort?.let { port?.setText(it) }
+        }
+        updateStatus?.text = updateMessage
+    }
     private fun photoBackground(console: Boolean = page != Page.SETUP, opacity: Int = wallpaperOpacity): android.graphics.drawable.Drawable =
         themeBitmap?.let { ThemeImageDrawable(it, pale, if (console) opacity else 100) }
             ?: android.graphics.drawable.ColorDrawable(pale)
@@ -219,7 +241,7 @@ class MainActivity : Activity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         AppColors.migrate(this)
-        setTheme(if (darkTheme) android.R.style.Theme_Material_NoActionBar else android.R.style.Theme_Material_Light_NoActionBar)
+        applyAppearanceTheme()
         super.onCreate(savedInstanceState)
         ControlResponseStore.migrate(this)
         try {
@@ -339,7 +361,7 @@ class MainActivity : Activity() {
                         android.content.res.ColorStateList.valueOf(softAccent),
                         android.graphics.drawable.ColorDrawable(Color.TRANSPARENT), null)
                     setOnClickListener { popup.dismiss(); switchTo(destination) }
-                }, LinearLayout.LayoutParams(-1, barHeight()))
+                }, LinearLayout.LayoutParams(-1, menuRowHeight()))
             }
             popup.setOnDismissListener { if (pageMenu === popup) pageMenu = null }
             pageMenu = popup
@@ -367,6 +389,7 @@ class MainActivity : Activity() {
         loraKey = null; loraReveal = null; loraFingerprint = null
         armButton = null
         functionButtons.clear()
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(pale))
         window.statusBarColor = pale
         window.navigationBarColor = pale
         window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
@@ -689,10 +712,12 @@ class MainActivity : Activity() {
             if (imageWork) return@button
             val dialog = AlertDialog.Builder(this).setTitle("Background")
                 .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(), AppColors.theme(this).ordinal) { d, index ->
-                    disableControl()
                     val selectedTheme = BackgroundTheme.entries[index]
+                    d.dismiss()
+                    if (selectedTheme == AppColors.theme(this)) return@setSingleChoiceItems
+                    disableControl()
                     appearance.edit().putString("background", selectedTheme.name).putBoolean("dark", selectedTheme == BackgroundTheme.DARK).apply()
-                    d.dismiss(); recreate()
+                    refreshAppearance()
                 }.setNeutralButton("Choose image") { _, _ -> chooseThemeImage() }
                 .setNegativeButton("Cancel", null)
             if (ThemeImageStore.exists(this)) dialog.setPositiveButton("Remove image") { _, _ ->
@@ -704,7 +729,7 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            dialog.show()
+            dialog.show().window?.setWindowAnimations(0)
         }.apply { textSize = 13f; contentDescription = "Choose Light, Sepia or Dark background" }
         val backgroundRow = LinearLayout(this)
         backgroundRow.addView(backgroundButton, LinearLayout.LayoutParams(0, -1, 2f).apply { rightMargin = dp(4) })
@@ -717,7 +742,9 @@ class MainActivity : Activity() {
         val selected = appearance.getString("accent", "Blue")
         AppColors.names.forEachIndexed { index, name ->
             choices.addView(button(if (selected == name) "✓ ${AppColors.label(name)}" else AppColors.label(name), selected == name) {
-                appearance.edit().putString("accent", name).apply(); render()
+                if (selected != name) {
+                    appearance.edit().putString("accent", name).apply(); refreshAppearance()
+                }
             }.apply { textSize = 12f; contentDescription = "${AppColors.label(name)} accent${if (selected == name) ", selected" else ""}" },
                 LinearLayout.LayoutParams(0, -1, 1f).apply { if (index > 0) leftMargin = dp(4) })
         }

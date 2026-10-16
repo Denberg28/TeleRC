@@ -1,3 +1,7 @@
+# Stable theme transitions and compact navigation — 0.8.75
+
+Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.
+
 # Sharp labels, aligned tabs and wallpaper opacity — 0.8.74 test build
 
 Replaces blurred joystick shadows with crisp text on compact caption strips, aligns menu widths/edges with tab buttons, and shares consistent gaps/top/footer sizing across all tabs. Setup's Opacity preview saves 0–100% wallpaper opacity for Controls/Test (default 70%); Setup remains clear. [Scope, gates, phone checks and rollback](LABELS_LAYOUT_074.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software evidence; phone/OEM/HIL remains BLOCKED. No stable promotion.
