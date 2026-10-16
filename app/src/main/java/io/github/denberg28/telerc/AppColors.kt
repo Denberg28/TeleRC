@@ -37,12 +37,13 @@ internal object AppColors {
         BackgroundTheme.DARK -> Color.rgb(164, 181, 196)
     }
     val names = listOf("Blue", "Teal", "Violet", "Slate")
+    fun label(name: String) = if (name == "Blue") "Navy" else name
     private fun accentFor(context: Context, dark: Boolean): Int = when (
         context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("accent", "Blue")) {
         "Teal" -> if (dark) Color.rgb(45, 192, 177) else Color.rgb(0, 105, 96)
         "Violet" -> if (dark) Color.rgb(170, 142, 245) else Color.rgb(101, 72, 159)
         "Slate" -> if (dark) Color.rgb(153, 177, 200) else Color.rgb(67, 90, 113)
-        else -> if (dark) Color.rgb(55, 151, 245) else Color.rgb(0, 93, 180)
+        else -> if (dark) Color.rgb(151, 175, 209) else Color.rgb(23, 47, 83)
     }
     fun accent(context: Context): Int = accentFor(context, theme(context) == BackgroundTheme.DARK)
     private fun mix(base: Int, tint: Int, amount: Float): Int {

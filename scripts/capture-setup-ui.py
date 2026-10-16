@@ -8,7 +8,7 @@ import sys
 import subprocess
 import time
 import xml.etree.ElementTree as ET
-from PIL import Image, ImageDraw, ImageStat
+from PIL import Image, ImageDraw, ImageStat, ImageChops
 
 PKG = 'io.github.denberg28.telerc'
 OUT = Path('app/build/ui-evidence')
@@ -153,6 +153,7 @@ _, items = screen('text', 'Background · Dark ▾')
 print('NATIVE_UI_PASS Pastel-to-Light migration and explicit Dark persistence', flush=True)
 
 shots = []
+practice_shots = []
 for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
     for theme in ('LIGHT', 'SEPIA', 'DARK'):
         set_prefs(f'<string name="background">{theme}</string><string name="accent">{accent}</string><boolean name="pastel_theme_v1" value="true"/>')
@@ -179,7 +180,75 @@ for accent in ('Blue', 'Teal', 'Violet', 'Slate'):
         image = screenshot(name+'-controls', theme)
         if theme == 'LIGHT':
             shots.append((name+' controls', image))
-        print('NATIVE_UI_PASS', name, 'Setup + Controls; equal panels', left, right, flush=True)
+        tap(find(items, 'text', 'Controls ▾'))
+        _, items = screen('text', 'Test')
+        tap(find(items, 'text', 'Test'))
+        xml, items = screen('text', 'OFFLINE')
+        (OUT / f'{name}-test.xml').write_bytes(xml)
+        for label in ('STEER', 'DRIVE', 'Test ▾', 'OFFLINE', 'Start practice', 'Shuffle maze', 'Retry maze', 'Clear times'):
+            x1, y1, x2, y2 = bounds(find(items, 'text', label))
+            assert x2>x1 and 0<=y1<y2<=720, (name,label,(x1,y1,x2,y2))
+        find(items, 'content-desc', 'Offline practice, rover disconnected')
+        prefs = shell(f'run-as {PKG} cat shared_prefs/link.xml').decode()
+        assert 'name="auto_connect" value="false"' in prefs, prefs
+        image = screenshot(name+'-test', theme)
+        if accent == 'Blue':
+            practice_shots.append((name+' test', image))
+        print('NATIVE_UI_PASS', name, 'Setup + Controls + offline Test; equal panels', left, right, flush=True)
+
+# Exercise actual practice controls offline. Moving a stick must move the rover pixels.
+# No UDP, location, camera or live Enable/ARM is needed on this page.
+set_prefs('<string name="background">LIGHT</string><string name="accent">Blue</string>')
+_, items = screen('text', 'Setup ▾')
+# Navy is the label for the existing Blue preference, so upgrades retain selection.
+find(items, 'text', '✓ Navy')
+tap(find(items, 'text', 'Setup ▾'))
+_, items = screen('text', 'Test')
+tap(find(items, 'text', 'Test'))
+_, items = screen('text', 'Start practice')
+seed_before = next(n.attrib['text'] for n in items if n.attrib.get('text','').startswith('Maze '))
+maze_bounds=bounds(find(items,'content-desc','Offline maze, START at lower left, END at upper right'))
+before=Image.open(io.BytesIO(adb('exec-out','screencap','-p'))).convert('RGB').crop(maze_bounds)
+tap(find(items, 'text', 'Start practice'))
+# Do not dump an accessibility hierarchy while the active timer is updating.
+shell('input swipe 1294 376 1294 240 600')
+shell('input keyevent KEYCODE_HOME')
+time.sleep(.6)
+launch()
+_, items = screen('text', 'Resume')
+timer = next(n.attrib['text'] for n in items if n.attrib.get('text','').startswith('TIME · '))
+assert timer != 'TIME · 00:00.00', timer
+after=screenshot('practice-paused-after-background', 'LIGHT').crop(maze_bounds)
+assert sum(ImageStat.Stat(ImageChops.difference(before,after)).mean)>.05, 'Practice joystick did not move rover'
+# Backgrounding resets both sticks and requires explicit Resume.
+for description in ('Drive joystick, forward up and reverse down', 'Steering joystick, left and right'):
+    assert find(items, 'content-desc', description).attrib['enabled']=='false'
+tap(find(items, 'text', 'Retry maze'))
+_, items = screen('text', 'Start practice')
+find(items, 'text', 'TIME · 00:00.00')
+assert next(n.attrib['text'] for n in items if n.attrib.get('text','').startswith('Maze ')) == seed_before
+tap(find(items, 'text', 'Shuffle maze'))
+_, items = screen('text', 'Start practice')
+seed_after = next(n.attrib['text'] for n in items if n.attrib.get('text','').startswith('Maze '))
+assert seed_after != seed_before
+# A recorded clear is loaded from app storage and remains visible after a restart.
+shell(f'am force-stop {PKG}')
+record_xml = '<map><int name="seed" value="42"/><string name="records">42,12340,1792110000000</string></map>'
+encoded = base64.b64encode(record_xml.encode()).decode()
+shell(f'run-as {PKG} sh -c ' + shlex.quote(f'echo {encoded} | base64 -d > shared_prefs/maze_practice.xml'))
+for attempt in range(2):
+    launch()
+    _, items = screen('text', 'Setup ▾')
+    tap(find(items, 'text', 'Setup ▾'))
+    _, items = screen('text', 'Test')
+    tap(find(items, 'text', 'Test'))
+    _, items = screen('text', 'Start practice')
+    find(items, 'text', 'Maze 2a · Best 00:12.34')
+    tap(find(items, 'text', 'Clear times'))
+    _, items = screen('text', 'Clear times · latest 1')
+    assert any('00:12.34 · Maze 2a' in n.attrib.get('text','') for n in items)
+    shell(f'am force-stop {PKG}')
+print('NATIVE_UI_PASS offline start/background pause, neutral reset, retry, shuffle and record persistence', flush=True)
 
 # Large-font capture starts in Setup on the restored Light background.
 set_prefs('<string name="background">LIGHT</string>')
@@ -190,15 +259,16 @@ screen('text', 'Background · Light ▾')
 screenshot('large-font-light', 'LIGHT')
 shell('settings put system font_scale 1.0')
 shell(f'am force-stop {PKG}')
-# Eight native restored-color views in one compact review sheet; raw captures stay in evidence.
-sheet = Image.new('RGB', (1536, 1600), '#eaeef2')
+# Native theme views and Navy practice on one review sheet; raw captures stay in evidence.
+shots.extend(practice_shots)
+sheet = Image.new('RGB', (1536, 2400), '#eaeef2')
 draw = ImageDraw.Draw(sheet)
 for index, (name, shot) in enumerate(shots):
     x = index % 2 * 768
     y = index // 2 * 400
     draw.text((x+12, y+8), name, fill='#344256')
     sheet.paste(shot.resize((768, 360)), (x, y+30))
-sheet.save(OUT / 'classic-color-contact-sheet.png')
+sheet.save(OUT / 'navy-maze-contact-sheet.png')
 buffer = io.BytesIO()
 sheet.save(buffer, format='PNG')
 print('SETUP_REVIEW_PNG_BASE64=' + base64.b64encode(buffer.getvalue()).decode(), flush=True)

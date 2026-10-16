@@ -41,8 +41,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS }
+    private enum class Page { SETUP, CONTROLS, TEST }
     private var page = Page.SETUP
+    private var mazePractice: MazePractice? = null
+    private var mazeView: MazePracticeView? = null
+    private var practiceSteer: JoystickView? = null
+    private var practiceDrive: JoystickView? = null
     @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
     private val miniRoverMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
@@ -73,7 +77,7 @@ class MainActivity : Activity() {
     private var wantsLink = false
     private val reconnect = object : Runnable {
         override fun run() {
-            if (!resumed || !wantsLink) return
+            if (!resumed || !wantsLink || page == Page.TEST) return
             if (!connected.get()) start()
             reconnectHandler.postDelayed(this, 2000)
         }
@@ -204,10 +208,12 @@ class MainActivity : Activity() {
         }.apply()
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
+            "TEST" -> Page.TEST
             "CONTROLS" -> Page.CONTROLS
             else -> Page.SETUP
         }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        if (page == Page.TEST) goOfflineForPractice()
         render()
     }
     override fun onSaveInstanceState(outState: Bundle) {
@@ -221,6 +227,7 @@ class MainActivity : Activity() {
         disableControl()
         releaseMap()
         page = next
+        if (next == Page.TEST) goOfflineForPractice()
         val orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         requestedOrientation = orientation
         render()
@@ -247,8 +254,9 @@ class MainActivity : Activity() {
             PopupMenu(this, anchor).apply {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
+                menu.add(0, 3, 2, "Test")
                 setOnMenuItemClickListener { item ->
-                    switchTo(if (item.itemId == 2) Page.CONTROLS else Page.SETUP)
+                    switchTo(when (item.itemId) { 2 -> Page.CONTROLS; 3 -> Page.TEST; else -> Page.SETUP })
                     true
                 }
             }.show()
@@ -262,6 +270,9 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        mazeView?.pause(); mazeView = null
+        practiceSteer?.reset(); practiceDrive?.reset()
+        practiceSteer = null; practiceDrive = null
         hideLoRaKey()
         loraStatus = null
         loraRead = null; loraSave = null; loraOperate = null; loraLinkStatus = null
@@ -274,6 +285,7 @@ class MainActivity : Activity() {
         when (page) {
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
+            Page.TEST -> renderTest()
         }
         refreshUi()
     }
@@ -595,9 +607,9 @@ class MainActivity : Activity() {
         val choices = LinearLayout(this)
         val selected = appearance.getString("accent", "Blue")
         AppColors.names.forEachIndexed { index, name ->
-            choices.addView(button(if (selected == name) "✓ $name" else name, selected == name) {
+            choices.addView(button(if (selected == name) "✓ ${AppColors.label(name)}" else AppColors.label(name), selected == name) {
                 appearance.edit().putString("accent", name).apply(); render()
-            }.apply { textSize = 12f; contentDescription = "$name accent${if (selected == name) ", selected" else ""}" },
+            }.apply { textSize = 12f; contentDescription = "${AppColors.label(name)} accent${if (selected == name) ", selected" else ""}" },
                 LinearLayout.LayoutParams(0, -1, 1f).apply { if (index > 0) leftMargin = dp(4) })
         }
         row(preferences, choices)
@@ -646,11 +658,123 @@ class MainActivity : Activity() {
         slider("Steering sensitivity", 25, 100, draft.steeringPercent) { draft = draft.copy(steeringPercent = it) }
         slider("Drive sensitivity", 25, 100, draft.drivePercent) { draft = draft.copy(drivePercent = it) }
         slider("Expo", 0, 100, draft.expoPercent) { draft = draft.copy(expoPercent = it) }
-        content.addView(text("Sensitivity limits each axis. Expo softens both axes near center: 0% linear, 100% softest. Full-stick range stays the same. Applies to the live controls.", 12f, muted))
+        content.addView(text("Sensitivity limits each axis. Expo softens both axes near center: 0% linear, 100% softest. Full-stick range stays the same. Applies to live controls and offline Test practice.", 12f, muted))
         val scroll = ScrollView(this).apply { addView(content) }
         AlertDialog.Builder(this).setTitle("Control response").setView(scroll)
             .setPositiveButton("Apply") { _, _ -> ControlResponseStore.save(this, draft); render() }
             .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun goOfflineForPractice() {
+        wantsLink = false
+        reconnectHandler.removeCallbacks(reconnect)
+        getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+        // Existing handover sends neutral and disconnect on the captured session, then closes it.
+        // All future connection attempts (including late USB grants) are rejected on TEST.
+        stop(explicitDisconnect = true)
+    }
+
+    private fun renderTest() {
+        host=null; port=null; connect=null; status=null; enable=null
+        steeringStick=null; driveStick=null
+        val prefs=getSharedPreferences("maze_practice",MODE_PRIVATE)
+        val practice=mazePractice ?: MazePractice(MazeLayout.generate(prefs.getInt("seed",kotlin.random.Random.nextInt())))
+            .also { mazePractice=it; prefs.edit().putInt("seed",it.maze.seed).apply() }
+        val root=shell()
+        val scene=MazePracticeView(this,practice)
+        mazeView=scene
+        val timer=text("",14f,ink,true)
+        val detail=text("",10f,muted)
+        val start=button("Start practice") {}
+        fun update() {
+            timer.text="${if (practice.state==MazePractice.State.CLEARED) "CLEARED" else "TIME"} · ${MazeRecords.time(practice.elapsedMillis)}"
+            val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
+            val best=records.filter { it.seed==practice.maze.seed }.minOfOrNull { it.millis }
+            detail.text="Maze ${practice.maze.seed.toUInt().toString(16)} · Best ${best?.let { MazeRecords.time(it) } ?: "—"}"
+            start.text=when(practice.state) {
+                MazePractice.State.READY -> "Start practice"
+                MazePractice.State.RUNNING -> "Pause"
+                MazePractice.State.PAUSED -> "Resume"
+                MazePractice.State.CLEARED -> "Cleared ✓"
+            }
+            start.isEnabled=practice.state!=MazePractice.State.CLEARED
+            val running=practice.state==MazePractice.State.RUNNING
+            practiceSteer?.isEnabled=running; practiceDrive?.isEnabled=running
+        }
+        fun resetSticks() { practiceSteer?.reset(); practiceDrive?.reset() }
+        scene.onUpdate=::update
+        scene.onClear={ millis ->
+            val records=MazeRecords.add(MazeRecords.decode(prefs.getString("records","").orEmpty()),
+                MazeClear(practice.maze.seed,millis,System.currentTimeMillis()))
+            prefs.edit().putString("records",MazeRecords.encode(records)).apply()
+            update()
+        }
+        fun control(title:String,hint:String,vertical:Boolean,changed:(Int)->Unit): LinearLayout {
+            return card().apply {
+                setPadding(dp(8),dp(8),dp(8),dp(8))
+                addView(text(title,13f,ink,true))
+                val feedback=text("$hint · 1500",11f,muted)
+                addView(feedback)
+                val stick=JoystickView(this@MainActivity,vertical) { value ->
+                    changed(value); feedback.text="$hint · $value"
+                }
+                if(vertical) practiceDrive=stick else practiceSteer=stick
+                addView(stick,LinearLayout.LayoutParams(-1,0,1f))
+            }
+        }
+        val steerPanel=control("STEER","CH1 · left / right",false,practice::steering)
+        val drivePanel=control("DRIVE","CH2 · forward / reverse",true,practice::drive)
+        val center=card().apply {
+            setPadding(dp(8),dp(8),dp(8),dp(8))
+            addView(timer,LinearLayout.LayoutParams(-1,dp(22)))
+            addView(detail,LinearLayout.LayoutParams(-1,dp(18)))
+            addView(scene,LinearLayout.LayoutParams(-1,0,1f))
+            val actions=LinearLayout(this@MainActivity)
+            actions.addView(button("Shuffle maze",false) {
+                scene.pause(); resetSticks()
+                var seed=kotlin.random.Random.nextInt()
+                while(seed==practice.maze.seed) seed=kotlin.random.Random.nextInt()
+                mazePractice=MazePractice(MazeLayout.generate(seed))
+                prefs.edit().putInt("seed",seed).apply()
+                render()
+            }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f))
+            actions.addView(button("Retry maze",false) {
+                resetSticks(); practice.reset(); scene.changed()
+            }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f).apply { leftMargin=dp(4) })
+            addView(actions,LinearLayout.LayoutParams(-1,dp(36)).apply { topMargin=dp(4) })
+        }
+        val offline=text("OFFLINE",13f,accent,true).apply {
+            background=shape(softAccent,10)
+            contentDescription="Offline practice, rover disconnected"
+        }
+        val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        row.addView(controlColumn(pageDropdown("Test"),steerPanel),LinearLayout.LayoutParams(0,-1,1.6f).apply { rightMargin=dp(8) })
+        row.addView(center,LinearLayout.LayoutParams(0,-1,3.8f).apply { rightMargin=dp(8) })
+        row.addView(controlColumn(offline,drivePanel),LinearLayout.LayoutParams(0,-1,1.6f))
+        root.addView(row,LinearLayout.LayoutParams(-1,0,1f))
+        val footer=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        start.textSize=13f
+        start.setOnClickListener {
+            resetSticks()
+            if(practice.state==MazePractice.State.RUNNING) scene.pause() else practice.start()
+            scene.changed()
+        }
+        footer.addView(start,LinearLayout.LayoutParams(0,-1,1f))
+        footer.addView(text("OFFLINE · START → END",11f,muted,true),LinearLayout.LayoutParams(0,-1,1.5f))
+        footer.addView(button("Clear times",false) {
+            scene.pause(); resetSticks()
+            val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
+            val message=if(records.isEmpty()) "No clears yet. Drive from START to END to save your time."
+                else records.take(20).joinToString("\n\n") { record ->
+                    val date=java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(record.at))
+                    "${MazeRecords.time(record.millis)} · Maze ${record.seed.toUInt().toString(16)}\n$date"
+                }
+            AlertDialog.Builder(this).setTitle("Clear times · latest ${records.size}")
+                .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; compare best times on the same maze.")
+                .setPositiveButton("Done",null).show()
+        }.apply { textSize=13f },LinearLayout.LayoutParams(0,-1,1f))
+        root.addView(footer,LinearLayout.LayoutParams(-1,dp(42)).apply { topMargin=dp(8) })
+        update(); setContentView(root)
     }
 
     private fun renderControls() {
@@ -1080,7 +1204,7 @@ class MainActivity : Activity() {
         }
     }
     private fun start() {
-        if (connected.get()) return
+        if (page == Page.TEST || connected.get()) return
         val saved = getSharedPreferences("link", MODE_PRIVATE)
         val address = if (miniRoverMode) MiniRoverWifi.HOST else if (usbMode) "127.0.0.1" else
             (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
@@ -1323,7 +1447,7 @@ class MainActivity : Activity() {
     }
     private fun scheduleReconnect() {
         reconnectHandler.removeCallbacks(reconnect)
-        if (resumed && wantsLink) reconnectHandler.postDelayed(reconnect, 2000)
+        if (resumed && wantsLink && page != Page.TEST) reconnectHandler.postDelayed(reconnect, 2000)
     }
     private fun revokeExpiredControl(transport: LinkTransport) {
         val expired = synchronized(commandLock) {
@@ -1391,8 +1515,8 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; fpvCamera?.connectCamera() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onPause() { mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; fpvCamera?.connectCamera() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.close(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }

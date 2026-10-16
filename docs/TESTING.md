@@ -1,3 +1,11 @@
+# Navy / offline maze / 95% mini candidate
+
+Baseline app 0.8.62/code80 `bc7e983b88f2deea28aaf7c81e5ecffc159da949`; candidate 0.8.63/code81 + standalone mini 1.2.3. Scope, acceptance, installation and rollback: [NAVY_MAZE_063.md](NAVY_MAZE_063.md).
+
+A source/build: reviewed; local Android/actual ESP32 toolchains BLOCKED; cloud Android and six pinned ESP32-S3 builds REQUIRED. B behavior: maze generator/collision/timing/record and 95% PWM regressions plus native three-page lifecycle/theme checks REQUIRED. C regression: local host/profile/sync PASS; final cloud default sanitizers REQUIRED. D software integration: Android packets through mini parser REQUIRED; actual transport/driver integration NOT TESTED. E physical HIL/phone installation: BLOCKED; use the executable restrained-wheel sequence in the guide. F delivery: retained signer, code81, matching source/sketch/binaries/evidence/checksums and prerelease REQUIRED. A successful final workflow and BUILD_INFO supersede pending software statuses only. No physical/field/stable claim.
+
+Test disables auto-connect and disconnects live authority; returning to Controls needs explicit Connect. Practice motion/time is approximate and active-time based. The firmware 242/255 ceiling multiplies app sensitivity: Drive100 gives OUT242; Drive95 gives OUT229. Other driver profiles retain their old limits. Physical stop/current/supply validation remains pending. Next check: install on phone, verify offline isolation with raised wheels, and measure PWM/stop/recovery.
+
 # 0.8.62 color-only restoration
 
 Baseline: released 0.8.61/code79 `0428b6f08b895e53aeefc9c660a7fa1f4a54b900`. Color reference: pre-compact 0.8.58. Scope: original palette with slightly deeper shades, former Pastel-to-Light migration, no layout/control/firmware rollback. See CLASSIC_COLORS_062.md.

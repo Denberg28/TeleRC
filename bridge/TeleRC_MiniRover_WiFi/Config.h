@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "HardwareProfile.h"
 namespace config {
-constexpr char VERSION[]="1.2.2-mx1508-drive";
+constexpr char VERSION[]="1.2.3-mx1508-95pct";
 constexpr char WIFI_SSID[]="TeleRC-MiniRover";
 constexpr char WIFI_PASSWORD[]="telerc123";
 constexpr uint16_t UDP_PORT=14550;
@@ -10,9 +10,9 @@ constexpr uint8_t SYSTEM_ID=1, COMPONENT_ID=1;
 constexpr uint8_t GCS_SYSTEM_ID=255, GCS_COMPONENT_ID=190;
 constexpr uint32_t CONTROL_TIMEOUT_MS=500, PEER_TIMEOUT_MS=3000;
 constexpr uint32_t NEUTRAL_HOLD_MS=250, MOTOR_TICK_MS=5, REVERSAL_COAST_MS=30;
-// MX1508: allow full supply duty at full stick. Other profiles retain their cap.
+// MX1508: 95% maximum PWM (242/255 after rounding). Other profiles retain their cap.
 // The configured motor supply must not exceed the motor's voltage rating.
-constexpr uint8_t MAX_PWM=TELERC_DRIVER==1 ? 255 : 180;
+constexpr uint8_t MAX_PWM=TELERC_DRIVER==1 ? 242 : 180;
 constexpr int RC_DEADBAND_US=25;
 // TeleRC APK commands 1100..1900, not 1000..2000 at full stick.
 constexpr int RC_FULL_SCALE_US=400;

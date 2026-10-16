@@ -3,8 +3,8 @@
 #define TELERC_HOST_TEST 1
 #include "../TeleRC_MiniRover_WiFi/TeleRC_MiniRover_WiFi.ino"
 int main() {
-  // Only MX1508 receives the higher drive/steering limits in this release.
-  assert(config::MAX_PWM==(TELERC_DRIVER==1 ? 255 : 180));
+  // Only MX1508 receives the 95% drive/steering ceiling in this release.
+  assert(config::MAX_PWM==(TELERC_DRIVER==1 ? 242 : 180));
   assert(config::STEER_GAIN==(TELERC_DRIVER==1 ? 1.0f : 0.5f));
   assert(hardware::PWM_HZ==(TELERC_DRIVER==5 ? 10000 : 20000));
   for(unsigned i=0;i<4;++i) assert(config::MOTOR_DUTY_CAP[i]==config::MAX_PWM);
