@@ -1,6 +1,6 @@
-## 0.8.63 navy, offline Test and mini 95% output
+## 0.8.64 navy, offline Test and mini 95% output
 
-The Blue preference now displays as Navy. Open the page dropdown → Test for offline maze practice with the Controls joysticks, shuffle/retry and saved clear times. Test disconnects the live link and requires explicit Connect when returning. Mini rover 1.2.3 caps MX1508 PWM at 242/255; it must be flashed separately to apply that ceiling. App sensitivity still multiplies it. See [setup, acceptance and rollback](docs/NAVY_MAZE_063.md). Phone/rover HIL remains pending; prerelease only.
+The Blue preference now displays as Navy. Open the page dropdown → Test for offline maze practice with the Controls joysticks, shuffle/retry and saved clear times. Test disconnects the live link and requires explicit Connect when returning. Mini rover 1.2.3 caps MX1508 PWM at 242/255; it must be flashed separately to apply that ceiling. App sensitivity still multiplies it. See [setup, acceptance and rollback](docs/NAVY_MAZE_064.md). Phone/rover HIL remains pending; prerelease only.
 
 # TeleRC 0.8.62 — original colors, slightly deeper shades
 

@@ -28,8 +28,8 @@ def identity(apk):
 current, cert = identity(candidate)
 previous, old_cert = identity(baseline)
 assert current[0] == previous[0] == 'io.github.denberg28.telerc', 'Package changed'
-assert current[1:] == ('81', '0.8.63'), 'Unexpected candidate version'
-assert previous[1:] == ('80', '0.8.62'), 'Unexpected upgrade baseline'
+assert current[1:] == ('82', '0.8.64'), 'Unexpected candidate version'
+assert previous[1:] == ('81', '0.8.63'), 'Unexpected upgrade baseline'
 assert int(current[1]) > int(previous[1]), 'Non-increasing version code'
 assert cert == old_cert, 'Signing identity changed'
 permissions = run(tools / 'aapt', 'dump', 'permissions', candidate)
@@ -55,13 +55,13 @@ with zipfile.ZipFile(candidate) as archive:
 print('TeleRC navy and offline maze APK + mini firmware candidate')
 print('Source commit:', run('git', 'rev-parse', 'HEAD').strip())
 print('Package:', current[0], 'version:', current[2], 'code:', current[1])
-print('Signing continuity with 0.8.62: PASS')
+print('Signing continuity with 0.8.63: PASS')
 print('Certificate SHA-256:', ', '.join(cert))
 print('USB FPV permissions, APK ZIP and arm64 ELF 16 KB alignment: PASS')
 print('Android JVM regression, debug/release lint and builds: PASS (required preceding workflow steps)')
 print('Firmware host regression + ASan/UBSan: PASS (required preceding workflow steps)')
 ui_status = Path('app/build/ui-evidence/STATUS.txt').read_text().strip()
-assert ui_status.startswith(('PASS:', 'BLOCKED:')), 'Native UI check failed'
+assert ui_status.startswith('PASS:'), 'Native UI check failed'
 print('Native Android emulator:', ui_status)
 print('Android packets -> actual MiniRover parser: PASS (required preceding workflow step)')
 print('Mini firmware: 1.2.3-mx1508-95pct, 242/255 ceiling for MX1508; other profiles retain 180')

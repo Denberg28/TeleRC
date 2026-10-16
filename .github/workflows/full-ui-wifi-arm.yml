@@ -66,6 +66,8 @@ jobs:
           for profile in '2' '3' '4 -DTELERC_SUPPLY_MAX_MV=6000 -DTELERC_BTS_LOGIC_VERIFIED=1' '5'; do
             arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property "compiler.cpp.extra_flags=-DTELERC_DRIVER=$profile" bridge/TeleRC_MiniRover_WiFi 2>&1 | tee "app/build/firmware-evidence/profile-${profile%% *}.txt"
           done
+      - name: Reclaim completed toolchains before emulator image download
+        run: python3 scripts/reclaim-ui-runner.py
       - name: Enable emulator KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -96,24 +98,22 @@ jobs:
           mkdir -p app/build/ui-evidence
           if [ "$UI_OUTCOME" = success ]; then
             echo "PASS: 12 Setup, Controls and Test variants; practice pause/retry/shuffle/background; record persistence; upgrade and geometry" > app/build/ui-evidence/STATUS.txt
-          elif [ -f app/build/ui-evidence/ATTEMPT_STARTED.txt ]; then
-            echo "FAIL: native app capture or layout assertion failed" > app/build/ui-evidence/STATUS.txt
-            exit 1
           else
-            echo "BLOCKED: cloud emulator startup; no native visual acceptance claimed" > app/build/ui-evidence/STATUS.txt
+            echo "FAIL: native UI qualification did not complete; startup and app checks are required" > app/build/ui-evidence/STATUS.txt
+            exit 1
           fi
       - name: Verify signer, upgrade identity and package
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.63.apk
-          gh release download v0.8.62 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.62.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
-          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.63.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
-          git archive --format=zip --output=deliverables/TeleRC-v0.8.63-source.zip HEAD
-          cp docs/NAVY_MAZE_063.md deliverables/START_HERE.md
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.64.apk
+          gh release download v0.8.63 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.63.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.64.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          git archive --format=zip --output=deliverables/TeleRC-v0.8.64-source.zip HEAD
+          cp docs/NAVY_MAZE_064.md deliverables/START_HERE.md
           (cd app/build && zip -r "$RUNNER_TEMP/evidence.zip" reports test-results mini-rover-interop ui-evidence firmware-evidence)
-          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.63-build-evidence.zip
+          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.64-build-evidence.zip
           cp -R bridge/TeleRC_MiniRover_WiFi deliverables/
           (cd deliverables && zip -r TeleRC-MiniRover-MX1508-v1.2.3-sketch.zip TeleRC_MiniRover_WiFi START_HERE.md BUILD_INFO.txt)
           (cd deliverables && zip -r TeleRC-MiniRover-MX1508-v1.2.3-firmware.zip TeleRC_MiniRover_WiFi firmware START_HERE.md BUILD_INFO.txt)
@@ -126,6 +126,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd deliverables
-          gh release create v0.8.63 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.63 — dark navy, offline maze practice and 95% MX1508 output" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
+          gh release create v0.8.64 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.64 — dark navy, offline maze practice and 95% MX1508 output" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"
