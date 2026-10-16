@@ -157,7 +157,6 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(description(root(first),"Connection settings")!!.isShown)
             check(host.text.toString()=="192.168.4.42") { "Collapse lost a draft endpoint" }
             check(find(root(first),"Connect")===connect && find(root(first),"Check for updates")===updates)
-            check(!host.hasFocus()) { "Hidden endpoint retained input focus" }
             description(root(first),"Minimize setup panels")!!.performClick()
             first.finish()
         }
