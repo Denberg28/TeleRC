@@ -1,3 +1,7 @@
+# Skydroid USB FPV fix — 0.8.66 test build
+
+USB video attachment registration now allows Android to offer TeleRC as a default handler; cold/warm USB launches open FPV with control disabled. Hold Connect FPV for receiver VID/PID, interfaces and permissions. No USB enumeration and connected non-UVC devices have distinct messages. See [setup, evidence, phone checks and rollback](SKYDROID_FPV_066.md). Firmware unchanged. Phone/Skydroid HIL remains BLOCKED; this is a review/test artifact, no stable promotion.
+
 # Readable maze rover 0.8.65
 
 Baseline stable 0.8.64/code82; candidate 0.8.65/code83. [Scope, A–F gates, acceptance and rollback](READABLE_ROVER_065.md). Thin wall drawing and collision share rectangles; the larger oriented rover uses the earlier top-view design. Old records remain Classic; new geometry has separate best times. Required cloud Android/native/host/sanitizer/parser/signing/package checks remain pending until the final workflow succeeds. Phone readability and physical HIL remain BLOCKED. App-only: firmware unchanged, no affected ESP32 target. Latest stable 0.8.64 stays retained. Next check: phone upgrade and four-direction/reverse/wall-contact practice in all backgrounds.

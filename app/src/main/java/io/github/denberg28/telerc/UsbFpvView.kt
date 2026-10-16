@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.SurfaceTexture
-import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Handler
@@ -91,11 +90,14 @@ class UsbFpvView(context: Context) : FrameLayout(context) {
     fun connectCamera() {
         if (!foreground || context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
         close()
-        val devices = (context.getSystemService(Context.USB_SERVICE) as UsbManager).deviceList.values
-            .filter(::isVideoDevice).sortedBy { it.deviceName }
+        val attached = (context.getSystemService(Context.USB_SERVICE) as UsbManager).deviceList.values.toList()
+        val devices = attached.filter(::isVideoDevice).sortedBy { it.deviceName }
         if (devices.size != 1) {
-            showMessage(if (devices.isEmpty()) "No USB UVC receiver found · check Type-C OTG and receiver power"
-                else "Multiple UVC devices found · leave one FPV receiver connected")
+            showMessage(when {
+                attached.isEmpty() -> "Android sees no USB device · enable OTG, check data cable / receiver power, then reconnect"
+                devices.isEmpty() -> "USB connected, but no UVC video interface · hold Connect FPV for receiver details"
+                else -> "Multiple UVC receivers found · leave one connected, then retry"
+            })
             return
         }
         selected = devices.single()
@@ -142,7 +144,7 @@ class UsbFpvView(context: Context) : FrameLayout(context) {
                 }
                 override fun onError(device: UsbDevice, error: CameraException) = current(device) {
                     close()
-                    showMessage("FPV receiver could not open · check UVC compatibility / reconnect USB")
+                    showMessage("FPV receiver could not open · close other USB camera apps and reconnect; hold Connect FPV for details")
                 }
             })
             camera.selectDevice(devices.single())
@@ -207,7 +209,24 @@ class UsbFpvView(context: Context) : FrameLayout(context) {
     }
 
     companion object {
-        fun isVideoDevice(device: UsbDevice): Boolean = device.deviceClass == UsbConstants.USB_CLASS_VIDEO ||
-            (0 until device.interfaceCount).any { device.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_VIDEO }
+        fun isVideoDevice(device: UsbDevice): Boolean = UsbVideoPolicy.isVideo(
+            device.deviceClass, (0 until device.interfaceCount).map { device.getInterface(it).interfaceClass })
+
+        fun usbDiagnosis(context: Context): String {
+            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+            val devices = manager.deviceList.values.sortedBy { it.deviceName }.take(8)
+            val cameraGranted = context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            val details = devices.joinToString("\n\n") { device ->
+                val classes = (0 until device.interfaceCount).map { device.getInterface(it).interfaceClass }
+                "VID:PID %04X:%04X".format(java.util.Locale.US, device.vendorId, device.productId) +
+                    " · class ${device.deviceClass} · interfaces ${classes.joinToString()}" +
+                    "\nUVC: ${isVideoDevice(device)} · USB permission: ${manager.hasPermission(device)}"
+            }
+            return "Camera permission: $cameraGranted\nUSB devices: ${manager.deviceList.size}\n\n" +
+                details.ifEmpty { "Android has not enumerated a USB device. Check OTG, a data-capable cable and receiver power." } +
+                "\n\nIf another camera app opens automatically, clear that app's Open by default settings, " +
+                "then unplug/replug and select TeleRC. Close other USB camera apps before connecting. " +
+                "A default-app selection does not prove video-format compatibility."
+        }
     }
 }
