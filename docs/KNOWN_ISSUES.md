@@ -1,3 +1,7 @@
+# Clear wallpaper and collapsible Setup — 0.8.73 test build
+
+Removes the 53% wallpaper tint on all tabs and the rectangular joystick-panel fills in Controls/Test. Setup **− / +** hides/restores both panels, keeping the existing connection/update controls in the bottom corners and preserving draft inputs/state. Practice popups are sized/centered before opening with no window animation. [Scope, gates, phone checks and rollback](WALLPAPER_SETUP_073.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software results; physical phone/OEM/HIL checks remain BLOCKED. No stable promotion.
+
 # Flat Test popups — 0.8.72 test build
 
 Restart, Levels and Market now use small headings, flat rows, quiet dividers and short text actions. Market has Vehicles/Colors tabs, smaller previews and a compact balance; restart drops the boxed statistics and long instructions. All actions retain 48 dp touch targets. [Scope, A–F gates, phone checks and rollback](MAZE_DIALOGS_072.md). Gameplay, wallet/prices, FPV/photo and firmware retained; no reflash. Final workflow/BUILD_INFO supplies software evidence; phone/HIL remains BLOCKED. No stable promotion.

@@ -44,11 +44,14 @@ class ThemeImageInstrumentation : Instrumentation() {
             excessive.delete()
             for (theme in listOf("LIGHT", "SEPIA", "DARK")) {
                 app.getSharedPreferences("appearance", 0).edit().putString("background", theme).commit()
-                val activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                var activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 waitUntil { onMain { root(activity).background is ThemeImageDrawable } }
+                checkWallpaper(activity)
                 screenshot("photo-${theme.lowercase()}-setup.png")
+                activity = checkSetupCollapse(activity,theme)
                 onMain { find(root(activity), "Controls ›")!!.performClick() }
                 waitUntil { onMain { root(activity).background is ThemeImageDrawable && find(root(activity), "Connect FPV") != null } }
+                checkWallpaper(activity); checkJoystickPanels(activity)
                 screenshot("photo-${theme.lowercase()}-controls.png")
                 onMain { find(root(activity), "Connect FPV")!!.performLongClick() }
                 waitUntil { dismissLauncherAnr(); videoOption() != null }
@@ -56,6 +59,16 @@ class ThemeImageInstrumentation : Instrumentation() {
                 while (!option.isClickable && option.parent != null) option = option.parent
                 check(option.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
                 waitUntil { app.getSharedPreferences("fpv", 0).getString("mode", "") == "YUYV" }
+                onMain { find(root(activity),"Controls ▾")!!.performClick() }
+                waitUntil { windowText("Test")!=null }; clickWindow("Test")
+                waitUntil { onMain { findMaze(root(activity))!=null } }
+                checkWallpaper(activity); checkJoystickPanels(activity)
+                screenshot("photo-${theme.lowercase()}-test.png")
+                onMain { find(root(activity),"Test ▾")!!.performClick() }
+                waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
+                waitUntil { onMain { description(root(activity),"Show setup panels")!=null } }
+                checkSetupCorners(activity)
+                onMain { description(root(activity),"Show setup panels")!!.performClick() }
                 onMain { activity.finish() }
                 waitForIdleSync()
                 check(ThemeImageStore.exists(app)) { "Background did not persist across activity restart" }
@@ -69,13 +82,109 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer; PASS: wallpaper fidelity on all tabs, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
         }
+    }
+    private fun checkWallpaper(activity:Activity) {
+        waitUntil { onMain { root(activity).width>0 && root(activity).height>0 && !root(activity).isLayoutRequested } }
+        onMain {
+            val view=root(activity)
+            val bitmap=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
+            view.background.draw(android.graphics.Canvas(bitmap))
+            // The two imported flat colors must survive every theme/tab without a scrim.
+            for((fraction,expected) in listOf(.25f to Color.rgb(230,80,60),.75f to Color.rgb(40,160,210))) {
+                val actual=bitmap.getPixel((view.width*fraction).toInt(),view.height/2)
+                check(abs(Color.red(actual)-Color.red(expected))<=4 && abs(Color.green(actual)-Color.green(expected))<=4 &&
+                    abs(Color.blue(actual)-Color.blue(expected))<=4) { "Wallpaper is tinted: $actual vs $expected" }
+            }
+            bitmap.recycle()
+        }
+    }
+    private fun checkJoystickPanels(activity:Activity) = onMain {
+        fun sticks(view:View):List<JoystickView> = if(view is JoystickView) listOf(view) else if(view is ViewGroup)
+            (0 until view.childCount).flatMap { sticks(view.getChildAt(it)) } else emptyList()
+        val inputs=sticks(root(activity))
+        check(inputs.size==2)
+        for(input in inputs) {
+            val panel=input.parent as View
+            val bitmap=Bitmap.createBitmap(panel.width,panel.height,Bitmap.Config.ARGB_8888)
+            panel.draw(android.graphics.Canvas(bitmap))
+            check(Color.alpha(bitmap.getPixel(1,1))==0) { "Joystick rectangle is opaque" }
+            bitmap.recycle()
+        }
+    }
+    private fun checkSetupCorners(activity:Activity) {
+        waitUntil { onMain { !root(activity).isLayoutRequested && find(root(activity),"Connect")?.isShown==true &&
+            find(root(activity),"Connect")!!.height>0 && description(root(activity),"Connection settings")?.isShown==false &&
+            description(root(activity),"Preferences")?.isShown==false } }
+        onMain {
+            val view=root(activity)
+            val connect=find(view,"Connect")!!
+            val updates=find(view,"Check for updates")!!
+            fun bounds(v:View)=android.graphics.Rect().also { check(v.getGlobalVisibleRect(it)) }
+            val parent=bounds(view); val left=bounds(connect); val right=bounds(updates)
+            val tolerance=2*activity.resources.displayMetrics.density
+            check(abs(left.left-(parent.left+view.paddingLeft))<=tolerance)
+            check(abs(right.right-(parent.right-view.paddingRight))<=tolerance)
+            check(abs(left.bottom-(parent.bottom-view.paddingBottom))<=tolerance && left.bottom==right.bottom)
+            check(connect.hasOnClickListeners() && updates.hasOnClickListeners())
+            check(left.height()>=48*activity.resources.displayMetrics.density-1 && right.height()>=48*activity.resources.displayMetrics.density-1)
+            check(!targetContext.getSharedPreferences("link",0).getBoolean("auto_connect",false))
+        }
+    }
+    private fun checkSetupCollapse(first:Activity,theme:String):Activity {
+        val connect=onMain { find(root(first),"Connect")!! }
+        val updates=onMain { find(root(first),"Check for updates")!! }
+        val host=onMain { description(root(first),"Bridge IPv4 address") as TextView }
+        onMain {
+            host.text="192.168.4.42"
+            description(root(first),"Minimize setup panels")!!.performClick()
+        }
+        checkSetupCorners(first)
+        screenshot("setup-${theme.lowercase()}-minimized.png")
+        onMain {
+            check(find(root(first),"Connect")===connect && find(root(first),"Check for updates")===updates)
+            description(root(first),"Show setup panels")!!.performClick()
+            check(description(root(first),"Connection settings")!!.isShown)
+            check(host.text.toString()=="192.168.4.42") { "Collapse lost a draft endpoint" }
+            check(find(root(first),"Connect")===connect && find(root(first),"Check for updates")===updates)
+            description(root(first),"Minimize setup panels")!!.performClick()
+            first.finish()
+        }
+        waitForIdleSync()
+        val restored=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitUntil { onMain { root(restored).background is ThemeImageDrawable && description(root(restored),"Show setup panels")!=null } }
+        checkSetupCorners(restored); checkWallpaper(restored)
+        return restored
+    }
+    private fun checkPopupStable(activity:Activity,dialog:android.app.Dialog) {
+        fun bounds() = onMain {
+            val decor=dialog.window!!.decorView
+            val xy=IntArray(2); decor.getLocationOnScreen(xy)
+            android.graphics.Rect(xy[0],xy[1],xy[0]+decor.width,xy[1]+decor.height)
+        }
+        waitUntil { onMain { dialog.window!!.decorView.width>0 } }
+        val first=bounds()
+        onMain {
+            val window=dialog.window!!; val attributes=window.attributes
+            check(attributes.gravity==android.view.Gravity.CENTER && attributes.x==0 && attributes.y==0 && attributes.windowAnimations==0)
+            val decor=activity.window.decorView; val xy=IntArray(2); decor.getLocationOnScreen(xy)
+            val tolerance=4*activity.resources.displayMetrics.density
+            check(abs(first.exactCenterX()-(xy[0]+decor.width/2f))<=tolerance) { "Popup is horizontally off center" }
+            check(abs(first.exactCenterY()-(xy[1]+decor.height/2f))<=tolerance) { "Popup is vertically off center" }
+        }
+        SystemClock.sleep(350)
+        check(bounds()==first) { "Popup moved after opening" }
+    }
+    private fun description(view:View,value:String):View? {
+        if(view.contentDescription?.toString()==value) return view
+        if(view is ViewGroup) for(i in 0 until view.childCount) description(view.getChildAt(i),value)?.let { return it }
+        return null
     }
     private fun checkMazeLevels() {
         val prefs=targetContext.getSharedPreferences("maze_practice",0)
@@ -256,11 +365,17 @@ class ThemeImageInstrumentation : Instrumentation() {
                 targetContext.getSharedPreferences("appearance",0).edit().putString("background",theme).commit()
                 val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 waitForIdleSync()
+                waitUntil { onMain { root(activity).background is ThemeImageDrawable } }
+                onMain { description(root(activity),"Minimize setup panels")!!.performClick() }
+                checkSetupCorners(activity)
+                screenshot("setup-${theme.lowercase()}-large-minimized.png")
+                onMain { description(root(activity),"Show setup panels")!!.performClick() }
                 var chosen=0
                 val levels=onMain { MazePracticeDialogs(activity).levels(MazeProgress.restore(1,20),
                     listOf(MazeClear(37,65430,1000,3,1))) { chosen=it } }
                 waitUntil { windowText("20/20")!=null }
                 checkDialogButton(activity,levels,"Done")
+                checkPopupStable(activity,levels)
                 screenshot("dialogs-${theme.lowercase()}-levels.png")
                 showMarketItem("Level 20"); clickWindow("Level 20")
                 waitUntil { onMain { chosen==20 } }
@@ -268,6 +383,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                 val restart=onMain { MazePracticeDialogs(activity).restart(20,75640,3) { restarted=true } }
                 waitUntil { windowText("Restart level 20?")!=null }
                 checkDialogButton(activity,restart,"Restart level")
+                checkPopupStable(activity,restart)
                 screenshot("dialogs-${theme.lowercase()}-restart.png")
                 clickWindow("Restart level")
                 waitUntil { onMain { restarted } }
@@ -277,6 +393,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                 val market=onMain { MazePracticeDialogs(activity).market({ wallet }) { wallet=it } }
                 waitUntil { windowText("35 coins")!=null }
                 checkDialogButton(activity,market,"Done")
+                checkPopupStable(activity,market)
                 checkDialogButton(activity,market,"Vehicles")
                 showMarketItem("Buy Rally · 20")
                 screenshot("dialogs-${theme.lowercase()}-market-vehicles.png")

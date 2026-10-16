@@ -1,3 +1,7 @@
+# Clear photo and Setup presentation — 0.8.73
+
+`ThemeImageDrawable` draws the private center-cropped photo without a theme scrim. Only the outer stick panels lose their fill/border; round pad rendering/input and central surfaces are retained. Setup persists `appearance.setup_minimized`, moves its existing connection/update button views between settings and bottom corners, and keeps hidden settings attached so toggles preserve draft text/session state. Header navigation and the restore control stay reachable. Practice windows are configured before show, centered and unanimated; no post-show resize. [Evidence and acceptance](WALLPAPER_SETUP_073.md).
+
 # Flat Test presentation — 0.8.72
 
 `MazePracticeDialogs` now also owns the Market shell and tabbed cosmetic catalog. Levels, mandatory restart and Market share flat styling, visible-window caps, small fixed headers/actions and scrolling bodies. MainActivity supplies wallet reads/writes and retains the pause/reset/selection callbacks; no model or persistence changes. Accessible purchase labels include the item and price while visual labels stay short. See [gates and acceptance](MAZE_DIALOGS_072.md).

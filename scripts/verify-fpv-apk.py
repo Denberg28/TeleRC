@@ -26,7 +26,7 @@ def identity(apk):
 
 current, signer = identity(candidate)
 previous, old_signer = identity(baseline)
-assert current == ('io.github.denberg28.telerc', '90', '0.8.72'), current
+assert current == ('io.github.denberg28.telerc', '91', '0.8.73'), current
 assert previous[0] == current[0] and int(previous[1]) < int(current[1])
 assert signer == old_signer, 'Signing continuity failed'
 manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManifest.xml')
@@ -54,7 +54,7 @@ assert not any(p in permissions for p in ('RECORD_AUDIO', 'MANAGE_EXTERNAL_STORA
 run(build_tools / 'zipalign', '-c', '-P', '16', '4', candidate)
 with zipfile.ZipFile(candidate) as archive:
     assert archive.testzip() is None, 'APK CRC failure'
-print('TeleRC 0.8.72/code90 flat practice dialogs test build')
+print('TeleRC 0.8.73/code91 clear wallpaper and collapsible Setup test build')
 print('Source:', os.environ['GITHUB_SHA'])
 print('JVM, debug/release lint/build, host regression and full sanitizers: PASS (preceding required steps)')
 print('Compiled USB video attach intent/metadata/class filter/singleTop: PASS')
@@ -63,6 +63,8 @@ assert 'PASS: native maze' in Path('app/build/photo-evidence/result.txt').read_t
 assert 'PASS: persistent red bump pixels' in Path('app/build/photo-evidence/result.txt').read_text()
 assert 'PASS: native market' in Path('app/build/photo-evidence/result.txt').read_text()
 assert 'PASS: flat practice dialogs' in Path('app/build/photo-evidence/result.txt').read_text()
+assert 'PASS: wallpaper fidelity' in Path('app/build/photo-evidence/result.txt').read_text()
+print('Native unmodified wallpaper pixels on all tabs, transparent joystick corners, Setup collapse/restore/draft/persistence/corner actions and stable centered popups: PASS')
 print('Native flat Levels/restart/Market, three themes, large font, tabs/purchases, selection/reset and version footer: PASS')
 print('Native Market buy/equip, insufficient funds, coin collection and wallet persistence: PASS')
 print('Native red impact pixels, no fade after pause/delay, reset removal: PASS')

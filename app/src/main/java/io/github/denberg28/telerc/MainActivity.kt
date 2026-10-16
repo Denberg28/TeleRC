@@ -156,6 +156,7 @@ class MainActivity : Activity() {
     private lateinit var updater: AppUpdater
     private var endpoint: InetAddress? = null
     private var endpointPort = 0
+    private val setupMinimized get() = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("setup_minimized", false)
     private val darkTheme get() = AppColors.theme(this) == BackgroundTheme.DARK
     private val ink get() = AppColors.ink(this)
     private val muted get() = AppColors.muted(this)
@@ -186,6 +187,10 @@ class MainActivity : Activity() {
             shape(Color.WHITE, 10))
         setOnClickListener { action() }
     }
+    private fun joystickLabel(value: String, size: Float, color: Int, bold: Boolean = false) = text(value, size, color, bold).apply {
+        // Local edge contrast keeps labels legible over photos without filling the panel.
+        setShadowLayer(dp(2).toFloat(), 0f, 0f, if (darkTheme) Color.BLACK else Color.WHITE)
+    }
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
         background = shape(surface, 14).apply { setStroke(dp(1), AppColors.outline(this@MainActivity)) }; elevation = 0f
@@ -203,7 +208,11 @@ class MainActivity : Activity() {
             if (session.length() <= 16_000_000L)
                 route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() })
         } catch (_: Exception) {}
-        updater = AppUpdater(this) { updateStatus?.text = it }
+        updater = AppUpdater(this) { message ->
+            updateStatus?.text = message
+            if (page == Page.SETUP && setupMinimized && !isFinishing && !isDestroyed)
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
         // Dedicated ARM/DISARM replaces the former Servo button. F1-F3 remain
         // exclusively available for external servo output assignments.
         val servoPrefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
@@ -270,7 +279,7 @@ class MainActivity : Activity() {
     private fun shell(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         currentShell = this
-        background = themeBitmap?.let { ThemeImageDrawable(it, pale) } ?: android.graphics.drawable.ColorDrawable(pale)
+        background = themeBitmap?.let { ThemeImageDrawable(it) } ?: android.graphics.drawable.ColorDrawable(pale)
         setPadding(dp(8), dp(6), dp(8), dp(6))
         setOnApplyWindowInsetsListener { view, insets ->
             val left: Int; val top: Int; val right: Int; val bottom: Int
@@ -562,7 +571,9 @@ class MainActivity : Activity() {
         header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(112), -1))
         header.addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 12f, muted), LinearLayout.LayoutParams(0, -1, 1f))
         header.addView(button("Controls ›", false) { switchTo(Page.CONTROLS) }, LinearLayout.LayoutParams(dp(112), -1))
-        panel.addView(header, LinearLayout.LayoutParams(-1, height(40)).apply { bottomMargin = dp(8) })
+        val collapse = button("−", false) {}.apply { textSize = 20f }
+        header.addView(collapse, 2, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(6) })
+        root.addView(header, LinearLayout.LayoutParams(-1, height(48)).apply { bottomMargin = dp(8) })
 
         val wide = resources.configuration.screenWidthDp >= 600
         val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
@@ -666,7 +677,8 @@ class MainActivity : Activity() {
         row(preferences, button("Control response ›", false) { showControlResponse() })
         val response = ControlResponseStore.read(this)
         row(preferences, text("Steer ${response.steeringPercent}% · Drive ${response.drivePercent}% · Expo ${response.expoPercent}%", 12f, muted), 32)
-        row(preferences, button("Check for updates", false) { updater.check() }, 36)
+        val checkUpdates = button("Check for updates", false) { updater.check() }
+        row(preferences, checkUpdates, 36)
         body.addView(connection, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f).apply {
             if (wide) rightMargin = dp(8) else bottomMargin = dp(8)
         })
@@ -675,7 +687,38 @@ class MainActivity : Activity() {
         updateStatus = text("", 11f, muted).apply { maxLines = 2 }
         panel.addView(updateStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         viewport.addView(centered, FrameLayout.LayoutParams(-1, -2))
-        root.addView(viewport, LinearLayout.LayoutParams(-1, -1))
+        root.addView(viewport, LinearLayout.LayoutParams(-1, 0, 1f))
+        val corners = LinearLayout(this).apply { gravity = Gravity.BOTTOM }
+        val spacer = View(this)
+        corners.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
+        root.addView(corners, LinearLayout.LayoutParams(-1, height(48)))
+        val connectIndex = connection.indexOfChild(connect)
+        val connectLayout = connect!!.layoutParams as LinearLayout.LayoutParams
+        val updatesIndex = preferences.indexOfChild(checkUpdates)
+        val updatesLayout = checkUpdates.layoutParams as LinearLayout.LayoutParams
+        fun setMinimized(minimized: Boolean) {
+            (connect!!.parent as? android.view.ViewGroup)?.removeView(connect)
+            (checkUpdates.parent as? android.view.ViewGroup)?.removeView(checkUpdates)
+            if (minimized) {
+                // Shared views/listeners/state: collapsing never reconnects or loses draft inputs.
+                corners.addView(connect, 0, LinearLayout.LayoutParams(dp(176), -1).apply { rightMargin = dp(8) })
+                corners.addView(checkUpdates, LinearLayout.LayoutParams(dp(176), -1).apply { leftMargin = dp(8) })
+            } else {
+                connection.addView(connect, connectIndex, connectLayout)
+                preferences.addView(checkUpdates, updatesIndex, updatesLayout)
+            }
+            viewport.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
+            corners.visibility = if (minimized) View.VISIBLE else View.GONE
+            collapse.text = if (minimized) "+" else "−"
+            collapse.contentDescription = if (minimized) "Show setup panels" else "Minimize setup panels"
+            collapse.tooltipText = collapse.contentDescription
+            refreshUi()
+        }
+        collapse.setOnClickListener {
+            appearance.edit().putBoolean("setup_minimized", !setupMinimized).apply()
+            setMinimized(setupMinimized)
+        }
+        setMinimized(setupMinimized)
         setContentView(root)
     }
 
@@ -803,9 +846,10 @@ class MainActivity : Activity() {
         levels.setOnLongClickListener { chooseLevel(); true }
         fun control(title:String,hint:String,vertical:Boolean,changed:(Int)->Unit): LinearLayout {
             return card().apply {
+                background=null
                 setPadding(dp(8),dp(8),dp(8),dp(8))
-                addView(text(title,13f,ink,true))
-                val feedback=text("$hint · 1500",11f,muted)
+                addView(joystickLabel(title,13f,ink,true))
+                val feedback=joystickLabel("$hint · 1500",11f,muted)
                 addView(feedback)
                 val stick=JoystickView(this@MainActivity,vertical) { value ->
                     changed(value); feedback.text="$hint · $value"
@@ -874,9 +918,10 @@ class MainActivity : Activity() {
         fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
             val panel = card().apply {
+                background = null
                 setPadding(dp(8), dp(8), dp(8), dp(8))
-                addView(text(title, 13f, ink, true).apply { gravity = Gravity.CENTER })
-                val feedback = text("$hint  ·  1500", 11f, muted).apply { gravity = Gravity.CENTER }
+                addView(joystickLabel(title, 13f, ink, true))
+                val feedback = joystickLabel("$hint  ·  1500", 11f, muted)
                 addView(feedback)
                 stick = JoystickView(this@MainActivity, vertical) { value ->
                     if (controlEnabled.get() || value == 1500) {
@@ -1012,7 +1057,7 @@ class MainActivity : Activity() {
     }
 
     private fun applyThemeImage() {
-        currentShell?.background = themeBitmap?.let { ThemeImageDrawable(it, pale) } ?: android.graphics.drawable.ColorDrawable(pale)
+        currentShell?.background = themeBitmap?.let { ThemeImageDrawable(it) } ?: android.graphics.drawable.ColorDrawable(pale)
     }
     private fun chooseThemeImage() {
         if (imageWork) return
@@ -1264,7 +1309,16 @@ class MainActivity : Activity() {
             controlEnabled.get() -> "SYSTEM $target  •  CONTROL ON"
             else -> "SYSTEM $target  •  LINK ACTIVE"
         }
-        connect?.text = if (wantsLink) "Disconnect" else "Connect"
+        val compact = page == Page.SETUP && setupMinimized
+        connect?.text = if (compact) when {
+            wantsLink && linkFresh() -> "Connected"
+            wantsLink && connected.get() -> "Waiting for rover…"
+            wantsLink -> "Connecting…"
+            else -> "Connect"
+        } else if (wantsLink) "Disconnect" else "Connect"
+        connect?.contentDescription = if (compact && wantsLink)
+            "${connect?.text}; tap to disconnect. ${status?.text.orEmpty()}" else connect?.text
+        connect?.tooltipText = if (wantsLink) "Disconnect" else "Connect"
         enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
         armButton?.apply { text = armCaption(); isEnabled = linkFresh() && vehicleArmed != null }

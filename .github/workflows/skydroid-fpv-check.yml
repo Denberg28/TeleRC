@@ -1,4 +1,4 @@
-name: Flat practice dialogs review build
+name: Wallpaper and Setup review build
 on:
   push:
     branches: ['fix/maze-dialogs-*']
@@ -17,7 +17,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_REF_NAME&per_page=20" --jq '.workflow_runs[] | select(.name == "Flat practice dialogs review build" and .id < '${{ github.run_id }}' and .status != "completed") | .id' | while read -r run_id; do
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_REF_NAME&per_page=20" --jq '.workflow_runs[] | select(.name == "Wallpaper and Setup review build" and .id < '${{ github.run_id }}' and .status != "completed") | .id' | while read -r run_id; do
             gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
           done
       - uses: actions/checkout@v4
@@ -68,10 +68,10 @@ jobs:
         run: |
           gh release download v0.8.64 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.64.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.72-Maze-dialogs-test.apk
-          python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.72-Maze-dialogs-test.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
-          cp docs/MAZE_DIALOGS_072.md deliverables/START_HERE.md
-          git archive --format=zip -o deliverables/TeleRC-v0.8.72-source.zip HEAD
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.73-Wallpaper-test.apk
+          python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.73-Wallpaper-test.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          cp docs/WALLPAPER_SETUP_073.md deliverables/START_HERE.md
+          git archive --format=zip -o deliverables/TeleRC-v0.8.73-source.zip HEAD
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
@@ -79,9 +79,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          zip -qr deliverables/TeleRC-v0.8.72-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-* app/build/photo-evidence
+          zip -qr deliverables/TeleRC-v0.8.73-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-* app/build/photo-evidence
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
-          gh release create maze-dialogs-review-v0.8.72 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "TeleRC 0.8.72 — flat practice dialogs test build (draft)" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+          gh release create wallpaper-setup-review-v0.8.73 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "TeleRC 0.8.73 — clear wallpaper and collapsible Setup test build (draft)" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt

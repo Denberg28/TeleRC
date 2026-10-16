@@ -61,7 +61,9 @@ internal class MazePracticeDialogs(private val activity:Activity) {
         val scroll=ScrollView(activity).apply { isFillViewport=false; addView(body) }
         root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         dialog.setContentView(root)
-        dialog.setOnShowListener {
+        // Configure before the first show/measure. Post-show sizing can jump sideways
+        // from the platform's initial dialog position, especially on OEM landscape UI.
+        run {
             val visible=Rect()
             activity.window.decorView.getWindowVisibleDisplayFrame(visible)
             val metrics=activity.resources.displayMetrics
@@ -70,6 +72,8 @@ internal class MazePracticeDialogs(private val activity:Activity) {
             dialog.window?.apply {
                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND); setDimAmount(.48f)
+                setGravity(Gravity.CENTER)
+                attributes=attributes.apply { x=0; y=0; windowAnimations=0 }
                 setLayout(minOf(dp(width),(availableWidth-dp(32)).coerceAtLeast(1)),
                     minOf(dp(height),(availableHeight-dp(24)).coerceAtLeast(1)))
             }
