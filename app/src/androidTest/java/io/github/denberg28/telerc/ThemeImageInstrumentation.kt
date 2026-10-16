@@ -62,13 +62,14 @@ class ThemeImageInstrumentation : Instrumentation() {
             }
             checkMazeLevels()
             checkMarket()
+            checkPracticeDialogLayouts()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             val activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: padded practice dialogs, three themes and large font, level selection/restart and version footer\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
@@ -91,7 +92,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             check(scene.practice.maze.level==1)
             check(find(root(activity),"Lv 1 · 00:00.00")!=null)
-            check(find(root(activity),"OFFLINE · Bumps 0/3")!=null)
+            check(find(root(activity),"TeleRC v${BuildConfig.VERSION_NAME}")!=null)
             check(find(root(activity),"Shuffle maze")==null)
             check(scene.height>scene.width*.45f) { "Maze has not gained vertical space" }
             check(root(activity).background is ThemeImageDrawable)
@@ -149,10 +150,11 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(root(activity),"Lv 2 · 00:00.00")!=null)
             find(root(activity),"Levels")!!.performClick()
         }
-        waitUntil { windowText("Levels · 2/20 unlocked")!=null }
-        check(uiAutomation.windows.mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText("Lv 3") }
+        waitUntil { windowText("2 levels unlocked · Select a level")!=null }
+        screenshot("maze-levels-dialog.png")
+        check(uiAutomation.windows.mapNotNull { it.root }.flatMap { it.findAccessibilityNodeInfosByText("Level 3") }
             .none { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser }) { "A locked level was selectable" }
-        clickWindow("Cancel")
+        clickWindow("Done")
         onMain { activity.finish() }; waitForIdleSync()
     }
     private fun checkMarket() {
@@ -226,7 +228,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             val roots=uiAutomation.windows.mapNotNull { it.root }.filter { it.packageName?.toString()==targetContext.packageName }
             val node=roots.flatMap { root -> root.findAccessibilityNodeInfosByText(text)+
                 root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT)) }
-                .firstOrNull { it.text?.toString()?.equals(text,ignoreCase=true)==true }
+                .firstOrNull { it.text?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true }
             node?.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
             SystemClock.sleep(150)
             if(windowText(text)!=null) return
@@ -239,6 +241,47 @@ class ThemeImageInstrumentation : Instrumentation() {
             SystemClock.sleep(150)
         }
         error("Market item not visible after scrolling: $text")
+    }
+    private fun checkPracticeDialogLayouts() {
+        // Exercise production layout at the system's larger font size, with all 20 levels.
+        fun font(scale:String) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand("settings put system font_scale $scale"))
+                .use { it.readBytes() }
+        }
+        font("1.3")
+        waitUntil { targetContext.resources.configuration.fontScale>=1.25f }
+        try {
+            for(theme in listOf("LIGHT","SEPIA","DARK")) {
+                targetContext.getSharedPreferences("appearance",0).edit().putString("background",theme).commit()
+                val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                waitForIdleSync()
+                var chosen=0
+                val levels=onMain { MazePracticeDialogs(activity).levels(MazeProgress.restore(1,20),
+                    listOf(MazeClear(37,65430,1000,3,1))) { chosen=it } }
+                waitUntil { windowText("20 levels unlocked · Select a level")!=null }
+                checkDialogButton(activity,levels,"Done")
+                screenshot("dialogs-${theme.lowercase()}-levels.png")
+                showMarketItem("Level 20"); clickWindow("Level 20")
+                waitUntil { onMain { chosen==20 } }
+                var restarted=false
+                val restart=onMain { MazePracticeDialogs(activity).restart(20,75640,3) { restarted=true } }
+                waitUntil { windowText("Restart level 20?")!=null }
+                checkDialogButton(activity,restart,"Restart level")
+                screenshot("dialogs-${theme.lowercase()}-restart.png")
+                clickWindow("Restart level")
+                waitUntil { onMain { restarted } }
+                onMain { activity.finish() }; waitForIdleSync()
+            }
+        } finally { font("1.0") }
+    }
+    private fun checkDialogButton(activity:Activity,dialog:android.app.Dialog,text:String) {
+        waitUntil { onMain {
+            val button=find(dialog.window!!.decorView,text)
+            val bounds=android.graphics.Rect()
+            button!=null && button.height>0 && button.getGlobalVisibleRect(bounds) &&
+                bounds.height()>=button.height-1 && button.height>=48*activity.resources.displayMetrics.density-1
+        } }
+        check(activity.resources.configuration.fontScale>=1.25f) { "Large font was not applied" }
     }
     private fun checkBumpPixel(scene:MazePracticeView, mark:MazeBump?=null, expectRed:Boolean=true) = onMain {
         val point=mark ?: scene.practice.bumpMarks.first()
@@ -291,7 +334,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         .mapNotNull { it.root }.flatMap { root ->
             root.findAccessibilityNodeInfosByText(text) + root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT))
         }
-        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && it.text?.toString()?.equals(text,ignoreCase=true)==true }
+        .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && (it.text?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true) }
     private fun clickWindow(text:String) {
         var node=windowText(text) ?: error("Missing UI: $text")
         while(!node.isClickable && node.parent!=null) node=node.parent

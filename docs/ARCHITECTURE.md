@@ -1,3 +1,7 @@
+# Practice dialog presentation — 0.8.71
+
+`MazePracticeDialogs` shares themed rounded surfaces, visible-window bounds, fixed header/actions and a weighted scrolling body for Levels and mandatory restart. MainActivity retains existing level/reset callbacks, dismisses these dialogs on render/destroy, and derives the Test footer from `BuildConfig.VERSION_NAME`. No gameplay, wallet, persistence or transport model changes. See [scope, evidence and rollback](MAZE_DIALOGS_071.md).
+
 # Offline economy — 0.8.70
 
 `MazeMarket` fixes catalog IDs/prices and level coin quotas. `MazeWallet` records at most 220 unique lifetime claims and known owned/equipped IDs; balance derives from claims minus fixed purchase prices, with a bounded versioned codec. `MazeCoins` samples unique safe passage centers. `MazePractice` collects only while running and preserves remaining-slot identity across retry; `MazePracticeView` drains collection events before clear callbacks. MainActivity persists one whole wallet snapshot, pauses/neutralizes on Market entry and applies cosmetics without resetting the attempt. `MazeVehicleRenderer` shares silhouettes between the maze and Market previews; physics is unchanged. See [economy, gates and migration/rollback](MAZE_MARKET_070.md). Live transport, FPV/photo and firmware are unchanged.

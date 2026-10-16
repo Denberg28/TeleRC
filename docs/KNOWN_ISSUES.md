@@ -1,3 +1,7 @@
+# Practice dialogs and version — 0.8.71 test build
+
+Levels and the three-bump restart popup now use padded, rounded themed layouts, scrolling content and fixed full-width actions. Level cards show current status and best times; restart separates time/bumps and confirms coins are kept. Test's bottom text is now the TeleRC version. [Scope, A–F gates, phone checks and rollback](MAZE_DIALOGS_071.md). App-only, no reflash; Market/wallet, FPV/photo and game behavior retained. Final workflow/BUILD_INFO supplies software evidence; phone/HIL remains BLOCKED. No stable promotion.
+
 # Maze Market and coins — 0.8.70 test build
 
 Market replaces the Test page's OFFLINE control; its button shows the saved coin balance. Collect randomly placed gold coins to unlock cosmetic vehicles and maze palettes. Fixed lifetime quotas total 220 coins against 180 for all paid items; retry/reload cannot duplicate rewards. Opening Market pauses practice. [Use, prices, A–F gates, phone acceptance and rollback](MAZE_MARKET_070.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software results; phone/HIL remains BLOCKED. No stable promotion.

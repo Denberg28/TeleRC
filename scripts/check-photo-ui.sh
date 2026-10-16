@@ -13,11 +13,13 @@ grep 'PASS: native photo' app/build/photo-evidence/result.txt
 grep 'PASS: native maze' app/build/photo-evidence/result.txt
 grep 'PASS: persistent red bump pixels' app/build/photo-evidence/result.txt
 grep 'PASS: native market' app/build/photo-evidence/result.txt
-for image in photo-light-setup.png photo-light-controls.png photo-sepia-setup.png photo-sepia-controls.png photo-dark-setup.png photo-dark-controls.png photo-removed.png maze-three-bumps.png maze-level-cleared.png maze-level-two.png maze-bump-dot.png maze-bump-reset.png maze-coins.png market-vehicles.png market-colors.png maze-equipped.png; do
+grep 'PASS: padded practice dialogs' app/build/photo-evidence/result.txt
+for image in photo-light-setup.png photo-light-controls.png photo-sepia-setup.png photo-sepia-controls.png photo-dark-setup.png photo-dark-controls.png photo-removed.png maze-three-bumps.png maze-level-cleared.png maze-level-two.png maze-bump-dot.png maze-bump-reset.png maze-coins.png market-vehicles.png market-colors.png maze-equipped.png maze-levels-dialog.png dialogs-light-levels.png dialogs-light-restart.png dialogs-sepia-levels.png dialogs-sepia-restart.png dialogs-dark-levels.png dialogs-dark-restart.png; do
   adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
 done
 # Preserve one exact native frame in logs as well, for review without artifact storage.
-python -c 'import base64,pathlib; print("MAZE_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/maze-equipped.png").read_bytes()).decode())'
-python -c 'import base64,pathlib; print("MARKET_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/market-vehicles.png").read_bytes()).decode())'
+python -c 'import base64,pathlib; print("MAZE_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/maze-level-two.png").read_bytes()).decode())'
+python -c 'import base64,pathlib; print("LEVELS_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/dialogs-dark-levels.png").read_bytes()).decode())'
+python -c 'import base64,pathlib; print("RESTART_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/dialogs-dark-restart.png").read_bytes()).decode())'
 adb logcat -d -s AndroidRuntime > app/build/photo-evidence/runtime.txt
 if grep 'FATAL EXCEPTION' app/build/photo-evidence/runtime.txt; then exit 1; fi

@@ -45,7 +45,8 @@ class MainActivity : Activity() {
     private var page = Page.SETUP
     private var mazePractice: MazePractice? = null
     private var mazeView: MazePracticeView? = null
-    private var mazeRestartDialog: AlertDialog? = null
+    private var mazeRestartDialog: android.app.Dialog? = null
+    private var mazeLevelsDialog: android.app.Dialog? = null
     private var mazeMarketDialog: AlertDialog? = null
     private var practiceSteer: JoystickView? = null
     private var practiceDrive: JoystickView? = null
@@ -306,7 +307,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
-        mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null
+        mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null
         mazeView?.pause(); mazeView = null
         practiceSteer?.reset(); practiceDrive?.reset()
         practiceSteer = null; practiceDrive = null
@@ -741,7 +742,7 @@ class MainActivity : Activity() {
         val timer=text("",14f,ink,true)
         val start=button("Start practice") {}
         val levels=button("Levels",false) {}.apply { textSize=12f }
-        val summary=text("",11f,muted,true)
+        val summary=text("TeleRC v${BuildConfig.VERSION_NAME}",11f,muted,true)
         val market=button("Market · ${wallet.balance}") {}.apply { textSize=13f }
         fun saveWallet(next:MazeWallet) {
             wallet=next
@@ -753,7 +754,6 @@ class MainActivity : Activity() {
         scene.onCoin={ slot -> wallet.claim(practice.maze.level,slot)?.let(::saveWallet) }
         fun update() {
             timer.text="Lv ${practice.maze.level} · ${MazeRecords.time(practice.elapsedMillis)}"
-            summary.text="OFFLINE · Bumps ${practice.bumps}/${MazePractice.BUMP_LIMIT}"
             levels.text=if(practice.state==MazePractice.State.CLEARED && practice.maze.level<MazeLevels.COUNT) "Next level" else "Levels"
             start.text=when(practice.state) {
                 MazePractice.State.READY -> "Start practice"
@@ -778,13 +778,10 @@ class MainActivity : Activity() {
         scene.onFailure={
             if(mazeView===scene && page==Page.TEST && !isFinishing) {
                 resetSticks(); update()
-                mazeRestartDialog=AlertDialog.Builder(this).setTitle("Restart level ${practice.maze.level}?")
-                    .setMessage("3 wall bumps reached. Restart this level from START; the timer and bump count will reset.")
-                    .setCancelable(false)
-                    .setPositiveButton("Restart level") { _, _ ->
-                        mazeRestartDialog=null
-                        resetSticks(); practice.reset(); scene.changed()
-                    }.show()
+                mazeRestartDialog=MazePracticeDialogs(this).restart(practice.maze.level,practice.elapsedMillis,practice.bumps) {
+                    mazeRestartDialog=null
+                    resetSticks(); practice.reset(); scene.changed()
+                }
             }
         }
         fun openLevel(level:Int) {
@@ -796,13 +793,7 @@ class MainActivity : Activity() {
         fun chooseLevel() {
             scene.pause(); resetSticks()
             val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
-            val choices=(1..progress.unlocked).map { level ->
-                val best=records.filter { it.level==level && it.courseVersion==MazeLayout.COURSE_VERSION }
-                    .minOfOrNull { it.millis }
-                "Lv $level${if(level<=progress.completed) " ✓" else ""} · Best ${best?.let(MazeRecords::time) ?: "—"}"
-            }.toTypedArray()
-            AlertDialog.Builder(this).setTitle("Levels · ${progress.unlocked}/${MazeLevels.COUNT} unlocked")
-                .setItems(choices) { _, index -> openLevel(index+1) }.setNegativeButton("Cancel",null).show()
+            mazeLevelsDialog=MazePracticeDialogs(this).levels(progress,records,::openLevel)
         }
         levels.setOnClickListener {
             if(practice.state==MazePractice.State.CLEARED && practice.maze.level<MazeLevels.COUNT) openLevel(practice.maze.level+1)
@@ -1714,5 +1705,5 @@ class MainActivity : Activity() {
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }
