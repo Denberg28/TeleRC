@@ -31,6 +31,8 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private var helper: ICameraHelper? = null
     private var generation = 0
     private var selected: UsbDevice? = null
+    private var deviceOpen = false
+    private var requestedSize: Size? = null
     private var cameraOpen = false
     private var foreground = true
     private var visiblePreview = false
@@ -134,6 +136,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         selected = device; negotiated = false
         val plansBeforeOpen = FpvStreamPolicy.profiles(supported, mode())
         val requested = plansBeforeOpen.getOrNull(profileIndex.coerceAtMost((plansBeforeOpen.size - 1).coerceAtLeast(0)))
+        requestedSize = requested?.let { Size(it.type, it.width, it.height, it.fps, listOf(it.fps)) }
         val token = ++generation
         connectingAt = SystemClock.elapsedRealtime()
         showMessage("Connecting FPV · ${mode().label} · approve USB access if requested")
@@ -145,10 +148,8 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                 } }
                 override fun onAttach(d: UsbDevice) = Unit
                 override fun onDeviceOpen(d: UsbDevice, isFirstOpen: Boolean) = current(d) {
-                    if (foreground && wanted) {
-                        if (requested == null) camera.openCamera()
-                        else camera.openCamera(Size(requested.type, requested.width, requested.height, requested.fps, listOf(requested.fps)))
-                    }
+                    deviceOpen = true
+                    openRequested(camera)
                 }
                 override fun onCameraOpen(d: UsbDevice) = current(d) {
                     if (!foreground || !wanted) { closeSession(); return@current }
@@ -198,6 +199,10 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         catch (_: LinkageError) { wanted = false; closeSession(); showMessage("USB video driver unavailable on this phone") }
     }
 
+    private fun openRequested(camera: ICameraHelper) {
+        if (!foreground || !wanted || !deviceOpen) return
+        requestedSize?.let { camera.openCamera(it) } ?: camera.openCamera()
+    }
     private fun recover(reason: String) {
         lastError = reason; beforeRecovery(); closeSession()
         val delay = FpvStreamPolicy.retryDelay(attempts)
@@ -239,14 +244,15 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         if (reconnectAfterStop && wanted) {
             reconnectAfterStop = false; beforeRecovery(); nextRetryAt = SystemClock.elapsedRealtime() + 700
         }
-        startPreview(); handler.removeCallbacks(tick)
+        if (deviceOpen && !cameraOpen) helper?.let { openRequested(it) } else startPreview()
+        handler.removeCallbacks(tick)
         if (wanted) handler.postDelayed(tick, 500)
     }
     private fun closeSession() {
         generation++; val old = helper; helper = null
         if (old != null) releaseUntil = SystemClock.elapsedRealtime() + 700
         surface?.let { old?.removeSurface(it) }; surface = null
-        old?.release(); selected = null; cameraOpen = false; previewing = false
+        old?.release(); selected = null; deviceOpen = false; requestedSize = null; cameraOpen = false; previewing = false
         connectingAt = 0; lastFrameAt = 0; previewAt = 0
     }
     fun close() { wanted = false; reconnectAfterStop = false; handler.removeCallbacks(tick); closeSession() }
