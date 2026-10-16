@@ -1,3 +1,7 @@
+# v0.8.64 stable-channel promotion
+
+The owner explicitly requested Latest stable publication on 16 October 2026. [Promotion record and unchanged-build provenance](STABLE_064.md). This version-specific instruction overrides the default candidate-only channel restriction; it does not turn absent physical evidence into PASS. The scoped promotion workflow verifies the exact release/source/tag, all pinned asset hashes/CRC, original successful qualification, native UI evidence, and unchanged inventory before/after selecting Latest. A/B/C, software D and package F passed run 38844598235. Physical D, installation and E/HIL remain NOT TESTED/BLOCKED. The next check remains the guide's restrained-wheel/phone acceptance sequence. No app/firmware code or signing identity changes during promotion.
+
 # Navy / offline maze / 95% mini candidate
 
 Baseline app 0.8.62/code80 `bc7e983b88f2deea28aaf7c81e5ecffc159da949`; candidate 0.8.64/code82 + standalone mini 1.2.3. Scope, acceptance, installation and rollback: [NAVY_MAZE_064.md](NAVY_MAZE_064.md).

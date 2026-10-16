@@ -1,3 +1,7 @@
+# v0.8.64 release-channel status
+
+The owner requested Latest stable promotion of the already qualified v0.8.64 build. See [channel promotion, evidence and remaining limits](STABLE_064.md). The channel designation supersedes older candidate-only wording for this release. Physical phone installation, receiver/driver compatibility and restrained-wheel HIL remain pending; no field-validation claim. Existing APK/sketch/source/evidence/checksums and build tag remain unchanged.
+
 # Navy / offline maze / 95% mini candidate
 
 Baseline app 0.8.62/code80 `bc7e983b88f2deea28aaf7c81e5ecffc159da949`; candidate 0.8.64/code82 + standalone mini 1.2.3. Scope, acceptance, installation and rollback: [NAVY_MAZE_064.md](NAVY_MAZE_064.md).
