@@ -1,3 +1,7 @@
+# Persistent wall-bump dots — 0.8.69 test build
+
+Counted maze impacts leave opaque red dots with white outlines on the struck wall. They do not fade; pause/resume and navigation retain them for the current attempt. Restart/level changes clear them. [Scope, A–F evidence, phone checks and rollback](docs/MAZE_BUMPS_069.md). Android-only; fixed levels, FPV/photo and firmware retained. Final workflow/BUILD_INFO supplies software results; phone/HIL remains BLOCKED. No stable promotion.
+
 # Fixed maze levels — 0.8.68 test build
 
 Twenty repeatable levels replace random shuffle. The single Lv/time header and taller courses expand the maze; END is the farthest passage from START. Three separate wall bumps stop the run and prompt a restart. Saved unlocks, replay and level times preserve legacy records. [Use, A–F gates, phone acceptance and rollback](docs/MAZE_LEVELS_068.md). Android-only; FPV/photo features retained, no firmware reflash. Final workflow/BUILD_INFO supplies software evidence; phone/rover HIL remains BLOCKED. No stable promotion.

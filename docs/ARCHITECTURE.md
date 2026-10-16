@@ -1,3 +1,7 @@
+# Persistent impact positions — 0.8.69
+
+`MazePractice` owns at most three immutable world-coordinate `MazeBump` values; the bump count derives from their list. `MazeLayout.bumpPoint` projects a counted collision onto the nearest shared wall rectangle. `MazePracticeView` paints opaque outlined red dots after the rover without a timer or fade. Only attempt reset/new-level construction removes them; pause and view recreation retain the model. No persistence format, course version, live transport or firmware changes. See [gates and acceptance](MAZE_BUMPS_069.md).
+
 # Offline maze levels — 0.8.68
 
 `MazeLevels` defines 20 fixed seeds/dimensions under course version 3. `MazeLayout` selects the farthest passage by BFS from lower-left START and shares thin rectangles between drawing/collision. `MazePractice` owns local steer/drive, active time and a contact latch with three-impact terminal failure; it has no transport access. `MazeProgress` clamps saved unlock/current bounds. MainActivity disconnects live transport on Test entry, persists clears/progress, and wires frame-driven clear/failure callbacks to next-level/restart UI. Legacy random records retain their earlier versions; levels use an extra record field. See [scope, gates and acceptance](MAZE_LEVELS_068.md). Live control/FPV/photo/firmware architecture remains unchanged.

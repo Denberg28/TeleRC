@@ -118,5 +118,16 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
         canvas.drawPath(nose,paint)
         paint.style=Paint.Style.FILL
         canvas.restore()
+        // World-anchored, opaque impact dots have no timer or fade. Only reset clears them.
+        paint.style=Paint.Style.FILL
+        val dotRadius=maxOf(scale*.14f,resources.displayMetrics.density*2.5f)
+        val outline=resources.displayMetrics.density*1f
+        for (bump in practice.bumpMarks) {
+            val bx=ox+bump.x*scale; val by=oy+bump.y*scale
+            paint.color=Color.WHITE
+            canvas.drawCircle(bx,by,dotRadius+outline,paint)
+            paint.color=Color.rgb(239,68,68)
+            canvas.drawCircle(bx,by,dotRadius,paint)
+        }
     }
 }

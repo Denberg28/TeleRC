@@ -6,6 +6,9 @@ import kotlin.random.Random
 /** World rectangles shared by painting and collision checks. */
 internal data class MazeWall(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
+/** A persistent impact position in maze world coordinates. */
+internal data class MazeBump(val x: Float, val y: Float)
+
 /** Seeded perfect maze: every passage belongs to one connected, acyclic course. */
 internal class MazeLayout(val seed: Int, val width: Int, val height: Int, private val walls: BooleanArray, val level: Int = 0) {
     val startX = 1.5f
@@ -54,6 +57,15 @@ internal class MazeLayout(val seed: Int, val width: Int, val height: Int, privat
             if (dx*dx+dy*dy<radius*radius) return false
         }
         return true
+    }
+    fun bumpPoint(x: Float, y: Float): MazeBump {
+        val nearest = wallShapes.minByOrNull { wall ->
+            val dx=x-x.coerceIn(wall.left,wall.right)
+            val dy=y-y.coerceIn(wall.top,wall.bottom)
+            dx*dx+dy*dy
+        }
+        return nearest?.let { MazeBump(x.coerceIn(it.left,it.right),y.coerceIn(it.top,it.bottom)) }
+            ?: MazeBump(x.coerceIn(0f,width.toFloat()),y.coerceIn(0f,height.toFloat()))
     }
     companion object {
         const val WALL_THICKNESS = .18f
@@ -113,7 +125,9 @@ internal class MazePractice(val maze: MazeLayout) {
     var state = State.READY; private set
     var elapsedMillis = 0L; private set
     var pose = initialPose(); private set
-    var bumps = 0; private set
+    private val impacts = ArrayList<MazeBump>(BUMP_LIMIT)
+    val bumpMarks: List<MazeBump> get() = impacts.toList()
+    val bumps: Int get() = impacts.size
     private var contact: Pair<Float, Float>? = null
     private var steer = 0f
     private var drive = 0f
@@ -137,7 +151,7 @@ internal class MazePractice(val maze: MazeLayout) {
     }
     fun reset() {
         state = State.READY; elapsedMillis = 0L; pose = initialPose(); steer = 0f; drive = 0f
-        bumps = 0; contact = null
+        impacts.clear(); contact = null
     }
     /** Returns true once, on the frame that reaches END. Long frames cannot tunnel through walls. */
     fun advance(milliseconds: Long): Boolean {
@@ -151,9 +165,10 @@ internal class MazePractice(val maze: MazeLayout) {
         val safeX = if (maze.fits(x,pose.y)) x else pose.x
         val safeY = if (maze.fits(safeX,y)) y else pose.y
         val blocked = safeX != x || safeY != y
+        val xContactY=pose.y
         pose = next.copy(x=safeX,y=safeY)
         if (blocked && contact == null) {
-            bumps++
+            impacts.add(if (safeX != x) maze.bumpPoint(x,xContactY) else maze.bumpPoint(safeX,y))
             contact = pose.x to pose.y
             if (bumps >= BUMP_LIMIT) {
                 state = State.FAILED; steer = 0f; drive = 0f

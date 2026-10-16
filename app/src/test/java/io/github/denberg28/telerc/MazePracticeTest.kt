@@ -176,24 +176,34 @@ class MazePracticeTest {
         p.start(); p.drive(1900); repeat(300) { p.advance(20) }
         assertEquals(1,p.bumps) // Holding into the wall is one impact.
         val atWall=p.pose
+        val firstMarks=p.bumpMarks
+        assertEquals(1,firstMarks.size)
+        val mark=firstMarks.single()
+        assertTrue(p.maze.wallShapes.any { mark.x in it.left..it.right && mark.y in it.top..it.bottom })
+        assertTrue(hypot(mark.x-p.pose.x,mark.y-p.pose.y) in .5f..1f)
         p.drive(1500); repeat(100) { p.advance(20) }
         p.drive(1900); repeat(100) { p.advance(20) }
         assertEquals(1,p.bumps) // Neutral/re-push without retreat is still the same contact.
         p.pause(); p.start(); p.drive(1900); repeat(100) { p.advance(20) }
         assertEquals(1,p.bumps) // Pause does not grant a fresh bump at the same wall.
+        assertEquals(firstMarks,p.bumpMarks) // No fade, duplicate mark or lifecycle clearing.
         p.drive(1100); repeat(28) { p.advance(20) }
         assertTrue(p.pose.x<atWall.x-.15f)
         p.drive(1900); repeat(150) { p.advance(20) }
         assertEquals(2,p.bumps); assertEquals(MazePractice.State.RUNNING,p.state)
         p.drive(1100); repeat(28) { p.advance(20) }
         p.drive(1900); repeat(150) { p.advance(20) }
-        assertEquals(3,p.bumps); assertEquals(MazePractice.State.FAILED,p.state)
+        assertEquals(3,p.bumps); assertEquals(3,p.bumpMarks.size)
+        assertEquals(firstMarks.single(),p.bumpMarks.first())
+        assertEquals(MazePractice.State.FAILED,p.state)
         assertEquals(0f,p.pose.speed,0f); assertEquals(0f,p.pose.leftTrack,0f)
         val stopped=p.pose; val time=p.elapsedMillis
         p.pause(); p.start(); p.drive(1100); repeat(100) { assertFalse(p.advance(20)) }
         assertEquals(stopped,p.pose); assertEquals(time,p.elapsedMillis)
         assertEquals(MazePractice.State.FAILED,p.state)
+        assertEquals(3,p.bumpMarks.size) // Terminal state and attempted resume retain impacts.
         p.reset(); assertEquals(0,p.bumps); assertEquals(0L,p.elapsedMillis)
+        assertTrue(p.bumpMarks.isEmpty())
         assertEquals(MazePractice.State.READY,p.state)
         p.start(); repeat(100) { p.advance(20) }
         assertEquals(1.5f,p.pose.x,0f) // Reset discards held reverse/steer.

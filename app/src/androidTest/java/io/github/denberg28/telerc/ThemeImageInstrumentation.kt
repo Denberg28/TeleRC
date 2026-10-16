@@ -67,7 +67,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
@@ -99,6 +99,17 @@ class ThemeImageInstrumentation : Instrumentation() {
             val p=scene.practice
             p.drive(1900); repeat(350) { p.advance(20) }
             check(p.bumps==1 && p.state==MazePractice.State.RUNNING)
+            scene.pause()
+        }
+        val firstMarks=onMain { scene.practice.bumpMarks }
+        checkBumpPixel(scene)
+        screenshot("maze-bump-dot.png")
+        SystemClock.sleep(1200)
+        onMain { scene.changed(); check(scene.practice.bumpMarks==firstMarks) }
+        checkBumpPixel(scene)
+        onMain {
+            val p=scene.practice
+            p.start()
             repeat(2) {
                 p.drive(1100); repeat(28) { p.advance(20) }
                 p.drive(1900); repeat(350) { p.advance(20) }
@@ -110,8 +121,11 @@ class ThemeImageInstrumentation : Instrumentation() {
         screenshot("maze-three-bumps.png")
         clickWindow("Restart level")
         waitUntil { onMain { scene.practice.state==MazePractice.State.READY } }
+        checkBumpPixel(scene,firstMarks.single(),expectRed=false)
+        screenshot("maze-bump-reset.png")
         onMain {
             check(scene.practice.elapsedMillis==0L && scene.practice.bumps==0)
+            check(scene.practice.bumpMarks.isEmpty())
             check(find(root(activity),"Lv 1 · 00:00.00")!=null)
             find(root(activity),"Start practice")!!.performClick()
             approachFinish(scene.practice)
@@ -130,6 +144,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         enterTest()
         onMain {
             check(findMaze(root(activity))!!.practice.maze.level==2)
+            check(findMaze(root(activity))!!.practice.bumpMarks.isEmpty())
             check(find(root(activity),"Lv 2 · 00:00.00")!=null)
             find(root(activity),"Levels")!!.performClick()
         }
@@ -138,6 +153,19 @@ class ThemeImageInstrumentation : Instrumentation() {
             .none { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser }) { "A locked level was selectable" }
         clickWindow("Cancel")
         onMain { activity.finish() }; waitForIdleSync()
+    }
+    private fun checkBumpPixel(scene:MazePracticeView, mark:MazeBump?=null, expectRed:Boolean=true) = onMain {
+        val point=mark ?: scene.practice.bumpMarks.first()
+        val bitmap=Bitmap.createBitmap(scene.width,scene.height,Bitmap.Config.ARGB_8888)
+        scene.draw(android.graphics.Canvas(bitmap))
+        val maze=scene.practice.maze
+        val scale=minOf(scene.width/maze.width.toFloat(),scene.height/maze.height.toFloat())
+        val x=((scene.width-maze.width*scale)/2+point.x*scale).roundToInt()
+        val y=((scene.height-maze.height*scale)/2+point.y*scale).roundToInt()
+        val color=bitmap.getPixel(x.coerceIn(0,bitmap.width-1),y.coerceIn(0,bitmap.height-1))
+        bitmap.recycle()
+        val red=Color.red(color)>200 && Color.green(color)<100 && Color.blue(color)<100
+        check(red==expectRed) { "Persistent bump pixel: expected red=$expectRed, got $color" }
     }
     private fun approachFinish(p:MazePractice) {
         val maze=p.maze; val start=1 to maze.height-2; val end=maze.endX.toInt() to maze.endY.toInt()
