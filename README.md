@@ -1,3 +1,7 @@
+# Map mission functions and reinforced start — 0.8.86 test candidate
+
+Tap the map for numbered waypoints. Select F1/F2/F3, tap the map and choose ON/OFF to insert a function event; normal waypoint placement resumes afterward. Mission start rechecks the connected ArduRover, confirms the exact sequence and output mapping, initializes all used functions OFF, and verifies stationary HOLD plus command ACK and reported PWM for each action. Help text is reformatted. [Use, review, qualification, physical acceptance and rollback](docs/MISSION_FUNCTIONS_086.md). App-only; no reflash. Existing stable remains v0.8.84; live FC/actuator acceptance is pending.
+
 # Replay coins and clear mission flow — 0.8.85 test candidate
 
 Completed-level replays have a saved 25% chance of one bonus coin, banked after pickup plus END. Restart level immediately begins a neutral fresh attempt. Waypoint clearly explains Single point versus Multiple points and planning-only locks. [Scope, wallet v3 migration/rollback, checks and acceptance](docs/REPLAY_COINS_085.md). App-only; no reflash.

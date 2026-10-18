@@ -499,6 +499,9 @@ class MainActivity : Activity() {
             Toast.makeText(this, FcElrs.HANDSET_ONLY, Toast.LENGTH_LONG).show(); return
         }
         val armed = vehicleArmed
+        if(armed==false && waypointTab?.navigation?.let { it.busy || it.functionsPendingOff }==true) {
+            Toast.makeText(this,"Confirm Waypoint HOLD and function OFF before arming.",Toast.LENGTH_LONG).show(); return
+        }
         val udp = socket
         val remote = endpoint
         val system = target
@@ -1587,6 +1590,9 @@ class MainActivity : Activity() {
         refreshFunctionButtons()
     }
     private fun activatePhoneControl() {
+        if(waypointTab?.navigation?.let { it.busy || it.functionsPendingOff }==true) {
+            Toast.makeText(this,"Wait for Waypoint HOLD and function OFF confirmation.",Toast.LENGTH_LONG).show(); return
+        }
         if (!phoneCommandsAllowed) return
         if (page!=Page.CONTROLS || !resumed) return
         val allowed=synchronized(commandLock) {

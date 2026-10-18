@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 /** Separate navigation codec: the existing manual-control encoder/parser is unchanged. */
 object WaypointProtocol {
     private val extras = mapOf(0 to 50, 1 to 124, 20 to 214, 22 to 220, 24 to 24,
-        33 to 104, 75 to 158, 76 to 152, 77 to 143, 87 to 150, 193 to 71, 242 to 104)
+        33 to 104, 36 to 222, 75 to 158, 76 to 152, 77 to 143, 87 to 150, 193 to 71, 242 to 104)
     data class Frame(val id: Int, val system: Int, val component: Int, val data: ByteArray) {
         private val buffer get() = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
         fun u8(i: Int) = data[i].toInt() and 255
@@ -35,6 +35,7 @@ object WaypointProtocol {
         val id = if (magic == 254) packet[5].toInt() and 255 else
             (packet[7].toInt() and 255) or ((packet[8].toInt() and 255) shl 8) or ((packet[9].toInt() and 255) shl 16)
         val extra = extras[id] ?: return null
+        if(magic==254 && id==36 && n!=21) return null
         var crc = 65535
         for (i in 1 until offset + n) crc = crcByte(crc, packet[i].toInt() and 255)
         crc = crcByte(crc, extra)
@@ -44,7 +45,7 @@ object WaypointProtocol {
         val component = packet[if (magic == 254) 4 else 6].toInt() and 255
         if (system !in 1..254 || component != 1) return null
         // MAVLink2 truncates trailing zero bytes. Restore only each known minimum payload.
-        val min = mapOf(0 to 9, 1 to 31, 22 to 25, 24 to 30, 33 to 28,
+        val min = mapOf(0 to 9, 1 to 31, 22 to 25, 24 to 30, 33 to 28, 36 to 21,
             77 to 3, 87 to 51, 193 to 22, 242 to 52)[id] ?: return null
         if (magic == 254 && n < min || n == 0) return null
         return Frame(id, system, component, packet.copyOfRange(offset, offset+n).copyOf(maxOf(n, min)))
@@ -73,6 +74,13 @@ object WaypointProtocol {
         return frame(76, sequence, buffer(33).apply {
             for (i in 0..6) putFloat(params.getOrElse(i) { 0f })
             putShort(command.toShort()); put(system.toByte()); put(1); put(0)
+        }.array())
+    }
+    fun servo(sequence:Int,system:Int,output:Int,pwm:Int,confirmation:Int=0):ByteArray {
+        require(system in 1..254 && output in 1..16 && output !in 5..8 && pwm in 1000..2000 && confirmation in 0..2)
+        return frame(76,sequence,buffer(33).apply {
+            putFloat(output.toFloat()); putFloat(pwm.toFloat()); repeat(5) { putFloat(0f) }
+            putShort(183.toShort()); put(system.toByte()); put(1); put(confirmation.toByte())
         }.array())
     }
     fun hold(sequence: Int, system: Int) = command(sequence, system, 176, 1f, 4f)

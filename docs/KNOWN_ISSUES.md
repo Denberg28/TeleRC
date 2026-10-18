@@ -1,3 +1,7 @@
+# Mission function limits — 0.8.86
+
+Function events are supervised Guided actions after approximate 3 m waypoint arrival, not uploaded AUTO missions or precision position triggers. Dedicated SERVOx_FUNCTION=0 plus current MIN/MAX readback is required; M5–M8 are excluded and outputs9–16 require MAVLink2 SERVO_OUTPUT_RAW extensions on port0. Reported PWM is not physical actuator feedback. Link/power loss cannot guarantee OFF; independent actuator watchdog/cutoff and restrained-wheel acceptance are required. Every used function must end OFF. Native handset-only ELRS/Mini/LoRa remain planning-only. Unsigned MAVLink cannot authenticate command/telemetry sources. [Detailed review, acceptance and rollback](MISSION_FUNCTIONS_086.md).
+
 # Replay wallet compatibility — 0.8.85
 
 Wallet v3 retains v1/v2 data but older unmodified parsers cannot read it. Rollback needs a higher-code v3-compatible rebuild preserving earnings/ownership, without clearing data. Bonus pickup pays only after END; retry/reload preserves the chance. Waypoint Mini/LoRa/native handset-only ELRS remain planning-only. Phone/migration and FC/HIL acceptance pending. [Details](REPLAY_COINS_085.md).

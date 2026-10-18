@@ -1,3 +1,10 @@
+# 0.8.86 / code104
+
+- Add map-based F1/F2/F3 ON/OFF events interleaved with waypoints, editable ordered rows, coordinate-bound saved actions and configurable dedicated output PWM values.
+- Recheck each start and confirm exact coordinates/actions/output mapping. Verify stationary HOLD, initialize OFF, serialize absolute servo commands and require accepted ACK plus fresh reported PWM.
+- Cancel expired/session-old writes; request bounded all-function OFF on completion/STOP/failure, retain unconfirmed OFF across reconnect and guard phone-enable/arming handover.
+- Reformat the compact status/help pane and retain shared popup sizing/transitions. [Scope, tests, compatibility and HIL](docs/MISSION_FUNCTIONS_086.md).
+
 # 0.8.85 / code103
 
 - Add one possible replay bonus coin on completed levels: 25% saved chance, clear-only payout, bounded v3 earnings retaining v1/v2 wallet data.

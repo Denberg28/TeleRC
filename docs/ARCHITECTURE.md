@@ -1,3 +1,7 @@
+# Ordered mission functions — 0.8.86
+
+WaypointFunctions binds bounded action rows to exact draft coordinates. WaypointTab owns one-shot map placement and immutable start snapshots; normal map taps add points and F1–F3 selection adds an ON/OFF event. WaypointNavigation remains foreground Guided sequencing, with ACTION_HOLD/ACTIONS states between legs and before initial OFF. WaypointAuxiliary serializes absolute DO_SET_SERVO writes with generation/expiry guards, actual-send gating, bounded retries and independent accepted-ACK/reported-PWM confirmation. STOP cancels ON/navigation, attempts every used output OFF and requires HOLD plus all OFF before handover. Unconfirmed OFF survives session loss and requires explicit STOP recovery. [Contract and limits](MISSION_FUNCTIONS_086.md).
+
 # Replay reward boundary — 0.8.85
 
 MainActivity persists one boolean offer per completed level until clear. MazePractice handles the bonus slot separately from first-play claims and exposes a one-shot clear-only reward; reset restores an unbanked offer, and restart explicitly resets then starts. Wallet v3 adds bounded replay earnings while decoding v1/v2; completion/wallet/offer boundary share one preference transaction. Waypoint presentation clarifies route mode and guards confirmation mode snapshots; navigation and live-control engines remain unchanged. [Compatibility](REPLAY_COINS_085.md).

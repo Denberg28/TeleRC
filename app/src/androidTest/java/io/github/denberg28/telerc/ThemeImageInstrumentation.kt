@@ -45,6 +45,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             excessive.delete()
             checkSharedPopups()
             checkReplayRewards()
+            checkMissionFunctions()
             for (theme in listOf("LIGHT", "SEPIA", "DARK")) {
                 app.getSharedPreferences("appearance", 0).edit().putString("background", theme).commit()
                 var activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -95,7 +96,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: map function placement, mixed sequence persistence, output settings and cancelled start; PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -394,6 +395,84 @@ class ThemeImageInstrumentation : Instrumentation() {
         tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
+    private fun checkMissionFunctions() {
+        val route=targetContext.getSharedPreferences("waypoint_route",0)
+        val link=targetContext.getSharedPreferences("link",0)
+        val transport=link.getString("transport","wifi")
+        link.edit().putString("transport","wifi").putBoolean("auto_connect",false).commit()
+        route.edit().clear().commit()
+        val assignments=targetContext.getSharedPreferences("servo_assignments",0)
+        val before=assignments.all.filterValues { it is Int }.mapValues { it.value as Int }
+        assignments.edit().putInt("F1",1).putInt("F2",2).putInt("F3",3).commit()
+        var activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        fun enter() {
+            openTabMenu(activity,"Setup"); clickWindow("Waypoint")
+            waitUntil { onMain { description(root(activity),"Waypoint map; tap to choose a destination")?.width?.let { it>0 }==true } }
+        }
+        fun points()=WaypointPlan.decode(route.getString("draft","").orEmpty())
+        fun planned()=WaypointFunctions.decode(route.getString("actions","").orEmpty(),points())!!
+        fun tapMap(x:Float,y:Float) {
+            val map=onMain { description(root(activity),"Waypoint map; tap to choose a destination")!! }
+            val rect=onMain { android.graphics.Rect().also { check(map.getGlobalVisibleRect(it)) } }
+            val down=SystemClock.uptimeMillis()
+            for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)) {
+                val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,rect.left+rect.width()*x,rect.top+rect.height()*y,0)
+                event.source=android.view.InputDevice.SOURCE_TOUCHSCREEN
+                try { check(uiAutomation.injectInputEvent(event,true)) } finally { event.recycle() }
+                if(action==android.view.MotionEvent.ACTION_DOWN) SystemClock.sleep(40)
+            }
+            waitForIdleSync()
+        }
+        enter()
+        val tab=onMain { MainActivity::class.java.getDeclaredField("waypointTab").apply { isAccessible=true }.get(activity) as WaypointTab }
+        val mapField=WaypointTab::class.java.getDeclaredField("map").apply { isAccessible=true }
+        val readyField=WaypointMap::class.java.getDeclaredField("map").apply { isAccessible=true }
+        waitUntil { onMain { readyField.get(mapField.get(tab))!=null } }
+        tapMap(.5f,.5f); waitUntil { points().size==1 }
+        onMain { find(root(activity),"F1")!!.performClick() }
+        check(onMain { find(root(activity),"F1 · MAP")!=null && !find(root(activity),"Mission start")!!.isEnabled })
+        tapMap(.25f,.5f); waitUntil { windowText("F1 at new point")!=null }; clickWindow("ON")
+        waitUntil { points().size==2 }; check(planned()[1]==listOf(WaypointAction("F1",true)))
+        tapMap(.75f,.5f); waitUntil { points().size==3 }; check(planned()[2].isEmpty())
+        onMain { find(root(activity),"F2")!!.performClick() }
+        tapMap(.5f,.25f); waitUntil { windowText("F2 at new point")!=null }; clickWindow("OFF")
+        waitUntil { points().size==4 }
+        onMain { find(root(activity),"F1")!!.performClick() }
+        tapMap(.5f,.75f); waitUntil { windowText("F1 at new point")!=null }; clickWindow("OFF")
+        waitUntil { points().size==5 }
+        onMain { description(root(activity),"Waypoint 1, ${points()[0].label()}; tap to edit")!!.performClick() }
+        waitUntil { windowText("Point 1 · sequence")!=null }; clickWindow("F3 ON / OFF")
+        waitUntil { windowText("F3 at point 1")!=null }; clickWindow("OFF")
+        check(planned()[0]==listOf(WaypointAction("F3",false)))
+        screenshot("mission-functions-plan.png")
+        onMain { find(root(activity),"F1")!!.performLongClick() }
+        waitUntil { windowText("F1 output settings")!=null }; clickWindow("Set ON / OFF PWM")
+        waitUntil { windowText("F1 PWM · 1000–2000")!=null }; clickWindow("Cancel")
+        onMain { find(root(activity),"Help & safety")!!.performClick() }
+        waitUntil { windowText("Help & safety")!=null && windowText("OK")!=null }
+        screenshot("mission-functions-help.png"); clickWindow("OK")
+        val stored=route.getString("actions","")!!
+        onMain { activity.finish() }; waitForIdleSync()
+        activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); enter()
+        check(route.getString("actions","")==stored && planned().flatten().size==4)
+        onMain {
+            fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }
+            val connected=field("connected").get(activity) as java.util.concurrent.atomic.AtomicBoolean
+            connected.set(true); field("target").setInt(activity,1)
+            find(root(activity),"Mission start")!!.performClick()
+            val current=field("waypointTab").get(activity) as WaypointTab
+            check(current.navigation.state==WaypointNavigation.State.CHECKING)
+            check(current.navigation.drain().none { it.function!=null || it.motion })
+            find(root(activity),"STOP · HOLD")!!.performClick()
+            val requested=WaypointTab::class.java.getDeclaredField("startRequested").apply { isAccessible=true }
+            check(!requested.getBoolean(current) && !current.navigation.moving)
+            connected.set(false); field("target").setInt(activity,0); current.disconnected()
+            activity.finish()
+        }
+        waitForIdleSync(); route.edit().clear().commit()
+        assignments.edit().clear().apply { before.forEach { (key,value) -> putInt(key,value) } }.commit()
+        link.edit().putString("transport",transport).putBoolean("auto_connect",false).commit()
+    }
     private fun checkReplayRewards() {
         val prefs=targetContext.getSharedPreferences("maze_practice",0)
         // Existing v2 ownership/claims migrate while a known offer makes payout deterministic.
@@ -652,10 +731,11 @@ class ThemeImageInstrumentation : Instrumentation() {
                 listOf("F1","F2","F3").forEach { check(find(view,it)!=null) }
                 check(description(view,"Waypoint map; tap to choose a destination")!!.width>view.width*.4f)
                 check(description(view,"Waypoint map; tap to choose a destination")!!.height>view.height*.4f)
-                check(description(view,"Waypoint 2, 13.621900, 123.194800; tap to remove")!=null)
+                check(description(view,"Waypoint 2, 13.621900, 123.194800; tap to edit")!=null)
                 check(find(view,"ARM") == null && find(view,"Phone control") == null)
             }
-            onMain { find(root(activity),"F1")!!.performClick() }
+            onMain { find(root(activity),"F1")!!.performLongClick() }
+            waitUntil { windowText("F1 output settings")!=null }; clickWindow("Assign servo output")
             waitUntil { windowText("F1 external servo assignment")!=null && windowText("Close")!=null }
             val closeBounds=android.graphics.Rect().also { windowText("Close")!!.getBoundsInScreen(it) }
             check(closeBounds.height()>0 && closeBounds.top>=0 && closeBounds.bottom<=activity.resources.displayMetrics.heightPixels)

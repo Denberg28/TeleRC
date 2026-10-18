@@ -1,3 +1,7 @@
+# Mission function qualification — 0.8.86
+
+Baseline v0.8.85/code103, remote 82bfbfce36d144dd3d16134b44f175b00665a1ba; candidate code104. [A–F gates, review, restrained-wheel procedures and rollback](MISSION_FUNCTIONS_086.md). Local host/default regressions and packaging tests PASS; local ASan/UBSan PASS with leak detection disabled (container ptrace restriction). Android local build BLOCKED by unavailable toolchain/network. Publication requires cloud full JVM/debug+release lint/build, default sanitizer gates, native map/sequence/settings/persistence/help/cancel tests and all existing UI tests, signer continuity and package validation. Final successful workflow and BUILD_INFO are authoritative software results. E physical FC/actuator/phone HIL remains BLOCKED; no stable promotion.
+
 # Replay/Waypoint qualification — 0.8.85
 
 Baseline stable 0.8.84/code102; candidate code103. [A–F gates, wallet v3 migration/rollback and phone procedures](REPLAY_COINS_085.md). Required new JVM/native replay chance/pickup/clear/reload/migration/restart/mode checks plus full existing software/build/signing/package gates. Physical phone/FC/HIL remains BLOCKED; final successful workflow and BUILD_INFO supply software outcomes.

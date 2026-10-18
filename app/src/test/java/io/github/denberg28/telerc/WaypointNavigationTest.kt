@@ -29,10 +29,12 @@ class WaypointNavigationTest {
         n.receive(frame(1,payload(31) { val mask=(1 shl 2) or (1 shl 5) or (1 shl 21); putInt(mask); putInt(mask); putInt(mask); position(30); put(battery.toByte()) }),time,1)
         n.receive(frame(242,payload(52) { putInt((start.latitude*1e7).toInt()); putInt((start.longitude*1e7).toInt()) }),time,1)
     }
-    private fun ready(armed:Boolean=true):WaypointNavigation {
-        val n=WaypointNavigation(); telemetry(n,1000,armed=armed); n.check(1,1000); n.drain()
+    private fun ready(armed:Boolean=true,functions:List<WaypointFunction> = emptyList()):WaypointNavigation {
+        val n=WaypointNavigation(); telemetry(n,1000,armed=armed); n.check(1,1000,functions); n.drain()
         for((key,value) in mapOf("SYSID_MYGCS" to 255f,"FS_GCS_ENABLE" to 1f,"FS_ACTION" to 2f,
             "FS_EKF_ACTION" to 1f,"FS_GCS_TIMEOUT" to 2f,"FS_TIMEOUT" to 1f,"WP_SPEED" to .5f)) n.receive(param(key,value),1000,1)
+        for(f in functions) for((suffix,value) in mapOf("FUNCTION" to 0f,"MIN" to 1000f,"MAX" to 2000f))
+            n.receive(param("SERVO${f.output}_$suffix",value),1000,1)
         n.receive(ack(176),1000,1); n.receive(heartbeat(armed=armed),1100,1); n.tick(1100,true,true); n.drain()
         assertEquals(WaypointNavigation.State.READY,n.state); return n
     }
@@ -170,10 +172,98 @@ class WaypointNavigationTest {
         n.receive(ack(192,2),3400,1)
         assertEquals(WaypointNavigation.State.HOLDING,n.state)
     }
+    private val function=WaypointFunction("F1",1)
+    private val withActions=listOf(listOf(WaypointAction("F1",true)),listOf(WaypointAction("F1",false)))
+    private fun output(pwm:Int,time:Long)=frame(36,payload(21) { putInt((time*1000).toInt()); putShort(pwm.toShort()); position(20); put(0) })
+    private fun send(n:WaypointNavigation,time:Long)=n.drain().filter { n.transmit(it,time) {} }
+    private fun initialized():WaypointNavigation {
+        val n=ready(functions=listOf(function))
+        assertNull(n.start(listOf(destination,Waypoint(13.6220,123.1948)),1200,withActions,listOf(function)))
+        assertEquals(WaypointNavigation.State.ACTION_HOLD,n.state)
+        assertFalse(n.drain().any { it.function!=null || it.motion })
+        n.receive(ack(176),1250,1)
+        telemetry(n,1300); n.tick(1300,true,true)
+        assertEquals(WaypointNavigation.State.ACTION_HOLD,n.state)
+        telemetry(n,1700); n.tick(1700,true,true)
+        assertEquals(WaypointNavigation.State.ACTIONS,n.state)
+        assertEquals(1100,send(n,1700).single { it.function!=null }.pwm)
+        n.receive(ack(183),1710,1); n.receive(output(1100,1720),1720,1); n.tick(1720,true,true)
+        assertEquals(WaypointNavigation.State.STARTING,n.state)
+        send(n,1720)
+        n.receive(ack(192),1800,1); telemetry(n,1800,15); n.receive(echo(),1800,1); n.tick(1800,true,true)
+        assertEquals(WaypointNavigation.State.RUNNING,n.state)
+        return n
+    }
+    private fun atAction():WaypointNavigation {
+        val n=initialized()
+        for(t in listOf(2300L,2800L,3300L,3800L)) {
+            telemetry(n,t,15,destination); n.receive(echo(),t,1); n.tick(t,true,true)
+        }
+        assertEquals(WaypointNavigation.State.ACTION_HOLD,n.state)
+        assertFalse(n.drain().any { it.function!=null })
+        n.receive(ack(176),3850,1)
+        telemetry(n,4000,4,destination); n.tick(4000,true,true)
+        telemetry(n,4400,4,destination); n.tick(4400,true,true)
+        assertEquals(WaypointNavigation.State.ACTIONS,n.state)
+        return n
+    }
+    @Test fun functionsRequireStationaryHoldAndBothAckAndOutputBeforeNextDestination() {
+        val n=atAction()
+        val on=send(n,4400).single { it.function!=null }
+        assertEquals(1900,on.pwm)
+        n.receive(ack(183),4410,1); n.tick(4410,true,true)
+        assertEquals(WaypointNavigation.State.ACTIONS,n.state)
+        n.receive(output(1900,4420),4420,1); n.tick(4420,true,true)
+        assertEquals(WaypointNavigation.State.STARTING,n.state); assertEquals(1,n.index)
+        val destination=n.drain().single { it.motion }
+        n.stop("Operator",4450)
+        assertFalse(n.permits(on,4451)); assertFalse(n.permits(destination,4451))
+        val off=send(n,4450).single { it.function!=null }
+        assertEquals(1100,off.pwm); assertTrue(off.cleanup); assertFalse(off.motion)
+        n.receive(ack(176),4460,1); n.receive(heartbeat(),4465,1)
+        assertEquals(WaypointNavigation.State.HOLDING,n.state) // HOLD alone is insufficient.
+        n.receive(ack(183),4470,1); n.receive(output(1100,4480),4480,1)
+        assertEquals(WaypointNavigation.State.STOPPED,n.state); assertFalse(n.functionsPendingOff)
+    }
+    @Test fun functionOutputAndOldSessionRepliesCannotAutoResumeAfterDisconnect() {
+        val n=atAction(); val on=send(n,4400).single { it.function!=null }
+        n.disconnected(); assertFalse(n.permits(on,4410)); assertTrue(n.functionsPendingOff)
+        n.receive(heartbeat(),4500,1); n.receive(ack(183),4501,1); n.receive(output(1900,4502),4502,1)
+        n.tick(4502,true,true); assertTrue(n.drain().isEmpty())
+        n.check(1,4503); assertEquals(WaypointNavigation.State.ERROR,n.state)
+        assertTrue(n.message.contains("OFF unconfirmed"))
+        n.stop("Retry OFF",4600)
+        for((suffix,value) in mapOf("FUNCTION" to 0f,"MIN" to 1000f,"MAX" to 2000f)) n.receive(param("SERVO1_$suffix",value),4601,1)
+        val off=send(n,4602).single { it.function!=null }
+        assertFalse(off.motion); assertEquals(1100,off.pwm)
+        n.receive(ack(176),4610,1); n.receive(heartbeat(),4620,1)
+        n.receive(ack(183),4630,1); n.receive(output(1100,4640),4640,1)
+        assertEquals(WaypointNavigation.State.STOPPED,n.state)
+        assertFalse(n.functionsPendingOff); assertFalse(n.drain().any { it.motion })
+    }
+    @Test fun motorFunctionOrMissingOffCannotStartAndExpiredServoWritesAreRejected() {
+        val n=ready(functions=listOf(function))
+        n.receive(param("SERVO1_FUNCTION",73f),1150,1)
+        assertNotNull(n.start(listOf(destination,Waypoint(13.6220,123.1948)),1200,withActions,listOf(function)))
+        assertTrue(n.drain().isEmpty())
+        val active=atAction(); val on=active.drain().single { it.function!=null }
+        assertFalse(active.permits(on,5001))
+        active.stop("STOP",5002); assertFalse(active.permits(on,5003))
+    }
     @Test fun unconfirmedHoldStopsRetriesAndNeverSaysStopped() {
         val n=running(); n.stop("Operator",1400); n.drain()
         for(t in listOf(2400L,3400L,4400L)) { n.tick(t,true,true); assertFalse(n.drain().any { it.motion }) }
         assertEquals(WaypointNavigation.State.ERROR,n.state); assertTrue(n.message.contains("unconfirmed"))
+    }
+    @Test fun missingHoldReplyDoesNotCancelBoundedOffCleanup() {
+        val n=atAction(); send(n,4400)
+        n.stop("Operator",4450); send(n,4450)
+        for(t in listOf(5450L,6450L,7450L)) { n.tick(t,true,true); send(n,t) }
+        assertEquals(WaypointNavigation.State.HOLDING,n.state)
+        assertTrue(n.functionsPendingOff)
+        n.tick(8450,true,true)
+        assertEquals(WaypointNavigation.State.ERROR,n.state)
+        assertTrue(n.message.contains("OFF unconfirmed"))
     }
     @Test fun protocolDestinationHasBoundedSpeedAtomicModeFlagAndNoArming() {
         val packet=WaypointProtocol.destination(1,1,destination)

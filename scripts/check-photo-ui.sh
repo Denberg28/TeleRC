@@ -69,3 +69,10 @@ for image in replay-one-coin.png replay-coin-banked.png; do
   adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
 done
 python -c 'import base64,pathlib; print("REPLAY_COIN_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/replay-one-coin.png").read_bytes()).decode())'
+
+grep 'PASS: map function placement' app/build/photo-evidence/result.txt
+for image in mission-functions-plan.png mission-functions-help.png; do
+  adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
+done
+python -c 'import base64,pathlib; print("MISSION_FUNCTIONS_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/mission-functions-plan.png").read_bytes()).decode())'
+python -c 'import base64,pathlib; print("MISSION_HELP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/mission-functions-help.png").read_bytes()).decode())'
