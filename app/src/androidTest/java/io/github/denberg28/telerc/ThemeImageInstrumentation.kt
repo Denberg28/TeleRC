@@ -538,7 +538,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         val scene=onMain { findMaze(root(activity))!! }
         onMain {
             check(scene.practice.maze.level==1)
-            check(find(root(activity),"Lv 1 · 00:00.00")!=null)
+            check(find(root(activity),"Lv 1 · City · 00:00.00")!=null)
             check(find(root(activity),"TeleRC v${BuildConfig.VERSION_NAME}")==null)
             check(find(root(activity),"Shuffle maze")==null)
             check(scene.height>scene.width*.45f) { "Maze has not gained vertical space" }
@@ -575,7 +575,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             check(scene.practice.elapsedMillis==0L && scene.practice.bumps==0)
             check(scene.practice.bumpMarks.isEmpty())
-            check(find(root(activity),"Lv 1 · 00:00.00")!=null)
+            check(find(root(activity),"Lv 1 · City · 00:00.00")!=null)
             find(root(activity),"Start practice")!!.performClick()
             approachFinish(scene.practice)
             scene.changed() // The real animation frame reaches END and invokes the clear callback.
@@ -585,7 +585,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(MazeRecords.decode(prefs.getString("records","").orEmpty()).let { it.size==2 && it.first().level==1 && it.last().courseVersion==2 })
         screenshot("maze-level-cleared.png")
         onMain { find(root(activity),"Next level")!!.performClick() }
-        waitUntil { onMain { find(root(activity),"Lv 2 · 00:00.00")!=null } }
+        waitUntil { onMain { find(root(activity),"Lv 2 · City · 00:00.00")!=null } }
         check(prefs.getInt("level",0)==2)
         screenshot("maze-level-two.png")
         onMain { activity.finish() }; waitForIdleSync()
@@ -594,7 +594,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             check(findMaze(root(activity))!!.practice.maze.level==2)
             check(findMaze(root(activity))!!.practice.bumpMarks.isEmpty())
-            check(find(root(activity),"Lv 2 · 00:00.00")!=null)
+            check(find(root(activity),"Lv 2 · City · 00:00.00")!=null)
             find(root(activity),"Levels")!!.performClick()
         }
         waitUntil { windowText("2/20")!=null }
