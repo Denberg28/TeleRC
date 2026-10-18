@@ -16,10 +16,10 @@ class FpvReconnectPolicy(val preferred: Receiver? = null, restore: Boolean = fal
     private var healthySince = 0L
     private var lastAttachment: String? = null
 
-    fun request(selected: Receiver? = null) {
+    fun request(selected: Receiver? = null, allowPermission: Boolean = true) {
         if (selected != null) receiver = selected
         wanted = true
-        if (pendingPermission == null) allowPrompt = true
+        if (pendingPermission == null) allowPrompt = allowPermission
         failures = 0; retryAt = 0
     }
     fun disallowPrompt() { allowPrompt = false }

@@ -160,12 +160,12 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         showMessage("FPV disconnected · tap Connect FPV")
     }
     /** Explicit requests may ask once. Repeated Connect never tears down a healthy session. */
-    fun connectCamera() {
+    fun connectCamera(allowPermissionRequest: Boolean = true) {
         if (disposed || !foreground || !cameraPermission()) return
         val devices = manager.deviceList.values.filter(::isVideoDevice)
         val chosen = devices.singleOrNull()
         if (chosen != null) remember(chosen)
-        connection.request(chosen?.let { FpvReconnectPolicy.Receiver(it.vendorId, it.productId) })
+        connection.request(chosen?.let { FpvReconnectPolicy.Receiver(it.vendorId, it.productId) }, allowPermissionRequest)
         if (helper != null && sessionMode != mode()) {
             beforeRecovery(); closeSession(); profileIndex = 0; supported = emptyList()
         }

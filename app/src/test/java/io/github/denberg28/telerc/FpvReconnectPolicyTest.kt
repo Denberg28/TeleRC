@@ -44,6 +44,15 @@ class FpvReconnectPolicyTest {
         assertFalse(p.permissionResult("usb/1#1", true))
         assertEquals(NEED_PERMISSION, p.decide(listOf(device("usb/9#9",false)), true, null, 300).action)
     }
+    @Test fun systemAttachmentLaunchCannotArmAPermissionPrompt() {
+        val p=FpvReconnectPolicy(receiver)
+        p.request(receiver,allowPermission=false)
+        repeat(20) { assertEquals(NEED_PERMISSION,p.decide(listOf(device(grant=false)),true,null,100).action) }
+        assertNull(p.pendingPermission)
+        assertEquals(OPEN,p.decide(listOf(device()),true,null,200).action)
+        p.request(receiver,allowPermission=true)
+        assertEquals(REQUEST_PERMISSION,p.decide(listOf(device(grant=false)),true,null,300).action)
+    }
     @Test fun existingSessionSurvivesRepeatedConnectAndGrantRevocationStopsIt() {
         val p = FpvReconnectPolicy(receiver, true)
         repeat(30) { p.request(); assertEquals(KEEP, p.decide(listOf(device()), true, device().attachment, 100).action) }

@@ -129,6 +129,7 @@ class MainActivity : Activity() {
     private var imageWork = false
     private var pendingFpvPermission = false
     private var connectFpvOnResume = false
+    private var fpvResumeMayRequestPermission = false
     private var controlsPlaceholder: View? = null
     private var controlsLocate: Button? = null
     private var controlsEstimate: TextView? = null
@@ -299,7 +300,7 @@ class MainActivity : Activity() {
         switchTo(Page.CONTROLS)
         showingCamera = true
         updateControlsScene()
-        if (resumed) connectFpv() else connectFpvOnResume = true
+        if (resumed) connectFpv(false) else { connectFpvOnResume = true; fpvResumeMayRequestPermission = false }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1193,16 +1194,20 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
     }
 
-    private fun connectFpv() {
+    private fun connectFpv(allowPermissionRequest: Boolean = true) {
         if (page != Page.CONTROLS || !resumed || pendingFpvPermission) return
         // Runtime and USB permission dialogs can take focus. Neutralize before either.
         disableControl()
         showingCamera = true
         updateControlsScene()
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            if (!allowPermissionRequest) {
+                Toast.makeText(this, "Camera access needed · tap Connect FPV", Toast.LENGTH_LONG).show()
+                return
+            }
             pendingFpvPermission = true
             requestPermissions(arrayOf(Manifest.permission.CAMERA), 44)
-        } else fpvCamera?.connectCamera()
+        } else fpvCamera?.connectCamera(allowPermissionRequest)
     }
 
     private fun setControlsMapVisible(visible: Boolean) {
@@ -1304,7 +1309,7 @@ class MainActivity : Activity() {
         if (requestCode == 44) {
             pendingFpvPermission = false
             if (page == Page.CONTROLS && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-                if (resumed) fpvCamera?.connectCamera() else connectFpvOnResume = true
+                if (resumed) fpvCamera?.connectCamera() else { connectFpvOnResume = true; fpvResumeMayRequestPermission = true }
             } else if (page == Page.CONTROLS)
                 Toast.makeText(this, "Camera permission required. Tap Connect FPV to retry.", Toast.LENGTH_LONG).show()
             return
@@ -1348,7 +1353,7 @@ class MainActivity : Activity() {
     }
     private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
     private fun releaseMap() {
-        pendingFpvPermission = false; connectFpvOnResume = false
+        pendingFpvPermission = false; connectFpvOnResume = false; fpvResumeMayRequestPermission = false
         fpvCamera?.close(); fpvCamera = null; fpvSwap = null; fpvConnect = null
         showingCamera = false
         pendingPhoneLocate = false
@@ -1816,7 +1821,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onPause() { pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; connectFpv() }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
