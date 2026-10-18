@@ -37,3 +37,9 @@ The completed workflow and BUILD_INFO supply final software statuses. Unit decis
 Rollback: Android blocks versionCode downgrades. A forward-version rebuild of v0.8.76 with the same signer can restore earlier behavior while retaining data. Avoid uninstalling unless data loss is acceptable.
 
 Android references: https://developer.android.com/develop/connectivity/usb/host and https://developer.android.com/reference/android/hardware/usb/UsbManager . Pinned UVC helper review: shiyinghan/UVCAndroid 1.0.13 CameraHelper/CameraConnectionService/USBMonitor.
+
+## Validation follow-up
+
+Product APK source is 965a5782b5600df681c141cf7913b5fdefdbf852. Run 39088962262 passed bridge sync/host/default sanitizers, all JVM tests, debug/release lint/build and retained its signed APK as a draft. Its native attempt timed out while reopening the existing Test tab menu, before the new FPV lifecycle test. That failed native result is not counted as a pass.
+
+The follow-up changes only instrumentation synchronization and validation workflow: wait for the Activity to regain focus after popup dismissal before opening another tab menu. The pipeline proves exact runtime/unit/firmware/build/script source equivalence before reusing product gates and the retained APK; it builds the updated debug/test APKs, lints the changed harness and runs fresh native checks. BUILD_INFO identifies APK build and validation/archive commits separately. Publication still requires fresh native, signing, package and checksum checks to pass.

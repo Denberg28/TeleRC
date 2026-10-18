@@ -61,13 +61,13 @@ class ThemeImageInstrumentation : Instrumentation() {
                 while (!option.isClickable && option.parent != null) option = option.parent
                 check(option.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
                 waitUntil { app.getSharedPreferences("fpv", 0).getString("mode", "") == "YUYV" }
-                onMain { find(root(activity),"Controls ▾")!!.performClick() }
+                openTabMenu(activity,"Controls")
                 waitUntil { windowText("Test")!=null }; clickWindow("Test")
                 waitUntil { onMain { findMaze(root(activity))!=null } }
                 checkWallpaper(activity); checkJoystickPanels(activity)
                 checkTabMenu(activity,"Test","tabs-${theme.lowercase()}-test.png")
                 screenshot("photo-${theme.lowercase()}-test.png")
-                onMain { find(root(activity),"Test ▾")!!.performClick() }
+                openTabMenu(activity,"Test")
                 waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
                 waitUntil { onMain { description(root(activity),"Show setup panels")!=null } }
                 checkSetupCorners(activity)
@@ -125,7 +125,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         screenshot("fpv-default-help.png"); clickWindow("Done")
         onMain { view.setAutoReconnect(false); view.connectCamera(allowPermissionRequest=false) }
         check(onMain { !policy.wanted && !view.autoReconnect() && helperField.get(view)==null })
-        onMain { find(root(activity),"Controls ▾")!!.performClick() }
+        openTabMenu(activity,"Controls")
         waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
         val registeredField=UsbFpvView::class.java.getDeclaredField("receiverRegistered").apply { isAccessible=true }
         check(onMain { !policy.wanted && registeredField.get(view)==false && helperField.get(view)==null })
@@ -295,7 +295,14 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(shell,"F1")!=null && find(shell,"F2")!=null && find(shell,"F3")!=null)
         }
     }
+    private fun openTabMenu(activity:Activity,label:String) {
+        waitForIdleSync()
+        waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
+        onMain { check(find(root(activity),"$label ▾")!!.performClick()) }
+        waitUntil { windowText("Tab menu")!=null }
+    }
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
+        waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
         val anchor=onMain { find(root(activity),"$label ▾")!! }
         val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)); anchor.performClick() } }
         waitUntil { windowText("Tab menu")!=null }
@@ -309,6 +316,8 @@ class ThemeImageInstrumentation : Instrumentation() {
         screenshot(file)
         clickWindow(label)
         waitUntil { windowText("Tab menu")==null }
+        waitUntil { onMain { activity.hasWindowFocus() } }
+        waitForIdleSync()
     }
     private fun checkWallpaperOpacity() {
         val prefs=targetContext.getSharedPreferences("appearance",0)
@@ -329,12 +338,12 @@ class ThemeImageInstrumentation : Instrumentation() {
             onMain { find(root(activity),"Controls ›")!!.performClick() }
             checkWallpaper(activity); checkJoystickPanels(activity)
             screenshot("wallpaper-$percent-controls.png")
-            onMain { find(root(activity),"Controls ▾")!!.performClick() }
+            openTabMenu(activity,"Controls")
             waitUntil { windowText("Test")!=null }; clickWindow("Test")
             waitUntil { onMain { findMaze(root(activity))!=null } }
             checkWallpaper(activity); checkJoystickPanels(activity)
             screenshot("wallpaper-$percent-test.png")
-            onMain { find(root(activity),"Test ▾")!!.performClick() }
+            openTabMenu(activity,"Test")
             waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
             checkWallpaper(activity)
         }
@@ -427,7 +436,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         prefs.edit().clear().putString("records","37,1200,1000,2").commit()
         var activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         fun enterTest() {
-            onMain { find(root(activity),"Setup ▾")!!.performClick() }
+            openTabMenu(activity,"Setup")
             waitUntil { windowText("Test")!=null }
             clickWindow("Test")
             waitUntil { onMain { findMaze(root(activity))!=null } }
@@ -512,7 +521,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         prefs.edit().clear().putString("wallet",fixture.encode()).commit()
         var activity=startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         fun enter() {
-            onMain { find(root(activity),"Setup ▾")!!.performClick() }
+            openTabMenu(activity,"Setup")
             waitUntil { windowText("Test")!=null }; clickWindow("Test")
             waitUntil { onMain { findMaze(root(activity))!=null } }
         }
@@ -611,13 +620,13 @@ class ThemeImageInstrumentation : Instrumentation() {
                 checkWallpaper(activity); checkJoystickPanels(activity)
                 checkTabMenu(activity,"Controls","tabs-${theme.lowercase()}-large-controls.png")
                 screenshot("labels-${theme.lowercase()}-large-controls.png")
-                onMain { find(root(activity),"Controls ▾")!!.performClick() }
+                openTabMenu(activity,"Controls")
                 waitUntil { windowText("Test")!=null }; clickWindow("Test")
                 waitUntil { onMain { findMaze(root(activity))!=null } }
                 checkWallpaper(activity); checkJoystickPanels(activity)
                 checkTabMenu(activity,"Test","tabs-${theme.lowercase()}-large-test.png")
                 screenshot("labels-${theme.lowercase()}-large-test.png")
-                onMain { find(root(activity),"Test ▾")!!.performClick() }
+                openTabMenu(activity,"Test")
                 waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
                 var chosen=0
                 val levels=onMain { MazePracticeDialogs(activity).levels(MazeProgress.restore(1,20),
