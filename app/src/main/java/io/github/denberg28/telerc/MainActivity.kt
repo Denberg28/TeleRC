@@ -43,7 +43,7 @@ import kotlin.concurrent.thread
 class MainActivity : Activity() {
     private enum class Page { SETUP, CONTROLS, TEST, WAYPOINT }
     @Volatile private var page = Page.SETUP
-    private var waypointTab: WaypointTab? = null
+    @Volatile private var waypointTab: WaypointTab? = null
     private var mazePractice: MazePractice? = null
     private var mazeView: MazePracticeView? = null
     private var mazeRestartDialog: android.app.Dialog? = null

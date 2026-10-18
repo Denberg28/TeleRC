@@ -33,7 +33,7 @@ object WaypointPlan {
         if (points.size > MAX_POINTS || points.any { !it.valid }) return "Invalid route; maximum 20 points"
         if (origin == null || !origin.valid) return "Waiting for measured rover GPS"
         if (points.any { it.distance(origin) > RADIUS_METERS }) return "Every waypoint must be within 100 m of the start"
-        var last = origin; var length = 0.0
+        var last: Waypoint = origin; var length = 0.0
         for (point in points) { length += last.distance(point); last=point }
         if (length > 500) return "Route exceeds 500 m"
         return null
