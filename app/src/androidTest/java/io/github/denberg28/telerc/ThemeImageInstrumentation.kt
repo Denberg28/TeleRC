@@ -119,7 +119,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(prefs.getBoolean("show_camera",false))
             find(root(activity),"Connect FPV")!!.performLongClick()
         }
-        waitUntil { windowText("USB default help")!=null }
+        showMarketItem("USB default help")
         clickWindow("USB default help")
         waitUntil { windowText("Use TeleRC for this receiver")!=null }
         screenshot("fpv-default-help.png"); clickWindow("Done")
