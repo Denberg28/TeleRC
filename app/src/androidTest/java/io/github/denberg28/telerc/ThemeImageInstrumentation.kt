@@ -61,13 +61,13 @@ class ThemeImageInstrumentation : Instrumentation() {
                 while (!option.isClickable && option.parent != null) option = option.parent
                 check(option.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
                 waitUntil { app.getSharedPreferences("fpv", 0).getString("mode", "") == "YUYV" }
-                onMain { find(root(activity),"Controls ▾")!!.performClick() }
+                openTabMenu(activity,"Controls")
                 waitUntil { windowText("Test")!=null }; clickWindow("Test")
                 waitUntil { onMain { findMaze(root(activity))!=null } }
                 checkWallpaper(activity); checkJoystickPanels(activity)
                 checkTabMenu(activity,"Test","tabs-${theme.lowercase()}-test.png")
                 screenshot("photo-${theme.lowercase()}-test.png")
-                onMain { find(root(activity),"Test ▾")!!.performClick() }
+                openTabMenu(activity,"Test")
                 waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
                 waitUntil { onMain { description(root(activity),"Show setup panels")!=null } }
                 checkSetupCorners(activity)
@@ -81,6 +81,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkMazeLevels()
             checkMarket()
             checkPracticeDialogLayouts()
+            checkFpvReconnectLifecycle()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             checkThemeTransitions(photo = false)
@@ -88,13 +89,48 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
         }
+    }
+    private fun checkFpvReconnectLifecycle() {
+        val prefs=targetContext.getSharedPreferences("fpv",0)
+        prefs.edit().putBoolean("auto_connect",false).putBoolean("show_camera",false)
+            .remove("receiver_vendor").remove("receiver_product").commit()
+        val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        onMain { find(root(activity),"Controls ›")!!.performClick() }
+        waitUntil { onMain { find(root(activity),"Connect FPV")!=null } }
+        fun camera(view:View):UsbFpvView? {
+            if(view is UsbFpvView) return view
+            if(view is ViewGroup) for(i in 0 until view.childCount) camera(view.getChildAt(i))?.let { return it }
+            return null
+        }
+        val view=onMain { camera(root(activity))!! }
+        val policyField=UsbFpvView::class.java.getDeclaredField("connection").apply { isAccessible=true }
+        val helperField=UsbFpvView::class.java.getDeclaredField("helper").apply { isAccessible=true }
+        val policy=onMain { policyField.get(view) as FpvReconnectPolicy }
+        onMain {
+            repeat(4) { find(root(activity),"Connect FPV")!!.performClick() }
+            check(policy.wanted && policy.pendingPermission==null && helperField.get(view)==null)
+            check(prefs.getBoolean("show_camera",false))
+            find(root(activity),"Connect FPV")!!.performLongClick()
+        }
+        showMarketItem("USB default help")
+        clickWindow("USB default help")
+        waitUntil { windowText("Use TeleRC for this receiver")!=null }
+        screenshot("fpv-default-help.png"); clickWindow("Done")
+        onMain { view.setAutoReconnect(false); view.connectCamera(allowPermissionRequest=false) }
+        check(onMain { !policy.wanted && !view.autoReconnect() && helperField.get(view)==null })
+        openTabMenu(activity,"Controls")
+        waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
+        val registeredField=UsbFpvView::class.java.getDeclaredField("receiverRegistered").apply { isAccessible=true }
+        check(onMain { !policy.wanted && registeredField.get(view)==false && helperField.get(view)==null })
+        onMain { activity.finish() }; waitForIdleSync()
+        prefs.edit().putBoolean("show_camera",false).commit()
     }
     private fun checkThemeTransitions(photo:Boolean) {
         val prefs=targetContext.getSharedPreferences("appearance",0)
@@ -259,7 +295,14 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(shell,"F1")!=null && find(shell,"F2")!=null && find(shell,"F3")!=null)
         }
     }
+    private fun openTabMenu(activity:Activity,label:String) {
+        waitForIdleSync()
+        waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
+        onMain { check(find(root(activity),"$label ▾")!!.performClick()) }
+        waitUntil { windowText("Tab menu")!=null }
+    }
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
+        waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
         val anchor=onMain { find(root(activity),"$label ▾")!! }
         val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)); anchor.performClick() } }
         waitUntil { windowText("Tab menu")!=null }
@@ -273,6 +316,8 @@ class ThemeImageInstrumentation : Instrumentation() {
         screenshot(file)
         clickWindow(label)
         waitUntil { windowText("Tab menu")==null }
+        waitUntil { onMain { activity.hasWindowFocus() } }
+        waitForIdleSync()
     }
     private fun checkWallpaperOpacity() {
         val prefs=targetContext.getSharedPreferences("appearance",0)
@@ -293,12 +338,12 @@ class ThemeImageInstrumentation : Instrumentation() {
             onMain { find(root(activity),"Controls ›")!!.performClick() }
             checkWallpaper(activity); checkJoystickPanels(activity)
             screenshot("wallpaper-$percent-controls.png")
-            onMain { find(root(activity),"Controls ▾")!!.performClick() }
+            openTabMenu(activity,"Controls")
             waitUntil { windowText("Test")!=null }; clickWindow("Test")
             waitUntil { onMain { findMaze(root(activity))!=null } }
             checkWallpaper(activity); checkJoystickPanels(activity)
             screenshot("wallpaper-$percent-test.png")
-            onMain { find(root(activity),"Test ▾")!!.performClick() }
+            openTabMenu(activity,"Test")
             waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
             checkWallpaper(activity)
         }
@@ -391,7 +436,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         prefs.edit().clear().putString("records","37,1200,1000,2").commit()
         var activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         fun enterTest() {
-            onMain { find(root(activity),"Setup ▾")!!.performClick() }
+            openTabMenu(activity,"Setup")
             waitUntil { windowText("Test")!=null }
             clickWindow("Test")
             waitUntil { onMain { findMaze(root(activity))!=null } }
@@ -476,7 +521,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         prefs.edit().clear().putString("wallet",fixture.encode()).commit()
         var activity=startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         fun enter() {
-            onMain { find(root(activity),"Setup ▾")!!.performClick() }
+            openTabMenu(activity,"Setup")
             waitUntil { windowText("Test")!=null }; clickWindow("Test")
             waitUntil { onMain { findMaze(root(activity))!=null } }
         }
@@ -575,13 +620,13 @@ class ThemeImageInstrumentation : Instrumentation() {
                 checkWallpaper(activity); checkJoystickPanels(activity)
                 checkTabMenu(activity,"Controls","tabs-${theme.lowercase()}-large-controls.png")
                 screenshot("labels-${theme.lowercase()}-large-controls.png")
-                onMain { find(root(activity),"Controls ▾")!!.performClick() }
+                openTabMenu(activity,"Controls")
                 waitUntil { windowText("Test")!=null }; clickWindow("Test")
                 waitUntil { onMain { findMaze(root(activity))!=null } }
                 checkWallpaper(activity); checkJoystickPanels(activity)
                 checkTabMenu(activity,"Test","tabs-${theme.lowercase()}-large-test.png")
                 screenshot("labels-${theme.lowercase()}-large-test.png")
-                onMain { find(root(activity),"Test ▾")!!.performClick() }
+                openTabMenu(activity,"Test")
                 waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
                 var chosen=0
                 val levels=onMain { MazePracticeDialogs(activity).levels(MazeProgress.restore(1,20),
@@ -710,9 +755,11 @@ class ThemeImageInstrumentation : Instrumentation() {
         return null
     }
     private fun <T> onMain(action: () -> T): T {
-        var value: T? = null
-        runOnMainSync { value = action() }
-        @Suppress("UNCHECKED_CAST") return value as T
+        // Report assertion failures to the instrumentation thread instead of crashing
+        // the app main thread before the suite can emit its failure evidence.
+        var value: Result<T>? = null
+        runOnMainSync { value = runCatching(action) }
+        return value!!.getOrThrow()
     }
     private fun waitUntil(condition: () -> Boolean) {
         val end = SystemClock.elapsedRealtime() + 12000
