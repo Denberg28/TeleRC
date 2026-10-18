@@ -305,3 +305,9 @@ Authoritative baseline: released `v0.8.57`, commit `47cdf3e88f3f83fc9877890fdd0e
 | F packaging | Local APK code76, retained keystore signature, permission policy and ZIP alignment PASS | Compare signer/package/increasing version directly with released v0.8.57; verify source/evidence archives/checksums; publish prerelease only |
 
 GitHub workflow `full-ui-wifi-arm.yml` is restricted to `work/fpv-ui-058-*` and publishes v0.8.58 only after its required checks. Actual run/result and source commit are carried in the release BUILD_INFO and Actions evidence. The separate sensitivity/expo files and MiniRover transport/arm logic are retained from 0.8.57; firmware reflash is unnecessary. Next physical check is upgrade from the installed 0.8.57 app, confirm saved independent sliders/expo, connect the actual UVC receiver, then run permission/swap/disconnect/background and raised-wheel control checks.
+
+# Expanded console — 0.8.76
+
+See [scope, acceptance, A–F gates, installation and rollback](CONSOLE_076.md). Baseline c9d3079/code93; candidate code94. Cloud results supersede pending software gates only. Actual phone/rover HIL remains BLOCKED.
+
+0.8.76 final software result: tested source `cfa044896a2f8ca40dffb78366d635a38b3722b5`; run [39083855942](https://github.com/Denberg28/TeleRC/actions/runs/39083855942). Build/JVM/debug+release lint/native geometry/theme/maze/bridge sanitizers/signing/package checks PASS. Workflow overall FAILURE is artifact retention only: account Actions storage quota exhausted. No retained APK download. Physical HIL BLOCKED. See CONSOLE_076.md.
