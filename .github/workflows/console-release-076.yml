@@ -21,6 +21,7 @@ jobs:
         run: |
           git diff --exit-code cfa044896a2f8ca40dffb78366d635a38b3722b5 HEAD -- app bridge scripts tests build.gradle.kts settings.gradle.kts gradle.properties gradle gradlew gradlew.bat
           mkdir -p app/build/photo-evidence deliverables validation-evidence
+          gh release download v0.8.52 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.52.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
           gh api repos/$GITHUB_REPOSITORY/actions/runs/39083855942 > validation-evidence/run.json
           gh api repos/$GITHUB_REPOSITORY/actions/runs/39083855942/jobs > validation-evidence/jobs.json
           gh api --allow-escape-sequences repos/$GITHUB_REPOSITORY/actions/jobs/117546228725/logs > validation-evidence/qualification.log
@@ -69,13 +70,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download v0.8.75 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.75.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
           cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.76.apk
           python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.76.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
           python - <<'PY'
           import os,pathlib
           p=pathlib.Path('deliverables/BUILD_INFO.txt')
-          s=p.read_text().replace('PASS (preceding required steps)','PASS (qualified source-identical run 39083855942)')
+          s=p.read_text().replace('PASS (preceding required steps)','PASS (qualified source-identical run 39083855942)').replace('Signing continuity with v0.8.75','Signing continuity with available v0.8.52')
           s+='\nRelease packaging source: '+os.environ['GITHUB_SHA']+'\n'
           s+='Validation source: cfa044896a2f8ca40dffb78366d635a38b3722b5; run 39083855942; job 117546228725\n'
           s+='Runtime, firmware, build configuration, scripts and test sources: exact git diff match. Native frames included in evidence ZIP.\n'
@@ -84,6 +84,7 @@ jobs:
           p.write_text(s)
           print(s)
           PY
+          gh release create v0.8.76 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "TeleRC v0.8.76 — expanded center panes" deliverables/TeleRC-v0.8.76.apk
           git archive --format=zip -o deliverables/TeleRC-v0.8.76-source.zip HEAD
           cp docs/CONSOLE_076.md deliverables/START_HERE.md
           zip -qr deliverables/TeleRC-v0.8.76-check-evidence.zip validation-evidence app/build/photo-evidence
@@ -97,7 +98,8 @@ jobs:
         run: |
           test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
           cd deliverables
-          gh release create v0.8.76 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.76 — expanded center panes" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+          gh release upload v0.8.76 --repo "$GITHUB_REPOSITORY" *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+          gh release edit v0.8.76 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false --title "TeleRC v0.8.76 — expanded center panes" --notes-file START_HERE.md
           gh release view v0.8.76 --repo "$GITHUB_REPOSITORY" --json url,tagName,isPrerelease
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

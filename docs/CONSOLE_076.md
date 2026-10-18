@@ -1,28 +1,28 @@
-# Expanded console — 0.8.76 test release
+# TeleRC v0.8.76 — expanded center panes
 
-Baseline: v0.8.75/code93, c9d307919d59423f3e76d845174f5a16cbe26a6f. Candidate code94. App-only: no firmware or protocol changes, no reflash.
+Controls and Test now extend the center pane through the former bottom footer. Test's version label and Controls' connection-status footer are removed. Enable/Stop and Start/Pause/Resume sit below the left joystick; F1–F3 and Clear times sit below the right. The joystick areas retain their size and caption alignment.
 
-Controls and Test use full-height center panes. Bottom controls belong to the side columns: Enable/Stop left and F1–F3 right; Start/Pause/Resume left and Clear times right. Test version and Controls status footer are removed. Setup retains connection diagnostics and version. Center gains one scaled 48 dp action row plus its 8 dp gap while side joystick bounds stay the same. Side button widths follow their columns; F1–F3 share available width.
+Install the signed APK over the existing TeleRC app without uninstalling to retain settings and maze progress. No firmware reflash is needed. This is a test release; phone/receiver/rover validation remains pending. The current stable release channel is unchanged.
 
-Acceptance: center top/bottom match its row; bottom actions align with its bottom without intersection; all actions remain fully visible; no Controls DISCONNECTED or Test version label; themes, menus, maze persistence, pause, clear times and safety gating retained. Native geometry assertions run across Light/Sepia/Dark at normal and 1.3 font scale alongside existing tests.
+## Validation and provenance
 
-| Gate | Status before cloud run | Evidence / next check |
-| --- | --- | --- |
-| A source/build | Reviewed; local Android BLOCKED | Cloud JVM, debug/release lint/build, instrumentation APK required; local SDK unavailable |
-| B behavior | Reviewed; native geometry pending | Full-height center, separate side actions and hidden footer labels |
-| C regression | Pending cloud | Existing bridge sync/host/ASan/UBSan, JVM and native theme/maze suite |
-| D integration | App-only reviewed; device NOT TESTED | No protocol, firmware, watchdog or authority changes |
-| E HIL | BLOCKED | No phone/rover attached; use raised-wheel steps below |
-| F delivery | Pending cloud | Retained signer, code94, source/evidence ZIPs and SHA256SUMS; Actions artifact only |
+The app, firmware, Gradle/build configuration, scripts and test sources match qualified commit cfa044896a2f8ca40dffb78366d635a38b3722b5 exactly. Qualification run: https://github.com/Denberg28/TeleRC/actions/runs/39083855942
 
-Inspect the completed Expanded console qualification run for final software results. No release publication or stable promotion is performed.
+| Gate | Result |
+| --- | --- |
+| A source/build | PASS — JVM tests, debug/release lint and builds, instrumentation APK |
+| B behavior | PASS — emulator: full-height pane, bottom alignment, no overlaps or clipped actions; Light/Sepia/Dark and normal/1.3 text |
+| C regression | PASS — bridge sync/host/default ASan/UBSan plus native theme, photo, maze, Market and FPV menu checks |
+| D software integration | PASS — unchanged protocols; fresh APK signing, identity/code94, permissions, USB registration, CRC and alignment verified during packaging |
+| E physical HIL | BLOCKED — no attached phone, receiver or rover |
+| F delivery | The packaging workflow verifies all checksums and archive CRCs before publishing APK, source/evidence archives, BUILD_INFO and SHA256SUMS as release assets |
 
-Phone acceptance: install over 0.8.75, confirm settings/wallet retained; verify Controls and Test center reaches the bottom action baseline, both joystick captions remain aligned and all bottom buttons fit in landscape with system bars/cutout. Repeat all themes and larger text; exercise Levels, Restart and Clear times. In Controls use raised wheels: explicit Connect → Enable → neutral → ARM; check CH1/CH2 and release, STOP, background and link-loss/recovery. Reconnection must not automatically enable or arm. No measured physical result is claimed.
+The original qualification's overall failure was exclusively Actions artifact storage quota. Its original run/job metadata, full log, native result and screenshots are included in the evidence ZIP. Source equivalence is checked before reusing that evidence. Packaging performs a fresh signed APK build and independent signing continuity against the available v0.8.52 APK; the expected v0.8.75 release download was unavailable. No claim that native tests ran again during packaging.
 
-Rollback: retain v0.8.75 and its data. Android blocks a versionCode downgrade; restoring the prior layout should use a forward-version rebuild of v0.8.75, retaining signing identity. Avoid uninstalling unless data loss is acceptable. Next concrete check: review cloud qualification and phone geometry/raised-wheel behavior.
+## Phone checks and rollback
 
-## Authorized release packaging
+Confirm saved settings and wallet after installing, then verify both center panes reach the bottom button baseline. Repeat all themes and larger text with system bars/cutout visible. Exercise Levels, Restart and Clear times.
 
-The owner requested a release build after the qualification above. Release packaging verifies an exact git diff match for app, firmware, build configuration, scripts and tests against qualified source cfa044896a2f8ca40dffb78366d635a38b3722b5. It recovers the original successful job metadata/log/native results/screenshots, rebuilds the signed release APK, and repeats signing continuity against v0.8.75 plus identity/code94/permissions/USB/CRC/alignment checks. Native/JVM/lint/sanitizer evidence is reused only after that exact source match; it is not claimed as rerun in packaging.
+With wheels raised: explicit Connect → Enable → neutral → ARM; check CH1 steer/CH2 drive, release/STOP, background and link loss/recovery. Reconnection must not automatically enable or arm.
 
-The release uses GitHub Releases assets rather than Actions artifact storage, retaining APK, source, evidence ZIPs, BUILD_INFO and SHA256SUMS. v0.8.76 is a prerelease; v0.8.75 remains the latest stable. The previous quota blocker is resolved for delivery only when the release-packaging workflow succeeds. No firmware update or main merge. Phone/receiver/rover HIL remains BLOCKED. Install over 0.8.75 without uninstalling, retain settings, and perform the phone acceptance steps above.
+Android blocks versionCode downgrades. Restoring the old layout while retaining data requires a forward-version rebuild with the same signer; avoid uninstalling unless data loss is acceptable. Source, signing and package identifiers are recorded in BUILD_INFO. No main merge or stable promotion is part of this release.
