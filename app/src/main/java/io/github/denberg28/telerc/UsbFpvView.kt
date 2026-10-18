@@ -162,6 +162,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     /** Explicit requests may ask once. Repeated Connect never tears down a healthy session. */
     fun connectCamera(allowPermissionRequest: Boolean = true) {
         if (disposed || !foreground || !cameraPermission()) return
+        if (!allowPermissionRequest && prefs.contains("auto_connect") && !autoReconnect()) return
         val devices = manager.deviceList.values.filter(::isVideoDevice)
         val chosen = devices.singleOrNull()
         if (chosen != null) remember(chosen)
@@ -279,8 +280,8 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                     showMessage("USB receiver unplugged · reconnecting automatically when Android grants access")
                 }
                 override fun onCancel(d: UsbDevice) = current(d) {
-                    connection.disallowPrompt(); closeSession(); connection.defer(SystemClock.elapsedRealtime() + 1000)
-                    showMessage("USB access changed · waiting for Android access")
+                    connection.disallowPrompt()
+                    recover("USB access changed · waiting for Android access")
                 }
                 override fun onError(d: UsbDevice, error: CameraException) = current(d) {
                     recover("Camera error ${error.code} · close other USB camera apps")

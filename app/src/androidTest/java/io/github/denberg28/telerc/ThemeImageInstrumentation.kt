@@ -123,7 +123,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         clickWindow("USB default help")
         waitUntil { windowText("Use TeleRC for this receiver")!=null }
         screenshot("fpv-default-help.png"); clickWindow("Done")
-        onMain { view.setAutoReconnect(false) }
+        onMain { view.setAutoReconnect(false); view.connectCamera(allowPermissionRequest=false) }
         check(onMain { !policy.wanted && !view.autoReconnect() && helperField.get(view)==null })
         onMain { find(root(activity),"Controls ▾")!!.performClick() }
         waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
