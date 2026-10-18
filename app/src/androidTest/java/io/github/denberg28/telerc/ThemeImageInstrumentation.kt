@@ -499,7 +499,10 @@ class ThemeImageInstrumentation : Instrumentation() {
                 check(find(view,"ARM") == null && find(view,"Phone control") == null)
             }
             onMain { find(root(activity),"F1")!!.performClick() }
-            waitUntil { windowText("F1 external servo assignment")!=null && windowText("Close")!=null }; clickWindow("Close")
+            waitUntil { windowText("F1 external servo assignment")!=null && windowText("Close")!=null }
+            val closeBounds=android.graphics.Rect().also { windowText("Close")!!.getBoundsInScreen(it) }
+            check(closeBounds.height()>0 && closeBounds.top>=0 && closeBounds.bottom<=activity.resources.displayMetrics.heightPixels)
+            clickWindow("Close")
             onMain { find(root(activity),"Help & safety")!!.performClick() }
             waitUntil { windowText("Help & safety")!=null && windowText("OK")!=null }; clickWindow("OK")
             checkTabMenu(activity,"Waypoint","waypoint-${theme.lowercase()}-menu.png")

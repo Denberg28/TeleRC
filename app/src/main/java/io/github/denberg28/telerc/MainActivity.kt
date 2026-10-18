@@ -586,8 +586,6 @@ class MainActivity : Activity() {
                     refreshFunctionButtons()
                     dialog.dismiss()
                 }
-                .setView(text("External servo only · M5–M8 reserved for rover drive outputs", 12f, muted)
-                    .apply { setPadding(dp(16), dp(8), dp(16), dp(8)) })
                 .setNegativeButton("Close", null).show()
         }
         control = button(functionCaption(label)) { showAssignment() }
