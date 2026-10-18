@@ -1008,7 +1008,8 @@ class MainActivity : Activity() {
                 if(udp!=null && remote!=null) txExecutor.execute {
                     synchronized(commandLock) {
                         if(socket===udp && connected.get() && !miniRoverMode && !usbMode &&
-                            !controlEnabled.get() &&
+                            (!controlEnabled.get() || dispatch.gcsHeartbeat) &&
+                            (!dispatch.gcsHeartbeat || resumed) &&
                             SystemClock.elapsedRealtime()-submitted in 0..500 &&
                             (!dispatch.motion || page==Page.WAYPOINT && resumed)) {
                             try { waypointTab?.sendIfAllowed(dispatch) { bytes ->

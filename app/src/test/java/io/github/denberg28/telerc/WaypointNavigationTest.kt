@@ -90,9 +90,11 @@ class WaypointNavigationTest {
         assertTrue(n.drain().any { it.bytes[5]==0.toByte() })
         assertFalse(n.moving)
         n.receive(heartbeat(0),2800,1); n.tick(3700,true,true,false)
-        assertTrue(n.drain().any { it.bytes[5]==0.toByte() })
+        val beacon=n.drain().single { it.gcsHeartbeat }
+        assertFalse(beacon.motion); assertTrue(n.permits(beacon,3700))
         n.tick(4800,true,false,false)
         assertFalse(n.drain().any { it.bytes[5]==0.toByte() })
+        assertFalse(n.permits(beacon,4800))
         n.disconnected(); assertFalse(n.gcsSessionActive)
     }
     @Test fun finalDispatchRechecksReadinessAndCancelsAtomically() {

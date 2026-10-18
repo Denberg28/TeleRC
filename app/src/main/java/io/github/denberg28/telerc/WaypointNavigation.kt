@@ -43,7 +43,9 @@ object WaypointPlan {
 /** Foreground, phone-supervised Guided route; never changes or uploads the FC's AUTO mission. */
 class WaypointNavigation {
     enum class State { IDLE, CHECKING, READY, STARTING, RUNNING, HOLDING, STOPPED, COMPLETE, ERROR }
-    data class Dispatch(val bytes: ByteArray, val epoch: Long, val motion: Boolean)
+    data class Dispatch(val bytes: ByteArray, val epoch: Long, val motion: Boolean) {
+        val gcsHeartbeat get() = bytes.size==17 && bytes[5]==0.toByte()
+    }
     var state = State.IDLE; private set
     var message = "Plan now · navigation requires ArduRover GPS + compass and a compatible link"; private set
     var system = 0; private set
@@ -57,6 +59,7 @@ class WaypointNavigation {
     val busy get() = state in setOf(State.STARTING, State.RUNNING, State.HOLDING, State.CHECKING)
     val moving get() = state == State.RUNNING || state == State.STARTING
     var gcsSessionActive = false; private set
+    private var supervisionForeground = false
     private var monitoring = false
     private var sequence = 0
     private var heartbeatAt = -10000L
@@ -96,7 +99,8 @@ class WaypointNavigation {
         "WP_SPEED" to { it in .1f..1f })
 
     @Synchronized fun permits(dispatch: Dispatch, now: Long) = dispatch.epoch == epoch &&
-        (!dispatch.motion || moving && monitoring && blocker(now)==null)
+        (!dispatch.motion || moving && monitoring && supervisionForeground && blocker(now)==null) &&
+        (!dispatch.gcsHeartbeat || beaconAllowed(now))
     /** Stop and the final send share one lock, so a cancelled generation cannot slip past validation. */
     @Synchronized fun transmit(dispatch: Dispatch, now: Long, send: (ByteArray)->Unit): Boolean {
         if (!permits(dispatch,now)) return false
@@ -241,15 +245,17 @@ class WaypointNavigation {
             242 -> Waypoint(p.i32(0)/1e7,p.i32(4)/1e7).takeIf { it.valid }?.let { home=it; homeAt=now }
         }
     }
+    private fun beaconAllowed(now: Long): Boolean = supervisionForeground &&
+        (monitoring && (!moving || blocker(now)==null) ||
+        gcsSessionActive && autopilotGood && fresh(heartbeatAt,now) && mode in setOf(0,1,3,4,7) && state!=State.HOLDING)
     @Synchronized fun tick(now: Long, connected: Boolean, foreground: Boolean, visible: Boolean = true) {
+        supervisionForeground=foreground
         if (!connected) { if (system != 0) disconnected(); return }
         if ((!foreground || !visible) && (moving || monitoring)) stop("App left foreground or Waypoint tab",now)
         // After confirmed HOLD only, retain ordinary foreground GCS liveness in manual/HOLD modes.
         // Otherwise returning to Controls would trigger the newly enabled FC GCS failsafe.
         // This never sends destinations/RC/ARM; an unconfirmed stop withdraws all beacons.
-        val passive = gcsSessionActive && foreground && autopilotGood && fresh(heartbeatAt,now) &&
-            mode in setOf(0,1,3,4,7) && state != State.HOLDING
-        if ((monitoring || passive) && foreground && now-lastBeat >= 1000) { lastBeat=now; queue(WaypointProtocol.heartbeat(sequence++)) }
+        if (beaconAllowed(now) && now-lastBeat >= 1000) { lastBeat=now; queue(WaypointProtocol.heartbeat(sequence++)) }
         if (monitoring && now-lastRequest >= 3000) request(now)
         when (state) {
             State.CHECKING -> {
