@@ -1,3 +1,7 @@
+# Compact tabs 0.8.82
+
+F1–F3 share the existing servo assignment controls and do not actuate servos. Native ELRS TX Backpack remains transmitter-controlled; Phone control offers a separate FC Wi-Fi setup path. Fixed Setup is landscape; native geometry checks cover normal and large text, with actual OEM-phone verification pending. [Acceptance](COMPACT_TABS_082.md).
+
 # ELRS recovery limits — 0.8.81
 
 [0.8.81](ELRS_RECOVERY_081.md) addresses heartbeat-dependent registration and removed-network rebinding in the native Backpack profile. Native phone drive/arm/live Waypoint remain locked. The phone must stay near Backpack Wi-Fi; the configured remote IPv4 address does not auto-update on router DHCP changes. Actual Wi-Fi replacement/ELRS/FC recovery latency and stopping are unmeasured; physical HIL remains BLOCKED. Retry PING is not GCS failsafe supervision or RF-health proof.

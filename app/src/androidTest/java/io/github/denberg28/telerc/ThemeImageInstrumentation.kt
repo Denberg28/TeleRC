@@ -93,7 +93,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and handset-only control; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -370,7 +370,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(shell,"Clear times")!=null)
         } else {
             check(find(shell,"DISCONNECTED")==null)
-            check(find(shell,"ENABLE CONTROL")!=null || find(shell,"STOP CONTROL")!=null)
+            check(find(shell,"Phone control")!=null || find(shell,"Use transmitter")!=null)
             check(find(shell,"F1")!=null && find(shell,"F2")!=null && find(shell,"F3")!=null)
         }
     }
@@ -392,6 +392,28 @@ class ThemeImageInstrumentation : Instrumentation() {
         tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
+    private fun checkFixedSetup(activity:Activity) {
+        val view=root(activity)
+        val pane=description(view,"Fixed setup pane")!!
+        check(pane !is android.widget.ScrollView)
+        val guide=description(view,"Connection guide")!!
+        val collapse=description(view,"Minimize setup panels")!!
+        val guideXY=IntArray(2); val collapseXY=IntArray(2)
+        guide.getLocationOnScreen(guideXY); collapse.getLocationOnScreen(collapseXY)
+        check(guideXY[0]+guide.width<=collapseXY[0] && guideXY[1]==collapseXY[1])
+        val paneBounds=android.graphics.Rect().also { check(pane.getGlobalVisibleRect(it)) }
+        for(name in listOf("Connection settings","Preferences")) {
+            val panel=description(view,name)!!
+            val xy=IntArray(2); panel.getLocationOnScreen(xy)
+            check(xy[1]>=paneBounds.top && xy[1]+panel.height<=paneBounds.bottom) { "$name clipped in fixed Setup: ${panel.height}, $paneBounds" }
+        }
+        for(caption in listOf("Connect","Diagnose link","Check for updates")) {
+            val action=find(view,caption)!!
+            check(action.isShown && action.height>0)
+            val actual=android.graphics.Rect().also { check(action.getGlobalVisibleRect(it)) }
+            check(actual.height()==action.height) { "$caption clipped" }
+        }
+    }
     private fun checkFcElrsSetup() {
         val prefs=targetContext.getSharedPreferences("link",0)
         val oldTransport=prefs.getString("transport","wifi")
@@ -406,7 +428,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check((description(view,"ELRS Backpack IPv4 address") as TextView).text.toString()==FcElrs.HOST)
             check((description(view,"Send port; Backpack Listen port") as TextView).text.toString()=="14555")
             check((description(view,"Listen port; Backpack Send port") as TextView).text.toString()=="14550")
-            check(find(view,"ELRS TX + RX setup")!=null)
+            checkFixedSetup(activity)
             fun field(name: String) = MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }
             val connection = field("connected").get(activity) as java.util.concurrent.atomic.AtomicBoolean
             val refresh = MainActivity::class.java.getDeclaredMethod("refreshUi").apply { isAccessible=true }
@@ -429,19 +451,31 @@ class ThemeImageInstrumentation : Instrumentation() {
         }
         screenshot("elrs-setup.png")
         openTabMenu(activity,"Setup"); waitUntil { windowText("Controls")!=null }; clickWindow("Controls")
-        waitUntil { onMain { find(root(activity),"HANDSET CONTROL")!=null } }
+        waitUntil { onMain { find(root(activity),"Phone control")!=null } }
         onMain {
-            check(!find(root(activity),"HANDSET CONTROL")!!.isEnabled)
-            check(!find(root(activity),"USE HANDSET")!!.isEnabled)
+            check(find(root(activity),"Phone control")!!.isEnabled)
+            check(!find(root(activity),"Use transmitter")!!.isEnabled)
             check(find(root(activity),"Connect FPV")!=null)
         }
+        onMain { find(root(activity),"Phone control")!!.performClick() }
+        waitUntil { windowText("Use phone Wi-Fi")!=null }; clickWindow("Cancel")
+        check(prefs.getString("transport","")==FcElrs.TRANSPORT)
         screenshot("elrs-controls.png")
         openTabMenu(activity,"Controls"); waitUntil { windowText("Waypoint")!=null }; clickWindow("Waypoint")
-        waitUntil { onMain { find(root(activity),"Check rover")!=null } }
-        onMain { find(root(activity),"Check rover")!!.performClick() }
+        waitUntil { onMain { find(root(activity),"Mission start")!=null } }
+        onMain { find(root(activity),"Mission start")!!.performClick() }
         waitUntil { windowText("Planning only")!=null }; clickWindow("OK")
         waitUntil { windowText("Planning only")==null }
         screenshot("elrs-waypoint.png")
+        openTabMenu(activity,"Waypoint"); waitUntil { windowText("Controls")!=null }; clickWindow("Controls")
+        onMain { find(root(activity),"Phone control")!!.performClick() }
+        waitUntil { windowText("Use phone Wi-Fi")!=null }; clickWindow("Open Setup")
+        waitUntil { onMain { description(root(activity),"Fixed setup pane")!=null } }
+        check(prefs.getString("transport","")=="wifi" && !prefs.getBoolean("auto_connect",true))
+        onMain {
+            val gate=MainActivity::class.java.getDeclaredField("controlEnabled").apply { isAccessible=true }.get(activity) as LiveControlGate
+            check(!gate.get()); checkFixedSetup(activity)
+        }
         onMain { activity.finish() }; waitForIdleSync()
         prefs.edit().putString("transport",oldTransport).putBoolean("auto_connect",false).commit()
         appearance.edit().putBoolean("setup_minimized",minimized).commit()
@@ -453,23 +487,41 @@ class ThemeImageInstrumentation : Instrumentation() {
             targetContext.getSharedPreferences("appearance",0).edit().putString("background",theme).commit()
             val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             openTabMenu(activity,"Setup"); waitUntil { windowText("Waypoint")!=null }; clickWindow("Waypoint")
-            waitUntil { onMain { description(root(activity),"Confirm and start waypoint route")!=null } }
+            waitUntil { onMain { description(root(activity),"Mission start; check rover and confirm route")!=null } }
             onMain {
                 val view=root(activity)
-                check(find(view,"Review route")!=null && find(view,"STOP · HOLD")!=null)
+                check(find(view,"Mission start")!=null && find(view,"STOP · HOLD")!=null)
+                check(find(view,"Review route")==null && find(view,"Review point")==null)
+                listOf("F1","F2","F3").forEach { check(find(view,it)!=null) }
                 check(description(view,"Waypoint map; tap to choose a destination")!!.width>view.width*.4f)
                 check(description(view,"Waypoint map; tap to choose a destination")!!.height>view.height*.4f)
                 check(description(view,"Waypoint 2, 13.621900, 123.194800; tap to remove")!=null)
-                check(find(view,"ARM") == null && find(view,"ENABLE CONTROL") == null)
+                check(find(view,"ARM") == null && find(view,"Phone control") == null)
             }
+            onMain { find(root(activity),"F1")!!.performClick() }
+            waitUntil { windowText("F1 external servo assignment")!=null }; clickWindow("Close")
+            onMain { find(root(activity),"Help & safety")!!.performClick() }
+            waitUntil { windowText("Help & safety")!=null && windowText("OK")!=null }; clickWindow("OK")
             checkTabMenu(activity,"Waypoint","waypoint-${theme.lowercase()}-menu.png")
             screenshot("waypoint-${theme.lowercase()}-plan.png")
-            onMain { find(root(activity),"Review route")!!.performClick() }
-            waitUntil { windowText("Route saved · movement locked")!=null }; clickWindow("OK")
-            waitUntil { windowText("Route saved · movement locked")==null }
-            onMain { find(root(activity),"Check rover")!!.performClick() }
+            onMain { find(root(activity),"Mission start")!!.performClick() }
             waitUntil { windowText("Planning only")!=null }; clickWindow("OK")
             waitUntil { windowText("Planning only")==null }
+            onMain {
+                val connectedField=MainActivity::class.java.getDeclaredField("connected").apply { isAccessible=true }
+                val connection=connectedField.get(activity) as java.util.concurrent.atomic.AtomicBoolean
+                val targetField=MainActivity::class.java.getDeclaredField("target").apply { isAccessible=true }
+                val tab=MainActivity::class.java.getDeclaredField("waypointTab").apply { isAccessible=true }.get(activity) as WaypointTab
+                // No socket is installed: exercise UI intent and cancellation without transmitting.
+                connection.set(true); targetField.setInt(activity,1)
+                find(root(activity),"Mission start")!!.performClick()
+                check(tab.navigation.state==WaypointNavigation.State.CHECKING && !tab.navigation.moving)
+                val requested=WaypointTab::class.java.getDeclaredField("startRequested").apply { isAccessible=true }
+                check(requested.getBoolean(tab))
+                find(root(activity),"STOP · HOLD")!!.performClick()
+                check(!requested.getBoolean(tab) && !tab.navigation.moving)
+                connection.set(false); targetField.setInt(activity,0); tab.disconnected()
+            }
             onMain { find(root(activity),"Mission ▾")!!.performClick() }
             waitUntil { windowText("Route mode")!=null }; clickWindow("Single destination")
             waitUntil { windowText("Use single destination?")!=null }; clickWindow("Cancel")
@@ -484,7 +536,7 @@ class ThemeImageInstrumentation : Instrumentation() {
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
         lastTabActivity=activity
         waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
-        if(label=="Setup") onMain { checkSetupVersion(activity) }
+        if(label=="Setup") onMain { checkSetupVersion(activity); if(description(root(activity),"Minimize setup panels")!=null) checkFixedSetup(activity) }
         val anchor=onMain { find(root(activity),"$label ▾")!! }
         val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)) } }
         tapView(anchor)

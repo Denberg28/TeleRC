@@ -1,3 +1,7 @@
+# Compact tabs 0.8.82
+
+Setup has a fixed two-column pane and top-bar Guide. Waypoint owns pending start intent, which is canceled on STOP/lifecycle/session loss; readiness opens the existing explicit confirmation. Navigation engine, codecs and FC fail-safe readback are unchanged. F1–F3 are supplied by MainActivity to reuse saved servo assignment constraints. Native Backpack Phone control switches only to disconnected Wi-Fi Setup after a deliberate choice.
+
 # Native ELRS recovery — 0.8.81
 
 The native Backpack worker polls BackpackRecovery at most once per second in foreground while connection is requested. FC heartbeat freshness never gates registration. The captured Android Network must remain in ConnectivityManager.allNetworks; actual removal exits through existing session stop and two-second reconnect, which binds the replacement socket to Wi-Fi. Capability churn/heartbeat silence retain the socket. Registration stays exact checksum-valid PING, guarded by FcElrsTelemetryTransport; no GCS heartbeat or phone authority is introduced. Other transport loops, navigation safety engine/codecs, firmware and FPV remain protected. See [contract and acceptance](ELRS_RECOVERY_081.md).

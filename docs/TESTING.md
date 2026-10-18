@@ -1,3 +1,7 @@
+# Compact tabs 0.8.82
+
+Baseline 38b2310/code99; candidate code100. [A–F gates, acceptance and rollback](COMPACT_TABS_082.md). Local Android SDK unavailable; no local build claim. Cloud checks and native geometry/authority/actions tests must pass; physical phone/rover checks remain BLOCKED.
+
 # ELRS recovery gates — 0.8.81
 
 Follow [scope, A–F gates and executable restrained-wheel acceptance](ELRS_RECOVERY_081.md). Required cloud gates include the new BackpackRecoveryTest suite, existing command-guard regressions, native UDP/live/stale state checks, full JVM/debug+release lint/build, protected-source scope, host/default sanitizers, retained signer/code99, source/evidence/checksums. Local source review/diff and Python verifier syntax checked; local Android toolchain BLOCKED. Final workflow results supersede pending software gates. Actual Android Wi-Fi replacement, RF/FC stopping, phone install and HIL remain NOT TESTED/BLOCKED. No affected ESP32 targets or reflash; no stable promotion.

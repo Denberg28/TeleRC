@@ -412,7 +412,7 @@ class MainActivity : Activity() {
         }
         refreshUi()
     }
-    private fun armCaption(): String = if(fcElrsMode) "USE HANDSET" else when (vehicleArmed) {
+    private fun armCaption(): String = if(fcElrsMode) "Use transmitter" else when (vehicleArmed) {
         true -> "DISARM"
         false -> if (!miniRoverMode) "ARM" else when {
             !controlEnabled.get() -> "ENABLE FIRST"
@@ -639,7 +639,7 @@ class MainActivity : Activity() {
         val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
         val scale = maxOf(1f, resources.configuration.fontScale)
         fun height(value: Int) = dp((value * scale).toInt())
-        val viewport = ScrollView(this).apply { isFillViewport = true; clipToPadding = false }
+        val viewport = FrameLayout(this).apply { contentDescription = "Fixed setup pane" }
         val centered = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
         val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         centered.addView(panel, LinearLayout.LayoutParams(-1, -2))
@@ -653,16 +653,19 @@ class MainActivity : Activity() {
         header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         header.addView(button("Controls ›", false) { switchTo(Page.CONTROLS) }, LinearLayout.LayoutParams(dp(112), -1))
         val collapse = button("−", false) {}.apply { textSize = 20f }
-        header.addView(collapse, 2, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
+        header.addView(button("Guide", false) { showConnectionGuide() }.apply {
+            contentDescription = "Connection guide"
+        }, 2, LinearLayout.LayoutParams(dp(76), -1).apply { rightMargin = dp(6) })
+        header.addView(collapse, 3, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
         root.addView(header, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
 
-        val wide = resources.configuration.screenWidthDp >= 600
+        val wide = true // Setup is landscape: keep both compact panels visible without scrolling.
         val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
-        val connection = card().apply { setPadding(dp(10), dp(10), dp(10), dp(10)); contentDescription = "Connection settings" }
-        val preferences = card().apply { setPadding(dp(10), dp(10), dp(10), dp(10)); contentDescription = "Preferences" }
+        val connection = card().apply { setPadding(dp(8), dp(8), dp(8), dp(8)); contentDescription = "Connection settings" }
+        val preferences = card().apply { setPadding(dp(8), dp(8), dp(8), dp(8)); contentDescription = "Preferences" }
         fun row(column: LinearLayout, view: View, size: Int = 40) {
             column.addView(view, LinearLayout.LayoutParams(-1, height(size)).apply {
-                if (column.childCount > 0) topMargin = dp(6)
+                if (column.childCount > 0) topMargin = dp(4)
             })
         }
         row(connection, button(if (usbMode) "ArduRover LoRa ▾" else if (fcElrsMode) "ArduRover ELRS ▾" else if (elrsMode) "ELRS + Wi-Fi ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "ArduRover Wi-Fi ▾", false) {
@@ -709,18 +712,8 @@ class MainActivity : Activity() {
                 }
                 override fun afterTextChanged(s:android.text.Editable?) {}
             })
-            row(connection,listen)
+            endpointRow.addView(listen, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(4) })
         }
-        row(connection, when {
-            fcElrsMode -> button("ELRS TX + RX setup",false) { showFcElrsSetup() }
-            usbMode -> button("ELRS handset setup",false) { showFcElrsSetup() }
-            elrsMode -> button("Mini ELRS setup", false) {
-                AlertDialog.Builder(this).setTitle("Mini ELRS + Wi-Fi").setMessage(ElrsControl.SETUP)
-                    .setPositiveButton("OK",null).show()
-            }
-            miniRoverMode -> button("Wi-Fi setup", false) { showMiniRoverSetup() }
-            else -> button("ELRS handset setup",false) { showFcElrsSetup() }
-        })
         connect = button("Connect") {
             if (wantsLink) {
                 wantsLink = false
@@ -732,12 +725,14 @@ class MainActivity : Activity() {
                 start(); scheduleReconnect()
             }
         }
-        row(connection, connect!!)
         status = text("DISCONNECTED", 12f, ink, true).apply {
             maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
             contentDescription = "Rover link status"
         }
-        row(connection, status!!, 32)
+        val linkActions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        linkActions.addView(connect, LinearLayout.LayoutParams(0, -1, 1f))
+        linkActions.addView(status, LinearLayout.LayoutParams(0, -1, 1.2f).apply { leftMargin = dp(6) })
+        row(connection, linkActions)
         row(connection, button("Diagnose link", false) {
             AlertDialog.Builder(this).setTitle("Link diagnostics")
                 .setMessage(linkDiagnosis()).setPositiveButton("OK", null)
@@ -790,9 +785,10 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams(0, -1, 1f).apply { if (index > 0) leftMargin = dp(4) })
         }
         row(preferences, choices)
-        row(preferences, button("Control response ›", false) { showControlResponse() })
         val response = ControlResponseStore.read(this)
-        row(preferences, text("Steer ${response.steeringPercent}% · Drive ${response.drivePercent}% · Expo ${response.expoPercent}%", 12f, muted), 32)
+        row(preferences, button("Control response ›\nSteer ${response.steeringPercent}% · Drive ${response.drivePercent}% · Expo ${response.expoPercent}%", false) {
+            showControlResponse()
+        }.apply { textSize = 11f })
         val checkUpdates = button("Check for updates", false) { updater.check() }
         row(preferences, checkUpdates, 36)
         body.addView(connection, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f).apply {
@@ -802,7 +798,7 @@ class MainActivity : Activity() {
         panel.addView(body, LinearLayout.LayoutParams(-1, -2))
         updateStatus = text("", 11f, muted).apply { maxLines = 2 }
         panel.addView(updateStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
-        viewport.addView(centered, FrameLayout.LayoutParams(-1, -2))
+        viewport.addView(centered, FrameLayout.LayoutParams(-1, -1))
         root.addView(viewport, LinearLayout.LayoutParams(-1, 0, 1f))
         val corners = FrameLayout(this)
         val narrowFooter = resources.configuration.screenWidthDp < 560
@@ -813,8 +809,8 @@ class MainActivity : Activity() {
         }
         corners.addView(version, FrameLayout.LayoutParams(-2, if(narrowFooter) dp(24) else -1,
             if(narrowFooter) Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL else Gravity.CENTER))
-        root.addView(corners, LinearLayout.LayoutParams(-1, height(48) + if(narrowFooter) dp(24) else 0))
-        val connectIndex = connection.indexOfChild(connect)
+        root.addView(corners, LinearLayout.LayoutParams(-1, dp(24)))
+        val connectIndex = linkActions.indexOfChild(connect)
         val connectLayout = connect!!.layoutParams as LinearLayout.LayoutParams
         val updatesIndex = preferences.indexOfChild(checkUpdates)
         val updatesLayout = checkUpdates.layoutParams as LinearLayout.LayoutParams
@@ -833,8 +829,11 @@ class MainActivity : Activity() {
                 corners.addView(connect, FrameLayout.LayoutParams(cornerWidth, height(48), Gravity.TOP or Gravity.START))
                 corners.addView(checkUpdates, FrameLayout.LayoutParams(cornerWidth, height(48), Gravity.TOP or Gravity.END))
             } else {
-                connection.addView(connect, connectIndex, connectLayout)
+                linkActions.addView(connect, connectIndex, connectLayout)
                 preferences.addView(checkUpdates, updatesIndex, updatesLayout)
+            }
+            corners.layoutParams = (corners.layoutParams as LinearLayout.LayoutParams).apply {
+                height = if (minimized) height(48) + if(narrowFooter) dp(24) else 0 else dp(24)
             }
             viewport.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
             corners.visibility = View.VISIBLE
@@ -849,6 +848,31 @@ class MainActivity : Activity() {
         }
         setMinimized(setupMinimized)
         setContentView(root)
+    }
+
+    private fun showConnectionGuide() {
+        if (miniRoverMode && !elrsMode) {
+            AlertDialog.Builder(this).setTitle("Connection guide")
+                .setItems(arrayOf("Mini rover Wi-Fi", "ELRS transmitter + receiver")) { _, choice ->
+                    if (choice == 0) showMiniRoverSetup() else showFcElrsSetup()
+                }.setNegativeButton("Close", null).show()
+        } else if (elrsMode) {
+            AlertDialog.Builder(this).setTitle("Mini ELRS + Wi-Fi").setMessage(ElrsControl.SETUP)
+                .setPositiveButton("Close", null).show()
+        } else showFcElrsSetup()
+    }
+
+    private fun choosePhoneWifi() {
+        AlertDialog.Builder(this).setTitle("Use phone Wi-Fi")
+            .setMessage("Connect the phone to the rover's FC Wi-Fi bridge. The ELRS transmitter remains available for takeover. In Setup, connect and wait for telemetry, then enable phone control. The TX Backpack link supports transmitter control and telemetry only.")
+            .setPositiveButton("Open Setup") { _, _ ->
+                wantsLink = false
+                reconnectHandler.removeCallbacks(reconnect)
+                stop(explicitDisconnect = true)
+                getSharedPreferences("link", MODE_PRIVATE).edit()
+                    .putBoolean("auto_connect", false).putString("transport", "wifi").apply()
+                switchTo(Page.SETUP)
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun showControlResponse() {
@@ -1054,11 +1078,11 @@ class MainActivity : Activity() {
                     }
                 }
             }, linkHint = { when {
-                fcElrsMode -> "ELRS handset control: planning only. Use CRSF + FC Wi-Fi for phone navigation."
+                fcElrsMode -> "Transmitter control: planning only. Use CRSF + FC Wi-Fi for phone navigation."
                 miniRoverMode -> "Mini rover: planning only. Live navigation needs ArduRover with GPS + compass."
                 usbMode -> "Current LoRa gateway: planning only. Live navigation needs a compatible MAVLink link."
-                else -> "Connect to ArduRover in Setup, then tap Check rover. A compatible MAVLink link is required."
-            } }).also { waypointTab=it }
+                else -> "Connect to ArduRover in Setup, then tap Mission start. A compatible MAVLink link is required."
+            } }, servoButton = ::servoAssignmentButton).also { waypointTab=it }
         val root=shell()
         tab.create(root,pageDropdown("Waypoint"),started,resumed)
         setContentView(root)
@@ -1095,7 +1119,7 @@ class MainActivity : Activity() {
         val actions = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
-            controlsPlaceholder = text(if(fcElrsMode) "ELRS handset control\n\nTelemetry and FPV only\nUse the transmitter to drive and arm" else "Rover · CH1 / CH2\n\nEnable control to show recovery map", 12f, muted).apply {
+            controlsPlaceholder = text(if(fcElrsMode) "Transmitter control\n\nTelemetry and FPV only\nUse the transmitter to drive and arm" else "Rover · CH1 / CH2\n\nEnable control to show recovery map", 12f, muted).apply {
                 gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
             }
             scene.addView(controlsPlaceholder, FrameLayout.LayoutParams(-1, -1))
@@ -1143,7 +1167,8 @@ class MainActivity : Activity() {
             addView(viewButtons, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
         }
         enable = button("Enable control") {
-            if (controlEnabled.get()) disableControl(releaseToReceiver = true)
+            if (fcElrsMode) choosePhoneWifi()
+            else if (controlEnabled.get()) disableControl(releaseToReceiver = true)
             else if (elrsMode) requestElrsControl()
             else activatePhoneControl()
         }
@@ -1513,17 +1538,19 @@ class MainActivity : Activity() {
             "${connect?.text}; tap to disconnect. ${status?.text?.toString().orEmpty()}" else connect?.text
         connect?.tooltipText = if (wantsLink) "Disconnect" else "Connect"
         if(fcElrsMode) { steeringStick?.isEnabled=false; driveStick?.isEnabled=false }
-        enable?.isEnabled = phoneCommandsAllowed && connected.get() && (controlEnabled.get() || linkFresh())
-        enable?.text = if(fcElrsMode) "HANDSET CONTROL" else if(elrsMode) when {
-            controlEnabled.get() -> "Release control"
+        enable?.isEnabled = fcElrsMode || phoneCommandsAllowed && connected.get() && (controlEnabled.get() || linkFresh())
+        enable?.text = if(fcElrsMode) "Phone control" else if(elrsMode) when {
+            controlEnabled.get() -> "Use transmitter"
             elrsAuthority.pending(now) -> "Taking control…"
-            else -> "Take control"
-        } else if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
+            else -> "Phone control"
+        } else if (controlEnabled.get()) "Use transmitter" else "Phone control"
+        enable?.contentDescription = if (fcElrsMode) "Phone control; use phone Wi-Fi" else
+            if (controlEnabled.get()) "Use transmitter; release phone control" else "Phone control; enable after fresh telemetry"
         if(elrsMode) {
             status?.text=if(linkFresh()) elrsAuthority.label(now) else status?.text
             enable?.tooltipText=elrsAuthority.label(now)
         }
-        armButton?.apply { text = if(fcElrsMode) "USE HANDSET" else armCaption(); isEnabled = phoneCommandsAllowed && linkFresh() && vehicleArmed != null }
+        armButton?.apply { text = if(fcElrsMode) "Use transmitter" else armCaption(); isEnabled = phoneCommandsAllowed && linkFresh() && vehicleArmed != null }
         val localUsb = usbMode && connected.get()
         loraRead?.isEnabled = localUsb && loraExchange.pending == null && !loraExchange.blocked
         loraSave?.isEnabled = localUsb && loraExchange.canSave && vehicleArmed != true

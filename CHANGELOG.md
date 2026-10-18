@@ -1,3 +1,9 @@
+# 0.8.82
+
+- Move connection guide before Setup minimize; use a compact fixed pane with combined connection/status and ports.
+- Rename Controls actions to Use transmitter / Phone control; native Backpack offers a deliberate disconnected FC Wi-Fi setup switch.
+- Combine Waypoint readiness and confirmation under Mission start, retain all navigation gates, share F1–F3 servo assignments, and shorten Help & safety.
+
 ## 0.8.81 — ELRS recovery
 - Continue bounded Backpack registration after F405 telemetry becomes stale.
 - Rebind a removed Android Wi-Fi Network through the existing safe reconnect path.

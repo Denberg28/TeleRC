@@ -1,3 +1,7 @@
+# Compact Setup and mission actions — 0.8.82
+
+Top-bar Guide, fixed compact Setup, clear transmitter/phone handoff, Mission start with checks and confirmation, Waypoint F1–F3 assignment, and concise Help & safety. App-only test candidate; no reflash. [Scope, qualification and phone acceptance](docs/COMPACT_TABS_082.md).
+
 # TeleRC 0.8.81 — ELRS recovery test candidate
 
 Backpack registration continues through stale F405 telemetry, and removed Android Wi-Fi networks trigger bounded socket rebinding. UDP-open, live and stale telemetry states are distinct. Handset authority stays exclusive; native phone driving/arming/Waypoint commands remain locked. App-only; no firmware reflash. [Setup, verification gates, installation and raised-wheel checks](docs/ELRS_RECOVERY_081.md). Final workflow/BUILD_INFO supplies software evidence; physical phone/RF/FC HIL remains BLOCKED.
