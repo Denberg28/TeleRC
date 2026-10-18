@@ -56,6 +56,7 @@ class WaypointNavigation {
     var mode = -1; private set
     val busy get() = state in setOf(State.STARTING, State.RUNNING, State.HOLDING, State.CHECKING)
     val moving get() = state == State.RUNNING || state == State.STARTING
+    var gcsSessionActive = false; private set
     private var monitoring = false
     private var sequence = 0
     private var heartbeatAt = -10000L
@@ -152,7 +153,7 @@ class WaypointNavigation {
     }
     @Synchronized fun stop(reason: String, now: Long, result: State = State.STOPPED) {
         if (state == State.HOLDING) return
-        epoch++; pending.clear(); monitoring=false; stopState=result; modeAck=false
+        epoch++; pending.clear(); monitoring=false; gcsSessionActive=false; stopState=result; modeAck=false
         state=State.HOLDING; message="$reason · HOLD requested, awaiting rover confirmation"
         holdSentAt=now; holdAttempts=1
         if (system != 0) queue(WaypointProtocol.hold(sequence++,system))
@@ -160,7 +161,7 @@ class WaypointNavigation {
     }
     /** A replacement session never inherits telemetry, checked settings or route authority. */
     @Synchronized fun disconnected() {
-        epoch++; pending.clear(); monitoring=false
+        epoch++; pending.clear(); monitoring=false; gcsSessionActive=false
         if (moving || state == State.HOLDING) { state=State.ERROR; message="Link lost · HOLD unconfirmed; FC failsafe must stop rover" }
         else { state=State.IDLE; message="Disconnected · planning only; Check link again after reconnect" }
         system=0; heartbeatAt=-10000; positionAt=-10000; gpsAt=-10000; ekfAt=-10000; healthAt=-10000
@@ -178,8 +179,8 @@ class WaypointNavigation {
                 armed=p.u8(6) and 128 != 0; mode=p.i32(0)
                 if (moving && (!armed || mode !in setOf(4,15) || !autopilotGood)) stop("Rover disarmed or pilot changed mode",now)
                 if (state == State.HOLDING && mode == 4 && modeAck && now >= holdSentAt) {
-                    state=stopState; message=message.substringBefore(" · HOLD requested") + " · HOLD confirmed"
-                } else if ((state == State.CHECKING || state == State.READY) && mode == 4 && modeAck) holdConfirmedAt=now
+                    gcsSessionActive=true; state=stopState; message=message.substringBefore(" · HOLD requested") + " · HOLD confirmed"
+                } else if ((state == State.CHECKING || state == State.READY) && mode == 4 && modeAck) { holdConfirmedAt=now; gcsSessionActive=true }
             }
             1 -> {
                 healthAt=now
@@ -225,10 +226,15 @@ class WaypointNavigation {
             242 -> Waypoint(p.i32(0)/1e7,p.i32(4)/1e7).takeIf { it.valid }?.let { home=it; homeAt=now }
         }
     }
-    @Synchronized fun tick(now: Long, connected: Boolean, foreground: Boolean) {
+    @Synchronized fun tick(now: Long, connected: Boolean, foreground: Boolean, visible: Boolean = true) {
         if (!connected) { if (system != 0) disconnected(); return }
-        if (!foreground && (moving || monitoring)) stop("App left foreground",now)
-        if (monitoring && now-lastBeat >= 1000) { lastBeat=now; queue(WaypointProtocol.heartbeat(sequence++)) }
+        if ((!foreground || !visible) && (moving || monitoring)) stop("App left foreground or Waypoint tab",now)
+        // After confirmed HOLD only, retain ordinary foreground GCS liveness in manual/HOLD modes.
+        // Otherwise returning to Controls would trigger the newly enabled FC GCS failsafe.
+        // This never sends destinations/RC/ARM; an unconfirmed stop withdraws all beacons.
+        val passive = gcsSessionActive && foreground && autopilotGood && fresh(heartbeatAt,now) &&
+            mode in setOf(0,1,3,4,7) && state != State.HOLDING
+        if ((monitoring || passive) && foreground && now-lastBeat >= 1000) { lastBeat=now; queue(WaypointProtocol.heartbeat(sequence++)) }
         if (monitoring && now-lastRequest >= 3000) request(now)
         when (state) {
             State.CHECKING -> {

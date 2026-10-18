@@ -80,6 +80,21 @@ class WaypointNavigationTest {
         n.receive(heartbeat(),1400,1); assertEquals(WaypointNavigation.State.STOPPED,n.state)
         assertNotNull(n.start(listOf(destination),1400))
     }
+    @Test fun confirmedHoldKeepsManualGcsLivenessButUnconfirmedOrBackgroundDoesNot() {
+        val n=running(); n.stop("Leave",1400); n.drain()
+        n.tick(2400,true,true,false)
+        assertFalse(n.drain().any { it.bytes[5]==0.toByte() })
+        n.receive(ack(176),2450,1); n.receive(heartbeat(),2500,1)
+        n.tick(2600,true,true,false)
+        assertTrue(n.gcsSessionActive)
+        assertTrue(n.drain().any { it.bytes[5]==0.toByte() })
+        assertFalse(n.moving)
+        n.receive(heartbeat(0),2800,1); n.tick(3700,true,true,false)
+        assertTrue(n.drain().any { it.bytes[5]==0.toByte() })
+        n.tick(4800,true,false,false)
+        assertFalse(n.drain().any { it.bytes[5]==0.toByte() })
+        n.disconnected(); assertFalse(n.gcsSessionActive)
+    }
     @Test fun finalDispatchRechecksReadinessAndCancelsAtomically() {
         val n=ready(); n.start(listOf(destination),1200); val queued=n.drain().single { it.motion }
         n.receive(param("FS_ACTION",0f),1250,1)

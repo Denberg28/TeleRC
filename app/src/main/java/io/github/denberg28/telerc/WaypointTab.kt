@@ -36,9 +36,9 @@ class WaypointTab(private val activity: Activity,
     private var mission=prefs.getBoolean("multiple",false)
     private var points=WaypointPlan.decode(prefs.getString("draft","").orEmpty()).let { if(mission) it else it.takeLast(1) }
     private val ticker=object:Runnable { override fun run() {
-        navigation.tick(now(),link().second,foreground && visible)
+        navigation.tick(now(),link().second,foreground,visible)
         flush(); update()
-        if (visible || navigation.busy) handler.postDelayed(this,250)
+        if (visible || navigation.busy || foreground && navigation.gcsSessionActive) handler.postDelayed(this,250)
     } }
     private fun now()=SystemClock.elapsedRealtime()
     private fun dp(n:Int)=(n*activity.resources.displayMetrics.density+.5f).toInt()
@@ -207,7 +207,7 @@ class WaypointTab(private val activity: Activity,
         summary=null; readiness=null; check=null; stopButton=null; go=null; modeButton=null; routeRows=null
     }
     fun onStart() { if(!mapStarted) { map?.start(); mapStarted=map!=null } }
-    fun onResume() { foreground=true; if(!mapResumed) { map?.resume(); mapResumed=map!=null }; if(visible) kick() }
+    fun onResume() { foreground=true; if(!mapResumed) { map?.resume(); mapResumed=map!=null }; if(visible || navigation.gcsSessionActive) kick() }
     fun onPause() { foreground=false; dialog?.dismiss(); dialog=null; stop("App left foreground"); if(mapResumed) map?.pause(); mapResumed=false }
     fun onStop() { if(mapStarted) map?.stop(); mapStarted=false }
     fun lowMemory() { map?.lowMemory() }
