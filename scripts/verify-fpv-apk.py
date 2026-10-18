@@ -26,7 +26,7 @@ def identity(apk):
 
 current, signer = identity(candidate)
 previous, old_signer = identity(baseline)
-assert current == ('io.github.denberg28.telerc', '93', '0.8.75'), current
+assert current == ('io.github.denberg28.telerc', '94', '0.8.76'), current
 assert previous[0] == current[0] and int(previous[1]) < int(current[1])
 assert signer == old_signer, 'Signing continuity failed'
 manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManifest.xml')
@@ -54,7 +54,7 @@ assert not any(p in permissions for p in ('RECORD_AUDIO', 'MANAGE_EXTERNAL_STORA
 run(build_tools / 'zipalign', '-c', '-P', '16', '4', candidate)
 with zipfile.ZipFile(candidate) as archive:
     assert archive.testzip() is None, 'APK CRC failure'
-print('TeleRC 0.8.75/code93 stable — in-place theme transitions and compact dropdown')
+print('TeleRC 0.8.76/code94 review build — expanded Controls and Test consoles')
 print('Source:', os.environ['GITHUB_SHA'])
 print('JVM, debug/release lint/build, host regression and full sanitizers: PASS (preceding required steps)')
 print('Compiled USB video attach intent/metadata/class filter/singleTop: PASS')
@@ -69,11 +69,11 @@ assert 'PASS: live theme transitions' in Path('app/build/photo-evidence/result.t
 print('Repeated native Light/Sepia/Dark/accent changes with/without wallpaper: no Activity lifecycle interruption, no missing photo frames, same bitmap, drafts retained, native palette reset and compact menu bounds: PASS')
 print('Native sharp caption contrast and aligned joystick centers; button-width menus on every tab, three themes and large text: PASS')
 print('Native clear Setup wallpaper, console opacity blend/preview/apply/cancel/endpoints/persistence, transparent joystick corners, Setup collapse/restore/draft/persistence/corner actions and centered popups: PASS')
-print('Native flat Levels/restart/Market, three themes, large font, tabs/purchases, selection/reset and version footer: PASS')
+print('Native flat Levels/restart/Market, three themes, large font, tabs/purchases, selection/reset and expanded console geometry: PASS')
 print('Native Market buy/equip, insufficient funds, coin collection and wallet persistence: PASS')
 print('Native red impact pixels, no fade after pause/delay, reset removal: PASS')
 print('Native API 35 maze restart, clear/unlock/next level and persistence: PASS')
 print('Native API 35 photo import/rollback/persistence/render/removal and FPV options: PASS')
-print('Signing continuity with v0.8.64, app identity, increasing code, permissions and ZIP alignment: PASS')
+print('Signing continuity with v0.8.75, app identity, increasing code, permissions and ZIP alignment: PASS')
 print('Receiver enumeration, default chooser, real preview, USB pause/resume and phone installation: BLOCKED; no hardware')
-print('Firmware/protocol unchanged. No firmware reflash. Owner-selected stable channel; physical hardware/field qualification remains BLOCKED.')
+print('Firmware/protocol unchanged. No firmware reflash. Actions review artifact; physical hardware/field qualification remains BLOCKED.')
