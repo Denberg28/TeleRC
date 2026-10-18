@@ -43,6 +43,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(runCatching { ThemeImageStore.importImage(app, Uri.fromFile(excessive)) }.isFailure)
             check(stored.readBytes().contentEquals(previous)) { "Oversized import replaced the old photo" }
             excessive.delete()
+            checkSharedPopups()
             for (theme in listOf("LIGHT", "SEPIA", "DARK")) {
                 app.getSharedPreferences("appearance", 0).edit().putString("background", theme).commit()
                 var activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -93,7 +94,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -392,6 +393,64 @@ class ThemeImageInstrumentation : Instrumentation() {
         tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
+    private fun checkSharedPopups() {
+        val prefs=targetContext.getSharedPreferences("appearance",0)
+        val oldTheme=prefs.getString("background","LIGHT")
+        fun font(value:String) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand("settings put system font_scale $value")).use { it.readBytes() }
+        }
+        try {
+            for(theme in listOf("LIGHT","SEPIA","DARK")) {
+                val large=theme=="DARK"
+                font(if(large) "1.3" else "1.0")
+                waitUntil { if(large) targetContext.resources.configuration.fontScale>=1.25f else targetContext.resources.configuration.fontScale<1.1f }
+                prefs.edit().putString("background",theme).putBoolean("setup_minimized",false).commit()
+                val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
+                var applied=false
+                val list=onMain { AppDialog.Builder(activity).setTitle("Servo assignment")
+                    .setSingleChoiceItems(Array(30) { "Output $it" },0) { d,_ -> d.dismiss() }
+                    .setPositiveButton("Apply") { _,_ -> applied=true }.setNegativeButton("Cancel",null).show() }
+                checkPopupStable(activity,list)
+                onMain {
+                    val view=list.window!!.decorView
+                    val sheet=description(view,"Standard popup")!!
+                    check((sheet.background as android.graphics.drawable.GradientDrawable).color!!.defaultColor==AppColors.surface(activity))
+                    for(which in listOf(-2,-1)) {
+                        val action=list.getButton(which)
+                        val rect=android.graphics.Rect().also { check(action.getGlobalVisibleRect(it)) }
+                        check(action.height>=48*activity.resources.displayMetrics.density-1 && rect.height()==action.height)
+                    }
+                    check((description(view,"Popup content") as android.widget.ScrollView).canScrollVertically(1))
+                }
+                screenshot("shared-${theme.lowercase()}-list.png")
+                onMain { list.getButton(-2).performClick() }; check(!applied)
+                val input=onMain { android.widget.EditText(activity).apply { hint="Latitude, longitude"; setSingleLine() } }
+                val form=onMain { AppDialog.Builder(activity).setTitle("Add coordinates").setView(input)
+                    .setPositiveButton("Select",null).setNegativeButton("Cancel",null).create().also { d ->
+                        d.setOnShowListener { d.getButton(-1).setOnClickListener { input.error="Enter a valid point" } }; d.show()
+                    } }
+                checkPopupStable(activity,form)
+                onMain { form.getButton(-1).performClick(); check(form.isShowing && input.error!=null) }
+                screenshot("shared-${theme.lowercase()}-form.png")
+                onMain { form.dismiss() }
+                val message=onMain { AppDialog.Builder(activity).setTitle("Help & safety").setMessage("Keep TeleRC open. STOP requests HOLD.")
+                    .setPositiveButton("OK",null).show() }
+                checkPopupStable(activity,message)
+                screenshot("shared-${theme.lowercase()}-message.png")
+                onMain {
+                    find(root(activity),"Controls ›")!!.performClick(); check(!message.isShowing)
+                    val gate=MainActivity::class.java.getDeclaredField("controlEnabled").apply { isAccessible=true }.get(activity) as LiveControlGate
+                    check(gate.enable(1,SystemClock.elapsedRealtime(),SystemClock.elapsedRealtime()))
+                    val safety=AppDialog.Builder(activity).setTitle("Servo assignment").setNegativeButton("Close",null).show()
+                    check(!gate.get()) { "Modal retained manual driving authority" }
+                    safety.dismiss(); check(!gate.get()) { "Closing a modal restored driving" }
+                    activity.finish()
+                }
+                waitForIdleSync()
+            }
+        } finally { font("1.0"); prefs.edit().putString("background",oldTheme).commit() }
+    }
     private fun checkFixedSetup(activity:Activity) {
         val view=root(activity)
         val pane=description(view,"Fixed setup pane")!!
@@ -492,6 +551,9 @@ class ThemeImageInstrumentation : Instrumentation() {
                 val view=root(activity)
                 check(find(view,"Mission start")!=null && find(view,"STOP · HOLD")!=null)
                 check(find(view,"Review route")==null && find(view,"Review point")==null)
+                check(find(view,"Disarmed / unknown")==null && find(view,"Mode unknown")==null)
+                val details=description(view,"Rover check details") as TextView
+                check(!details.text.contains("Disarmed / unknown") && !details.text.contains("Mode unknown"))
                 listOf("F1","F2","F3").forEach { check(find(view,it)!=null) }
                 check(description(view,"Waypoint map; tap to choose a destination")!!.width>view.width*.4f)
                 check(description(view,"Waypoint map; tap to choose a destination")!!.height>view.height*.4f)

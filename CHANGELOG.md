@@ -1,3 +1,10 @@
+# 0.8.83
+
+- Standardize app popups with flat themed sheets, visible fixed actions, centered bounds and lifecycle cleanup.
+- Remove redundant unknown arm/mode text from Waypoint; shorten steps/help and expose full check details on tap.
+- Revoke manual phone control or request Guided HOLD before a modal; never resume on close.
+- Recover ordinary Wi-Fi after Android Network replacement without restoring authority. Bound updater metadata and duplicate checks.
+
 # 0.8.82
 
 - Move connection guide before Setup minimize; use a compact fixed pane with combined connection/status and ports.

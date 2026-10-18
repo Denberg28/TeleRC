@@ -1,3 +1,7 @@
+# Shared popups and session recovery — 0.8.83
+
+AppDialog models the Test sheet contract with one scroll owner, fixed actions, pre-show bounds and weakly tracked lifecycle cleanup. MainActivity revokes manual authority or requests moving Guided HOLD before showing it. Ordinary UDP sessions now use the existing bounded captured-Network removal policy; only native Backpack registers PINGs. UpdateMetadata bounds JSON input to 1 MiB; update checks are single-flight. Navigation/codec/FPV/firmware invariants remain protected.
+
 # Compact tabs 0.8.82
 
 Setup has a fixed two-column pane and top-bar Guide. Waypoint owns pending start intent, which is canceled on STOP/lifecycle/session loss; readiness opens the existing explicit confirmation. Navigation engine, codecs and FC fail-safe readback are unchanged. F1–F3 are supplied by MainActivity to reuse saved servo assignment constraints. Native Backpack Phone control switches only to disconnected Wi-Fi Setup after a deliberate choice.

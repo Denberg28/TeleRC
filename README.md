@@ -1,3 +1,7 @@
+# Shared popups and reliability review — 0.8.83
+
+Flat Test-style app popups, concise Waypoint pane, modal authority revocation/HOLD, regular Wi-Fi network replacement recovery and bounded update checks. App-only test candidate; no reflash. [Review, verification and phone acceptance](docs/SHARED_DIALOGS_083.md).
+
 # Compact Setup and mission actions — 0.8.82
 
 Top-bar Guide, fixed compact Setup, clear transmitter/phone handoff, Mission start with checks and confirmation, Waypoint F1–F3 assignment, and concise Help & safety. App-only test candidate; no reflash. [Scope, qualification and phone acceptance](docs/COMPACT_TABS_082.md).

@@ -1,3 +1,7 @@
+# Shared popups / review 0.8.83
+
+System-owned USB/camera permission, file-picker and installer windows retain Android styling. Wi-Fi/MAVLink remains unsigned and not replay authenticated. Actual network rebinding, physical HOLD/neutral behavior, RF/USB reliability and phone layout remain pending hardware acceptance. [Scope and checks](SHARED_DIALOGS_083.md).
+
 # Compact tabs 0.8.82
 
 F1–F3 share the existing servo assignment controls and do not actuate servos. Native ELRS TX Backpack remains transmitter-controlled; Phone control offers a separate FC Wi-Fi setup path. Fixed Setup is landscape; native geometry checks cover normal and large text, with actual OEM-phone verification pending. [Acceptance](COMPACT_TABS_082.md).

@@ -51,3 +51,12 @@ for image in elrs-setup.png elrs-controls.png elrs-waypoint.png waypoint-light-p
 done
 python -c 'import base64,pathlib; print("ELRS_SETUP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/elrs-setup.png").read_bytes()).decode())'
 python -c 'import base64,pathlib; print("WAYPOINT_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/waypoint-dark-plan.png").read_bytes()).decode())'
+
+grep 'PASS: shared popups' app/build/photo-evidence/result.txt
+for theme in light sepia dark; do
+  for kind in list form message; do
+    image="shared-$theme-$kind.png"
+    adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
+  done
+done
+python -c 'import base64,pathlib; print("SHARED_POPUP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/shared-dark-list.png").read_bytes()).decode())'

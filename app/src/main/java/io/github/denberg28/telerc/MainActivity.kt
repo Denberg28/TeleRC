@@ -1,7 +1,6 @@
 package io.github.denberg28.telerc
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -50,7 +49,7 @@ class MainActivity : Activity() {
     private var mazeLevelsDialog: android.app.Dialog? = null
     private var mazeMarketDialog: android.app.Dialog? = null
     private var pageMenu: PopupWindow? = null
-    private var wallpaperDialog: AlertDialog? = null
+    private var wallpaperDialog: AppDialog? = null
     private var wallpaperOpacityButton: Button? = null
     private var practiceSteer: JoystickView? = null
     private var practiceDrive: JoystickView? = null
@@ -387,7 +386,14 @@ class MainActivity : Activity() {
         addView(bottom, LinearLayout.LayoutParams(-1, barHeight()).apply { topMargin = dp(8) })
     }
 
+    internal fun prepareForDialog() {
+        if(page==Page.CONTROLS) disableControl()
+        if(page==Page.WAYPOINT && waypointTab?.navigation?.moving==true)
+            waypointTab?.stop("Navigation paused for dialog")
+    }
+
     private fun render() {
+        AppDialog.dismissAll(this)
         pageMenu?.dismiss(); pageMenu = null
         wallpaperDialog?.dismiss(); wallpaperDialog = null; wallpaperOpacityButton = null
         mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null
@@ -580,7 +586,7 @@ class MainActivity : Activity() {
             }
             val names = available.map { if (it == 0) "Unassigned" else "Servo output $it" }.toTypedArray()
             val current = prefs.getInt(label, 0).takeIf { it in available } ?: 0
-            AlertDialog.Builder(this).setTitle("$label external servo assignment")
+            AppDialog.Builder(this).setTitle("$label external servo assignment")
                 .setSingleChoiceItems(names, available.indexOf(current)) { dialog, index ->
                     prefs.edit().putInt(label, available[index]).apply()
                     refreshFunctionButtons()
@@ -667,7 +673,7 @@ class MainActivity : Activity() {
             })
         }
         row(connection, button(if (usbMode) "ArduRover LoRa ▾" else if (fcElrsMode) "ArduRover ELRS ▾" else if (elrsMode) "ELRS + Wi-Fi ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "ArduRover Wi-Fi ▾", false) {
-            if (!wantsLink) AlertDialog.Builder(this).setTitle("Control link")
+            if (!wantsLink) AppDialog.Builder(this).setTitle("Control link")
                 .setItems(arrayOf("Mini rover · Wi-Fi", "ArduRover · Wi-Fi bridge", "ArduRover · LoRa USB base", "ArduRover · ELRS TX Backpack")) { _, choice ->
                     getSharedPreferences("link", MODE_PRIVATE).edit()
                         .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; 3 -> FcElrs.TRANSPORT; else -> "wifi" }).apply()
@@ -732,7 +738,7 @@ class MainActivity : Activity() {
         linkActions.addView(status, LinearLayout.LayoutParams(0, -1, 1.2f).apply { leftMargin = dp(6) })
         row(connection, linkActions)
         row(connection, button("Diagnose link", false) {
-            AlertDialog.Builder(this).setTitle("Link diagnostics")
+            AppDialog.Builder(this).setTitle("Link diagnostics")
                 .setMessage(linkDiagnosis()).setPositiveButton("OK", null)
                 .setNeutralButton("Export route") { _, _ ->
                     startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -744,7 +750,7 @@ class MainActivity : Activity() {
 
         val backgroundButton = button("${if (ThemeImageStore.exists(this)) "Photo" else "Background"} · ${AppColors.theme(this).label} ▾", false) {
             if (imageWork) return@button
-            val dialog = AlertDialog.Builder(this).setTitle("Background")
+            val dialog = AppDialog.Builder(this).setTitle("Background")
                 .setSingleChoiceItems(BackgroundTheme.entries.map { it.label }.toTypedArray(), AppColors.theme(this).ordinal) { d, index ->
                     val selectedTheme = BackgroundTheme.entries[index]
                     d.dismiss()
@@ -850,18 +856,18 @@ class MainActivity : Activity() {
 
     private fun showConnectionGuide() {
         if (miniRoverMode && !elrsMode) {
-            AlertDialog.Builder(this).setTitle("Connection guide")
+            AppDialog.Builder(this).setTitle("Connection guide")
                 .setItems(arrayOf("Mini rover Wi-Fi", "ELRS transmitter + receiver")) { _, choice ->
                     if (choice == 0) showMiniRoverSetup() else showFcElrsSetup()
                 }.setNegativeButton("Close", null).show()
         } else if (elrsMode) {
-            AlertDialog.Builder(this).setTitle("Mini ELRS + Wi-Fi").setMessage(ElrsControl.SETUP)
+            AppDialog.Builder(this).setTitle("Mini ELRS + Wi-Fi").setMessage(ElrsControl.SETUP)
                 .setPositiveButton("Close", null).show()
         } else showFcElrsSetup()
     }
 
     private fun choosePhoneWifi() {
-        AlertDialog.Builder(this).setTitle("Use phone Wi-Fi")
+        AppDialog.Builder(this).setTitle("Use phone Wi-Fi")
             .setMessage("Connect the phone to the rover's FC Wi-Fi bridge. The ELRS transmitter remains available for takeover. In Setup, connect and wait for telemetry, then enable phone control. The TX Backpack link supports transmitter control and telemetry only.")
             .setPositiveButton("Open Setup") { _, _ ->
                 wantsLink = false
@@ -904,7 +910,7 @@ class MainActivity : Activity() {
         slider("Expo", 0, 100, draft.expoPercent) { draft = draft.copy(expoPercent = it) }
         content.addView(text("Sensitivity limits each axis. Expo softens both axes near center: 0% linear, 100% softest. Full-stick range stays the same. Applies to live controls and offline Test practice.", 12f, muted))
         val scroll = ScrollView(this).apply { addView(content) }
-        AlertDialog.Builder(this).setTitle("Control response").setView(scroll)
+        AppDialog.Builder(this).setTitle("Control response").setView(scroll)
             .setPositiveButton("Apply") { _, _ -> ControlResponseStore.save(this, draft); render() }
             .setNegativeButton("Cancel", null).show()
     }
@@ -1042,7 +1048,7 @@ class MainActivity : Activity() {
                     val course=if(record.level>0) "Lv ${record.level}" else "Legacy maze ${record.seed.toUInt().toString(16)}${if(record.courseVersion==1) " · Classic" else ""}"
                     "${MazeRecords.time(record.millis)} · $course\n$date"
                 }
-            AlertDialog.Builder(this).setTitle("Clear times · latest ${records.size}")
+            AppDialog.Builder(this).setTitle("Clear times · latest ${records.size}")
                 .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; best times for fixed levels are shown in Levels. Legacy random clears stay separate.")
                 .setPositiveButton("Done",null).show()
         }.apply { textSize=13f }
@@ -1076,10 +1082,10 @@ class MainActivity : Activity() {
                     }
                 }
             }, linkHint = { when {
-                fcElrsMode -> "Transmitter control: planning only. Use CRSF + FC Wi-Fi for phone navigation."
-                miniRoverMode -> "Mini rover: planning only. Live navigation needs ArduRover with GPS + compass."
-                usbMode -> "Current LoRa gateway: planning only. Live navigation needs a compatible MAVLink link."
-                else -> "Connect to ArduRover in Setup, then tap Mission start. A compatible MAVLink link is required."
+                fcElrsMode -> "Planning only. Use FC Wi-Fi to navigate."
+                miniRoverMode -> "Planning only. Needs ArduRover + GPS."
+                usbMode -> "Planning only on this LoRa gateway."
+                else -> "Connect in Setup, then start."
             } }, servoButton = ::servoAssignmentButton).also { waypointTab=it }
         val root=shell()
         tab.create(root,pageDropdown("Waypoint"),started,resumed)
@@ -1235,7 +1241,7 @@ class MainActivity : Activity() {
             })
         }, LinearLayout.LayoutParams(-1, dp(48)))
         content.addView(text("Setup stays clear", 12f, muted))
-        val dialog = AlertDialog.Builder(this).setTitle("Wallpaper opacity").setView(content)
+        val dialog = AppDialog.Builder(this).setTitle("Wallpaper opacity").setView(content)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Apply") { _, _ ->
                 getSharedPreferences("appearance", MODE_PRIVATE).edit().putInt("console_wallpaper_opacity", draft).apply()
@@ -1259,15 +1265,15 @@ class MainActivity : Activity() {
         val modeCount = FpvStreamPolicy.Mode.entries.size
         val names = FpvStreamPolicy.Mode.entries.map { (if (it == camera.mode()) "✓ " else "") + it.label } +
             listOf("USB diagnostics", "Auto reconnect · ${if (camera.autoReconnect()) "On" else "Off"}", "USB default help")
-        AlertDialog.Builder(this).setTitle("FPV video options")
+        AppDialog.Builder(this).setTitle("FPV video options")
             .setItems(names.toTypedArray()) { _, index ->
                 if (index == modeCount) {
-                    AlertDialog.Builder(this).setTitle("USB FPV diagnostics").setMessage(camera.diagnosis())
+                    AppDialog.Builder(this).setTitle("USB FPV diagnostics").setMessage(camera.diagnosis())
                         .setPositiveButton("Close", null).show()
                 } else if (index == modeCount + 1) {
                     camera.setAutoReconnect(!camera.autoReconnect())
                 } else if (index == modeCount + 2) {
-                    AlertDialog.Builder(this).setTitle("Use TeleRC for this receiver")
+                    AppDialog.Builder(this).setTitle("Use TeleRC for this receiver")
                         .setMessage("When Android offers an app chooser on receiver attachment, select TeleRC and Always / Use by default. Android controls that choice. TeleRC reuses existing USB access on reconnect; if Android removes the grant, tap Connect FPV to approve access again. To change an existing choice, clear the other camera app's defaults in Android Settings, then reconnect the receiver.")
                         .setPositiveButton("Done", null).show()
                 } else {
@@ -1354,7 +1360,7 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Stop control before opening location settings", Toast.LENGTH_LONG).show()
                 return
             }
-            AlertDialog.Builder(this).setTitle("Phone location is off")
+            AppDialog.Builder(this).setTitle("Phone location is off")
                 .setMessage("Enable location services to center the map on your phone. Return to TeleRC after enabling it.")
                 .setNegativeButton("Cancel") { _, _ -> pendingPhoneLocate = false }
                 .setOnCancelListener { pendingPhoneLocate = false }
@@ -1453,13 +1459,13 @@ class MainActivity : Activity() {
     }
     private fun linkFresh() = HeartbeatHealth.isFresh(target, heartbeatAt, SystemClock.elapsedRealtime())
     private fun showMiniRoverSetup() {
-        AlertDialog.Builder(this).setTitle("Mini rover Wi-Fi")
+        AppDialog.Builder(this).setTitle("Mini rover Wi-Fi")
             .setMessage(MiniRoverWifi.SETUP + "\n\nEndpoint: ${MiniRoverWifi.HOST}:${MiniRoverWifi.PORT}.")
             .setPositiveButton("Open Wi-Fi settings") { _, _ -> startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
             .setNegativeButton("Close", null).show()
     }
     private fun showFcElrsSetup() {
-        AlertDialog.Builder(this).setTitle(if(fcElrsMode) "ELRS TX Backpack" else "ELRS handset + ArduRover")
+        AppDialog.Builder(this).setTitle(if(fcElrsMode) "ELRS TX Backpack" else "ELRS handset + ArduRover")
             .setMessage(if(fcElrsMode) FcElrs.BACKPACK_SETUP else FcElrs.CRSF_SETUP)
             .setPositiveButton("Wi-Fi settings") { _,_ -> startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
             .setNegativeButton("Close",null).show()
@@ -1671,6 +1677,7 @@ class MainActivity : Activity() {
         if (page == Page.TEST || connected.get()) return
         val saved = getSharedPreferences("link", MODE_PRIVATE)
         val backpack = fcElrsMode // Immutable session profile.
+        val usbSession = usbMode
         val address = if (miniRoverMode) MiniRoverWifi.HOST else if (usbMode) "127.0.0.1" else
             (host?.text?.toString() ?: saved.getString(if(backpack) FcElrs.HOST_KEY else "host", if(backpack) FcElrs.HOST else "192.168.4.1")).orEmpty().trim()
         val valid = Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$").matches(address) &&
@@ -1741,7 +1748,7 @@ class MainActivity : Activity() {
                         break
                     }
                 }
-                if (backpack) {
+                if (!usbSession) {
                     try {
                         // Only removal of the captured Network requests a new socket. Capability
                         // churn and missing FC heartbeats retain the current bound session.
@@ -1750,16 +1757,16 @@ class MainActivity : Activity() {
                             boundWifi != null && connectivity.allNetworks.any { it == boundWifi }
                         }
                         if (action == BackpackRecovery.Action.REBIND) {
-                            lastLinkError = "Backpack Wi-Fi network lost; waiting to rebind"
+                            lastLinkError = if(backpack) "Backpack Wi-Fi network lost; waiting to rebind" else "Rover Wi-Fi network lost; waiting to rebind"
                             break
                         }
-                        if (action == BackpackRecovery.Action.REGISTER) {
+                        if (backpack && action == BackpackRecovery.Action.REGISTER) {
                             // PING cannot start/refresh GCS heartbeat failsafe or restore authority.
                             val ping = FcElrs.registration(sequence++)
                             udp.send(DatagramPacket(ping, ping.size, remote, number))
                         }
                     } catch (e: Exception) {
-                        lastLinkError = "ELRS recovery " + e.javaClass.simpleName
+                        lastLinkError = "Wi-Fi recovery " + e.javaClass.simpleName
                         break
                     }
                 }
@@ -2023,11 +2030,11 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onPause() { AppDialog.dismissAll(this); waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
     override fun onResume() { super.onResume(); resumed = true; waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; waypointTab?.onStart(); routeMap?.onStart() }
     override fun onStop() { waypointTab?.onStop(); fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); waypointTab?.lowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { waypointTab?.close(); pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { AppDialog.dismissAll(this); waypointTab?.close(); pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }
 

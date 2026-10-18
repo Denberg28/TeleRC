@@ -1,3 +1,7 @@
+# Shared popups / review 0.8.83
+
+Baseline c7d2e0/code100; candidate code101. [Review, A–F gates, acceptance and rollback](SHARED_DIALOGS_083.md). Full cloud JVM/debug/release lint/build, source protection, host/default sanitizers and native popup/transition/authority regressions required. Hardware and actual network replacement remain BLOCKED/NOT TESTED.
+
 # Compact tabs 0.8.82
 
 Baseline 38b2310/code99; candidate code100. [A–F gates, acceptance and rollback](COMPACT_TABS_082.md). Local Android SDK unavailable; no local build claim. Cloud checks and native geometry/authority/actions tests must pass; physical phone/rover checks remain BLOCKED.

@@ -33,6 +33,16 @@ class BackpackRecoveryTest {
         assertEquals(BackpackRecovery.Action.REGISTER, BackpackRecovery().poll(1101, true, true) { true })
     }
 
+    @Test fun ordinaryWifiRebindNeverRestoresDrivingAuthority() {
+        val recovery=BackpackRecovery()
+        val control=LiveControlGate()
+        assertTrue(control.enable(1,100,100))
+        assertEquals(BackpackRecovery.Action.REBIND,recovery.poll(1100,true,true) { false })
+        control.disable() // Existing session teardown revokes authority.
+        assertEquals(BackpackRecovery.Action.REGISTER,BackpackRecovery().poll(1200,true,true) { true })
+        assertFalse(control.get())
+    }
+
     @Test fun repeatedRecoveryStillCannotSendPhoneCommands() {
         val sent = mutableListOf<ByteArray>()
         val transport = FcElrsTelemetryTransport(object : LinkTransport {
