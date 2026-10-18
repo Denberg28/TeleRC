@@ -23,7 +23,7 @@ jobs:
           mkdir -p app/build/photo-evidence deliverables validation-evidence
           gh api repos/$GITHUB_REPOSITORY/actions/runs/39083855942 > validation-evidence/run.json
           gh api repos/$GITHUB_REPOSITORY/actions/runs/39083855942/jobs > validation-evidence/jobs.json
-          gh api repos/$GITHUB_REPOSITORY/actions/jobs/117546228725/logs > validation-evidence/qualification.log
+          gh api --allow-escape-sequences repos/$GITHUB_REPOSITORY/actions/jobs/117546228725/logs > validation-evidence/qualification.log
           python - <<'PY'
           import base64, json, pathlib, re
           out=pathlib.Path('validation-evidence')
