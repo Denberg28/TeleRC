@@ -71,3 +71,9 @@ Update in place using the same signer. No firmware is included/modified and no r
 - [MAVLink common messages](https://mavlink.io/en/messages/common.html), [ArduPilot EKF_STATUS_REPORT](https://mavlink.io/en/messages/ardupilotmega.html#EKF_STATUS_REPORT)
 
 Next check: run final cloud software qualification, review native Waypoint captures, then prepare a separately scoped compatible gateway/FC integration and perform the restrained-wheel sequence. Do not treat hardware installation alone as navigation readiness.
+
+## Product qualification and external emulator interruption
+
+Signed product commit `c40ade17cabaff4e5980191c4afa90a1ab906a66`, [run39108538493](https://github.com/Denberg28/TeleRC/actions/runs/39108538493), job117619567802: scope guard, bridge sync/host/default sanitizers, full JVM (including18 Waypoint regressions), debug/release lint/build and native APK compilation PASS. Signed review APK was retained before UI qualification. The native attempt failed before its first menu check because Android's external Quickstep launcher ANR dialog took focus; this is not counted as a UI pass.
+
+Follow-up changes only the instrumentation harness to close the specifically named Pixel Launcher/Quickstep ANR dialog during waits, never a TeleRC ANR. Fresh full native qualification is required. Exact app/main/unit/firmware/build/scripts comparison and original job metadata/logs guard APK reuse. Source archive may therefore include the later harness/docs commit; BUILD_INFO records both SHAs. Other original runner XML/lint files were not retained and are not reconstructed. Hardware and full ArduRover SITL gates remain unchanged.

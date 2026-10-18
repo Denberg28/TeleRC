@@ -883,7 +883,7 @@ class ThemeImageInstrumentation : Instrumentation() {
     }
     private fun dismissLauncherAnr() {
         val root = uiAutomation.rootInActiveWindow ?: return
-        if (root.packageName?.toString() == "android" && root.findAccessibilityNodeInfosByText("Pixel Launcher isn't responding").isNotEmpty()) {
+        if (root.packageName?.toString() == "android" && listOf("Pixel Launcher isn't responding","Quickstep isn't responding").any { root.findAccessibilityNodeInfosByText(it).isNotEmpty() }) {
             root.findAccessibilityNodeInfosByViewId("android:id/aerr_close").firstOrNull()
                 ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
         }
@@ -903,7 +903,12 @@ class ThemeImageInstrumentation : Instrumentation() {
     }
     private fun waitUntil(condition: () -> Boolean) {
         val end = SystemClock.elapsedRealtime() + 12000
-        while (!condition()) { check(SystemClock.elapsedRealtime() < end) { "Native UI condition timed out" }; SystemClock.sleep(150) }
+        while (true) {
+            dismissLauncherAnr() // Only the named external launcher, never a TeleRC ANR.
+            if (condition()) return
+            check(SystemClock.elapsedRealtime() < end) { "Native UI condition timed out" }
+            SystemClock.sleep(150)
+        }
     }
     private fun screenshot(name: String) {
         waitForIdleSync()
