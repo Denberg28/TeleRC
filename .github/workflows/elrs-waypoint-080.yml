@@ -95,5 +95,13 @@ jobs:
           test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
           gh release create v0.8.80 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title 'TeleRC v0.8.80 — F405 ELRS and clear Waypoint flow' --notes-file deliverables/START_HERE.md deliverables/*
           gh release edit v0.8.80 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+      - name: Retain published release bundle for download
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-v0.8.80-release
+          path: deliverables/
+          retention-days: 1
       - if: always()
         run: rm -f "$RUNNER_TEMP/telerc-release.jks"

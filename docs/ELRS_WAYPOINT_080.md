@@ -93,3 +93,7 @@ Next: complete software gates, native UI review, then the actual F405/ELRS hando
 ## Authorized release build
 
 The owner requested development and release packaging on18 October2026. The dedicated branch workflow rebuilds the current source with the existing release secret, runs full JVM/debug/release lint/build, host/default sanitizers and native API35 UI checks, verifies the signer/package/version against published0.8.79, and publishes only a prerelease with APK, source, check evidence and checksums. No firmware flash or stable promotion is claimed. Workflow/BUILD_INFO results supersede pending software rows above; actual FC/ELRS/phone HIL remains BLOCKED.
+
+### Native review correction
+
+Initial run39121231728 passed host/default sanitizers, JVM, debug/release build/lint and native harness compilation. Native UI checks reached the new ELRS Controls check and caught the shared function refresh replacing the disabled arm button caption. The caption now comes from the single arm-caption function, so refreshes retain USE HANDSET. The initial UI run is not counted as PASS. The release verifier also checks unique ELRS/Waypoint implementation markers inside the signed APK DEX. Fresh product and native qualification are required for this corrected source.

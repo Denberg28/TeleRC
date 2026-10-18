@@ -54,6 +54,9 @@ assert not any(p in permissions for p in ('RECORD_AUDIO', 'MANAGE_EXTERNAL_STORA
 run(build_tools / 'zipalign', '-c', '-P', '16', '4', candidate)
 with zipfile.ZipFile(candidate) as archive:
     assert archive.testzip() is None, 'APK CRC failure'
+    dex=b''.join(archive.read(n) for n in archive.namelist() if re.fullmatch(r'classes(?:[0-9]+)?\.dex',n))
+    for marker in (b'fc_elrs_backpack',b'ELRS handset link rejects phone commands',b'Review point',b'USE HANDSET'):
+        assert marker in dex, f'Missing release implementation marker: {marker}'
 print('TeleRC 0.8.80/code98 test candidate — F405 ELRS and concise Waypoint')
 print('Source:', os.environ['GITHUB_SHA'])
 print('JVM, debug/release lint/build, host regression and full sanitizers: PASS (preceding required steps)')

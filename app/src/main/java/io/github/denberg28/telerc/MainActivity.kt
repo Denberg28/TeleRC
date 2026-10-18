@@ -412,7 +412,7 @@ class MainActivity : Activity() {
         }
         refreshUi()
     }
-    private fun armCaption(): String = when (vehicleArmed) {
+    private fun armCaption(): String = if(fcElrsMode) "USE HANDSET" else when (vehicleArmed) {
         true -> "DISARM"
         false -> if (!miniRoverMode) "ARM" else when {
             !controlEnabled.get() -> "ENABLE FIRST"
