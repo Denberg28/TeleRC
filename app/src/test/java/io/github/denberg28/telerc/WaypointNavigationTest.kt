@@ -73,12 +73,22 @@ class WaypointNavigationTest {
     }
     @Test fun stopInvalidatesQueuedMotionAndRequiresHoldConfirmation() {
         val n=ready(); n.start(listOf(destination),1200); val queued=n.drain().single { it.motion }
-        assertTrue(n.permits(queued)); n.stop("Operator",1250)
-        assertFalse(n.permits(queued)); assertEquals(WaypointNavigation.State.HOLDING,n.state)
+        assertTrue(n.permits(queued,1200)); n.stop("Operator",1250)
+        assertFalse(n.permits(queued,1200)); assertEquals(WaypointNavigation.State.HOLDING,n.state)
         assertFalse(n.drain().any { it.motion })
         n.receive(ack(176),1300,1); assertEquals(WaypointNavigation.State.HOLDING,n.state)
         n.receive(heartbeat(),1400,1); assertEquals(WaypointNavigation.State.STOPPED,n.state)
         assertNotNull(n.start(listOf(destination),1400))
+    }
+    @Test fun finalDispatchRechecksReadinessAndCancelsAtomically() {
+        val n=ready(); n.start(listOf(destination),1200); val queued=n.drain().single { it.motion }
+        n.receive(param("FS_ACTION",0f),1250,1)
+        var sends=0
+        assertFalse(n.transmit(queued,1250) { sends++ }); assertEquals(0,sends)
+        val stale=ready(); stale.start(listOf(destination),1200); val old=stale.drain().single { it.motion }
+        assertFalse(stale.transmit(old,3501) { sends++ }); assertEquals(0,sends)
+        n.stop("Operator",1300)
+        assertFalse(n.transmit(queued,1300) { sends++ }); assertEquals(0,sends)
     }
     @Test fun heartbeatRecoveryDoesNotResumeAndNoHeartbeatContinuesAfterStop() {
         val n=running(); n.receive(heartbeat(15),3501,1)

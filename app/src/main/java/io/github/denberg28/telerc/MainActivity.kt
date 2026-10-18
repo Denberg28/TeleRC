@@ -1008,10 +1008,12 @@ class MainActivity : Activity() {
                 if(udp!=null && remote!=null) txExecutor.execute {
                     synchronized(commandLock) {
                         if(socket===udp && connected.get() && !miniRoverMode && !usbMode &&
-                            !controlEnabled.get() && waypointTab?.canSend(dispatch)==true &&
+                            !controlEnabled.get() &&
                             SystemClock.elapsedRealtime()-submitted in 0..500 &&
                             (!dispatch.motion || page==Page.WAYPOINT && resumed)) {
-                            try { udp.send(DatagramPacket(dispatch.bytes,dispatch.bytes.size,remote,portNumber)) }
+                            try { waypointTab?.sendIfAllowed(dispatch) { bytes ->
+                                udp.send(DatagramPacket(bytes,bytes.size,remote,portNumber))
+                            } }
                             catch (_:Exception) { runOnUiThread { waypointTab?.stop("Navigation send failed") } }
                         }
                     }

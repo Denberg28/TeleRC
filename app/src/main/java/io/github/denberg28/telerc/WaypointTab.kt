@@ -58,7 +58,7 @@ class WaypointTab(private val activity: Activity,
         setOnClickListener { action() }
     }
     private fun flush()=navigation.drain().forEach(send)
-    fun canSend(dispatch:WaypointNavigation.Dispatch)=navigation.permits(dispatch)
+    fun sendIfAllowed(dispatch:WaypointNavigation.Dispatch,send:(ByteArray)->Unit)=navigation.transmit(dispatch,now(),send)
     private fun save() { prefs.edit().putString("draft",WaypointPlan.encode(points)).putBoolean("multiple",mission).apply(); update() }
     fun create(root:LinearLayout,dropdown:View,started:Boolean,resumed:Boolean) {
         releaseMap(); visible=true; foreground=resumed; routeFingerprint=""

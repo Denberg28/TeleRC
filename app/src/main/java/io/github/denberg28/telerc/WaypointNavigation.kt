@@ -92,8 +92,14 @@ class WaypointNavigation {
         "FS_GCS_TIMEOUT" to { it in 2f..3f }, "FS_TIMEOUT" to { it in 1f..3f },
         "WP_SPEED" to { it in .1f..1f })
 
-    @Synchronized fun permits(dispatch: Dispatch) = dispatch.epoch == epoch &&
-        (!dispatch.motion || moving && monitoring)
+    @Synchronized fun permits(dispatch: Dispatch, now: Long) = dispatch.epoch == epoch &&
+        (!dispatch.motion || moving && monitoring && blocker(now)==null)
+    /** Stop and the final send share one lock, so a cancelled generation cannot slip past validation. */
+    @Synchronized fun transmit(dispatch: Dispatch, now: Long, send: (ByteArray)->Unit): Boolean {
+        if (!permits(dispatch,now)) return false
+        send(dispatch.bytes)
+        return true
+    }
     private fun queue(bytes: ByteArray, motion: Boolean = false) {
         if (pending.size < 40) pending.addLast(Dispatch(bytes,epoch,motion))
     }
