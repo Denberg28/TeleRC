@@ -1,3 +1,7 @@
+# Stable channel promotion — v0.8.84
+
+Owner-authorized on 19 October 2026. Product f3eba8b / qualification run39161856095 passed A–C and software D/F. Promotion verifies immutable artifact bytes/digests, native evidence and source/tag, then stable/Latest metadata. Physical integration/installation/compatibility and E HIL remain BLOCKED/NOT TESTED. [Audit and acceptance](STABLE_084.md).
+
 # Compact popup qualification — 0.8.84
 
 Baseline 307eb4b/code101; candidate code102. [A–F gates and phone/HIL acceptance](POPUP_LAYOUT_084.md). Required cloud full build/JVM/debug+release lint, source protection, host/default sanitizers, native compact sizing/frame/scroll/action/transition/Market checks and retained signer/package validation. Local Android toolchain unavailable; physical phone/keyboard/rover acceptance remains BLOCKED. Final successful workflow and BUILD_INFO provide software outcomes.

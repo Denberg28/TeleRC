@@ -1,3 +1,7 @@
+# TeleRC v0.8.84 — owner-selected stable
+
+Stable/Latest promotion retains the qualified code102 APK and all source/evidence/checksums unchanged. [Promotion record, installation, qualification and hardware limits](docs/STABLE_084.md). No firmware reflash; physical phone/rover acceptance remains pending.
+
 # Compact popup layouts — 0.8.84 test release
 
 All tabs use measured popup heights and screen-bounded widths, with compact short forms/lists/messages, fixed visible actions, shared dismissal/transitions and stable Market category frames. [Scope, checks, installation and phone acceptance](docs/POPUP_LAYOUT_084.md). App-only; no reflash. Software qualification is required before publication; hardware remains pending.
