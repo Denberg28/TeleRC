@@ -1,3 +1,7 @@
+# Compact popup qualification — 0.8.84
+
+Baseline 307eb4b/code101; candidate code102. [A–F gates and phone/HIL acceptance](POPUP_LAYOUT_084.md). Required cloud full build/JVM/debug+release lint, source protection, host/default sanitizers, native compact sizing/frame/scroll/action/transition/Market checks and retained signer/package validation. Local Android toolchain unavailable; physical phone/keyboard/rover acceptance remains BLOCKED. Final successful workflow and BUILD_INFO provide software outcomes.
+
 # Shared popups / review 0.8.83
 
 Baseline c7d2e0/code100; candidate code101. [Review, A–F gates, acceptance and rollback](SHARED_DIALOGS_083.md). Full cloud JVM/debug/release lint/build, source protection, host/default sanitizers and native popup/transition/authority regressions required. Hardware and actual network replacement remain BLOCKED/NOT TESTED.

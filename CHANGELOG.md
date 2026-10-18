@@ -1,3 +1,9 @@
+# 0.8.84 / code102
+
+- Measure actual popup content before opening; compact short forms/lists/notices and scroll long guides/lists within screen bounds.
+- Share sizing, large-text action heights, centering, transitions and lifecycle cleanup with Test sheets; keep Market size stable during category changes.
+- Preserve navigation, connection, authority, updater and firmware behavior. Extend native layout regressions. [Release checks and acceptance](docs/POPUP_LAYOUT_084.md).
+
 # 0.8.83
 
 - Standardize app popups with flat themed sheets, visible fixed actions, centered bounds and lifecycle cleanup.

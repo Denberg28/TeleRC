@@ -94,7 +94,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -423,21 +423,48 @@ class ThemeImageInstrumentation : Instrumentation() {
                     }
                     check((description(view,"Popup content") as android.widget.ScrollView).canScrollVertically(1))
                 }
+                val listHeight=onMain { list.window!!.decorView.height }
                 screenshot("shared-${theme.lowercase()}-list.png")
                 onMain { list.getButton(-2).performClick() }; check(!applied)
+                val compact=onMain { AppDialog.Builder(activity).setTitle("Route mode")
+                    .setItems(arrayOf("Single destination","Multiple waypoints")) { _,_ -> }.setNegativeButton("Cancel",null).show() }
+                checkPopupStable(activity,compact)
+                onMain {
+                    check(compact.window!!.decorView.height<listHeight) { "Short list kept long-list height" }
+                    check(!(description(compact.window!!.decorView,"Popup content") as android.widget.ScrollView).canScrollVertically(1))
+                    compact.cancel()
+                }
                 val input=onMain { android.widget.EditText(activity).apply { hint="Latitude, longitude"; setSingleLine() } }
                 val form=onMain { AppDialog.Builder(activity).setTitle("Add coordinates").setView(input)
                     .setPositiveButton("Select",null).setNegativeButton("Cancel",null).create().also { d ->
                         d.setOnShowListener { d.getButton(-1).setOnClickListener { input.error="Enter a valid point" } }; d.show()
                     } }
                 checkPopupStable(activity,form)
-                onMain { form.getButton(-1).performClick(); check(form.isShowing && input.error!=null) }
+                onMain {
+                    check(form.window!!.decorView.height<listHeight) { "Short form kept long-list height" }
+                    form.getButton(-1).performClick(); check(form.isShowing && input.error!=null)
+                }
                 screenshot("shared-${theme.lowercase()}-form.png")
                 onMain { form.dismiss() }
+                val guide=onMain { AppDialog.Builder(activity).setTitle("Connection guide")
+                    .setMessage(List(40) { "Step ${it+1}: Check the connection before enabling control." }.joinToString("\n"))
+                    .setPositiveButton("Done",null).show() }
+                checkPopupStable(activity,guide)
+                onMain {
+                    check((description(guide.window!!.decorView,"Popup content") as android.widget.ScrollView).canScrollVertically(1))
+                    val done=guide.getButton(-1)
+                    val visible=android.graphics.Rect().also { check(done.getGlobalVisibleRect(it)) }
+                    check(visible.height()==done.height)
+                    guide.dismiss()
+                }
                 var cancelled=false
                 val message=onMain { AppDialog.Builder(activity).setTitle("Help & safety").setMessage("Keep TeleRC open. STOP requests HOLD.")
                     .setOnCancelListener { cancelled=true }.setPositiveButton("OK",null).show() }
                 checkPopupStable(activity,message)
+                onMain {
+                    check(message.window!!.decorView.height<listHeight) { "Short message kept long-list height" }
+                    check(!(description(message.window!!.decorView,"Popup content") as android.widget.ScrollView).canScrollVertically(1))
+                }
                 screenshot("shared-${theme.lowercase()}-message.png")
                 onMain {
                     find(root(activity),"Controls ›")!!.performClick(); check(!message.isShowing)
@@ -724,7 +751,11 @@ class ThemeImageInstrumentation : Instrumentation() {
             val decor=activity.window.decorView
             val available=android.graphics.Rect().also { decor.getWindowVisibleDisplayFrame(it) }
             check(available.width()>0 && available.height()>0) { "No visible display frame" }
-            val tolerance=4*activity.resources.displayMetrics.density
+            val density=activity.resources.displayMetrics.density
+            val tolerance=4*density
+            check(first.width()<=available.width()-32*density+tolerance && first.height()<=minOf(340*density,available.height()-24*density)+tolerance) {
+                "Popup exceeds visible-frame bounds: $first vs $available"
+            }
             // Floating dialogs center within the system's usable frame. AOSP's
             // side navigation bar is outside it even when the Activity draws edge to edge.
             check(abs(first.exactCenterX()-available.exactCenterX())<=tolerance) { "Popup is horizontally off center: $first vs $available" }
@@ -965,12 +996,14 @@ class ThemeImageInstrumentation : Instrumentation() {
                 checkDialogButton(activity,market,"Done")
                 checkPopupStable(activity,market)
                 checkDialogButton(activity,market,"Vehicles")
+                val marketSize=onMain { market.window!!.decorView.let { it.width to it.height } }
                 showMarketItem("Buy Rally · 20")
                 screenshot("dialogs-${theme.lowercase()}-market-vehicles.png")
                 clickWindow("Buy Rally · 20")
                 waitUntil { onMain { wallet.vehicle=="rally" && wallet.balance==15 } }
                 clickWindow("Accessories")
                 checkDialogButton(activity,market,"Accessories")
+                check(onMain { market.window!!.decorView.let { it.width to it.height } }==marketSize) { "Market resized during category transition" }
                 showMarketItem("Buy Spoiler · 14")
                 screenshot("dialogs-${theme.lowercase()}-market-accessories.png")
                 clickWindow("Buy Spoiler · 14")

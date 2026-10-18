@@ -1,3 +1,7 @@
+# Compact popup layouts — 0.8.84 test release
+
+All tabs use measured popup heights and screen-bounded widths, with compact short forms/lists/messages, fixed visible actions, shared dismissal/transitions and stable Market category frames. [Scope, checks, installation and phone acceptance](docs/POPUP_LAYOUT_084.md). App-only; no reflash. Software qualification is required before publication; hardware remains pending.
+
 # Shared popups and reliability review — 0.8.83
 
 Flat Test-style app popups, concise Waypoint pane, modal authority revocation/HOLD, regular Wi-Fi network replacement recovery and bounded update checks. App-only test candidate; no reflash. [Review, verification and phone acceptance](docs/SHARED_DIALOGS_083.md).

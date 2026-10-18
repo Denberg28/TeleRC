@@ -3,7 +3,6 @@ package io.github.denberg28.telerc
 import android.app.Activity
 import android.app.Dialog
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -11,7 +10,6 @@ import android.content.res.ColorStateList
 import android.view.Gravity
 import android.view.View
 import android.view.Window
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -32,9 +30,10 @@ internal class MazePracticeDialogs(private val activity:Activity) {
         text=value; textSize=size; setTextColor(color); includeFontPadding=false
         if(bold) setTypeface(typeface,android.graphics.Typeface.BOLD)
     }
+    private val rowHeight get()=PopupLayout.rowHeight(activity)
     private fun action(value:String,clicked:()->Unit)=Button(activity).apply {
         text=value; textSize=13f; isAllCaps=false; includeFontPadding=false
-        minimumWidth=dp(64); minimumHeight=dp(48); setPadding(dp(12),dp(6),dp(12),dp(6))
+        minimumWidth=dp(64); minimumHeight=rowHeight; setPadding(dp(12),dp(6),dp(12),dp(6))
         setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled),intArrayOf()),intArrayOf(muted,accent)))
         background=RippleDrawable(ColorStateList.valueOf(soft),ColorDrawable(Color.TRANSPARENT),shape(Color.WHITE,4))
         elevation=0f; stateListAnimator=null
@@ -43,48 +42,36 @@ internal class MazePracticeDialogs(private val activity:Activity) {
     private fun divider(parent:LinearLayout) {
         parent.addView(View(activity).apply { setBackgroundColor(ink); alpha=.12f },LinearLayout.LayoutParams(-1,dp(1)))
     }
-    private class Sheet(val dialog:Dialog,val root:LinearLayout,val header:LinearLayout,val body:LinearLayout,val scroll:ScrollView)
-    private fun sheet(title:String,width:Int,height:Int,cancelable:Boolean=true):Sheet {
-        val dialog=Dialog(activity).apply {
+    private inner class Sheet(val dialog:Dialog,val root:LinearLayout,val header:LinearLayout,val body:LinearLayout,val scroll:ScrollView,val width:Int) {
+        fun show() {
+            PopupLayout.configure(activity,dialog,root,scroll,width)
+            dialog.show()
+        }
+    }
+    private fun sheet(title:String,width:Int,cancelable:Boolean=true):Sheet {
+        val dialog=AppDialog.sheet(activity).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             setCancelable(cancelable); setCanceledOnTouchOutside(cancelable)
         }
         val root=LinearLayout(activity).apply {
             orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(8))
-            background=shape(surface)
+            background=shape(surface); contentDescription="Standard popup"
         }
         val header=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL }
         header.addView(label(title,16f,ink,true),LinearLayout.LayoutParams(0,-2,1f))
-        root.addView(header,LinearLayout.LayoutParams(-1,dp(48)))
+        root.addView(header,LinearLayout.LayoutParams(-1,rowHeight))
         divider(root)
         val body=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
-        val scroll=ScrollView(activity).apply { isFillViewport=false; addView(body) }
+        val scroll=ScrollView(activity).apply { isFillViewport=false; addView(body); contentDescription="Popup content" }
         root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         dialog.setContentView(root)
-        // Configure before the first show/measure. Post-show sizing can jump sideways
-        // from the platform's initial dialog position, especially on OEM landscape UI.
-        run {
-            val visible=Rect()
-            activity.window.decorView.getWindowVisibleDisplayFrame(visible)
-            val metrics=activity.resources.displayMetrics
-            val availableWidth=if(visible.width()>0) visible.width() else metrics.widthPixels
-            val availableHeight=if(visible.height()>0) visible.height() else metrics.heightPixels
-            dialog.window?.apply {
-                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND); setDimAmount(.48f)
-                setGravity(Gravity.CENTER)
-                attributes=attributes.apply { x=0; y=0; windowAnimations=0 }
-                setLayout(minOf(dp(width),(availableWidth-dp(32)).coerceAtLeast(1)),
-                    minOf(dp(height),(availableHeight-dp(24)).coerceAtLeast(1)))
-            }
-        }
-        return Sheet(dialog,root,header,body,scroll)
+        return Sheet(dialog,root,header,body,scroll,width)
     }
     private fun close(sheet:Sheet) {
-        sheet.header.addView(action("Done") { sheet.dialog.dismiss() },LinearLayout.LayoutParams(-2,dp(48)))
+        sheet.header.addView(action("Done") { sheet.dialog.dismiss() },LinearLayout.LayoutParams(-2,rowHeight))
     }
     fun levels(progress:MazeProgress,records:List<MazeClear>,selected:(Int)->Unit):Dialog {
-        val sheet=sheet("Levels",420,minOf(340,68+progress.unlocked*53))
+        val sheet=sheet("Levels",420)
         sheet.header.addView(label("${progress.unlocked}/${MazeLevels.COUNT}",12f,muted))
         close(sheet)
         for(level in 1..progress.unlocked) {
@@ -105,27 +92,27 @@ internal class MazePracticeDialogs(private val activity:Activity) {
             sheet.body.addView(row,LinearLayout.LayoutParams(-1,-2))
             if(level<progress.unlocked) divider(sheet.body)
         }
-        sheet.dialog.show()
+        sheet.show()
         return sheet.dialog
     }
     fun restart(level:Int,millis:Long,bumps:Int,restart:()->Unit):Dialog {
-        val sheet=sheet("Restart level $level?",360,184,false)
+        val sheet=sheet("Restart level $level?",360,false)
         sheet.body.addView(label("$bumps bumps · ${MazeRecords.time(millis)}",13f,muted),
             LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
         sheet.body.addView(label("Coins kept. Fresh start.",13f,muted),
             LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
         val footer=LinearLayout(activity).apply { gravity=Gravity.END }
-        footer.addView(action("Restart level") { sheet.dialog.dismiss(); restart() },LinearLayout.LayoutParams(-2,dp(48)))
-        sheet.root.addView(footer,LinearLayout.LayoutParams(-1,dp(48)))
-        sheet.dialog.show()
+        footer.addView(action("Restart level") { sheet.dialog.dismiss(); restart() },LinearLayout.LayoutParams(-2,rowHeight))
+        sheet.root.addView(footer,LinearLayout.LayoutParams(-1,rowHeight))
+        sheet.show()
         return sheet.dialog
     }
     fun market(wallet:()->MazeWallet,changed:(MazeWallet)->Unit):Dialog {
-        val sheet=sheet("Market",440,328)
+        val sheet=sheet("Market",440)
         val balance=label("",12f,muted)
         sheet.header.addView(balance); close(sheet)
         val tabs=LinearLayout(activity)
-        sheet.root.addView(tabs,2,LinearLayout.LayoutParams(-1,dp(48)))
+        sheet.root.addView(tabs,2,LinearLayout.LayoutParams(-1,rowHeight))
         val controls=mutableListOf<Pair<MazeMarketItem,Button>>()
         val tabButtons=mutableListOf<Pair<MazeItemKind,Button>>()
         fun refresh() {
@@ -171,7 +158,7 @@ internal class MazePracticeDialogs(private val activity:Activity) {
                     if(next!=null) changed(next)
                     refresh()
                 }
-                row.addView(buy,LinearLayout.LayoutParams(-2,dp(48)))
+                row.addView(buy,LinearLayout.LayoutParams(-2,rowHeight))
                 controls.add(item to buy)
                 sheet.body.addView(row,LinearLayout.LayoutParams(-1,-2))
                 if(item!=MazeMarket.items.last { it.kind==kind }) divider(sheet.body)
@@ -181,10 +168,10 @@ internal class MazePracticeDialogs(private val activity:Activity) {
         for(kind in MazeItemKind.entries) {
             val button=action(if(kind==MazeItemKind.VEHICLE) "Vehicles" else "Accessories") { category(kind) }
             tabButtons.add(kind to button)
-            tabs.addView(button,LinearLayout.LayoutParams(0,dp(48),1f))
+            tabs.addView(button,LinearLayout.LayoutParams(0,rowHeight,1f))
         }
         category(MazeItemKind.VEHICLE)
-        sheet.dialog.show()
+        sheet.show()
         return sheet.dialog
     }
 }

@@ -1,3 +1,7 @@
+# Measured popup frames — 0.8.84
+
+`PopupLayout` measures each fully populated sheet at a preferred content width before show, temporarily removing the body weight to obtain its intrinsic height, then restores one scrolling body inside a bounded frame. AppDialog and MazePracticeDialogs share this policy and tracked lifecycle. Header/actions scale with text; Market fixes its initial measured frame across category updates. Models, transport and authority engines are unchanged. [Scope](POPUP_LAYOUT_084.md).
+
 # Shared popups and session recovery — 0.8.83
 
 AppDialog models the Test sheet contract with one scroll owner, fixed actions, pre-show bounds and weakly tracked lifecycle cleanup. MainActivity revokes manual authority or requests moving Guided HOLD before showing it. Ordinary UDP sessions now use the existing bounded captured-Network removal policy; only native Backpack registers PINGs. UpdateMetadata bounds JSON input to 1 MiB; update checks are single-flight. Navigation/codec/FPV/firmware invariants remain protected.

@@ -60,3 +60,6 @@ for theme in light sepia dark; do
   done
 done
 python -c 'import base64,pathlib; print("SHARED_POPUP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/shared-dark-list.png").read_bytes()).decode())'
+
+grep "PASS: measured popup sizing" app/build/photo-evidence/result.txt
+python -c 'import base64,pathlib; print("COMPACT_POPUP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/shared-dark-message.png").read_bytes()).decode())'

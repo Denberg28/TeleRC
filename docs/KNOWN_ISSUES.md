@@ -1,3 +1,7 @@
+# Compact popup limits — 0.8.84
+
+Actual OEM phone/keyboard/display-mode layouts remain pending physical checks; native API35 normal/large text and all themes are required software gates. System permission/picker/installer windows retain Android styling. [Checks and acceptance](POPUP_LAYOUT_084.md). Existing unsigned Wi-Fi/MAVLink and physical connection/neutral/HOLD limitations remain. App-only; no reflash.
+
 # Shared popups / review 0.8.83
 
 System-owned USB/camera permission, file-picker and installer windows retain Android styling. Wi-Fi/MAVLink remains unsigned and not replay authenticated. Actual network rebinding, physical HOLD/neutral behavior, RF/USB reliability and phone layout remain pending hardware acceptance. [Scope and checks](SHARED_DIALOGS_083.md).

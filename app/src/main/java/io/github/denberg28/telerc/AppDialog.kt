@@ -5,7 +5,6 @@ import android.app.Dialog
 import android.content.DialogInterface
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -13,7 +12,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -36,6 +34,7 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
         super.dismiss()
     }
     companion object {
+        fun sheet(activity:Activity)=AppDialog(activity)
         private val open=WeakHashMap<Activity,MutableList<WeakReference<AppDialog>>>()
         fun dismissAll(activity:Activity) {
             open.remove(activity)?.mapNotNull { it.get() }?.forEach { it.cancel() }
@@ -72,8 +71,7 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
             dialog.setOnCancelListener { cancelled?.invoke(it) }
             val density=activity.resources.displayMetrics.density
             fun dp(n:Int)=(n*density+.5f).toInt()
-            val scale=maxOf(1f,activity.resources.configuration.fontScale)
-            val rowHeight=dp((48*scale).toInt())
+            val rowHeight=PopupLayout.rowHeight(activity)
             val ink=AppColors.ink(activity); val accent=AppColors.accent(activity)
             val soft=AppColors.softAccent(activity)
             fun shape(color:Int,radius:Int)=GradientDrawable().apply { setColor(color); cornerRadius=dp(radius).toFloat() }
@@ -89,9 +87,9 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
             }
             val heading=label(title,16f).apply {
                 setTypeface(typeface,android.graphics.Typeface.BOLD); gravity=Gravity.CENTER_VERTICAL
-                maxLines=2
+                minHeight=rowHeight; maxLines=2
             }
-            root.addView(heading,LinearLayout.LayoutParams(-1,rowHeight))
+            root.addView(heading,LinearLayout.LayoutParams(-1,-2))
             divider(root)
             val body=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setPadding(0,dp(8),0,dp(8)) }
             message?.let { body.addView(label(it),LinearLayout.LayoutParams(-1,-2)) }
@@ -133,34 +131,25 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
                 val footer=LinearLayout(activity).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL }
                 for(which in listOf(-3,-2,-1)) buttons[which]?.let { (caption,clicked) ->
                     val button=Button(activity).apply {
-                        text=caption; textSize=13f; isAllCaps=false; includeFontPadding=false
+                        text=caption; textSize=13f; isAllCaps=false; includeFontPadding=false; maxLines=2
                         minimumWidth=0; minimumHeight=rowHeight; setPadding(dp(8),dp(6),dp(8),dp(6))
                         setTextColor(accent); elevation=0f; stateListAnimator=null
                         background=RippleDrawable(ColorStateList.valueOf(soft),ColorDrawable(Color.TRANSPARENT),shape(Color.WHITE,4))
                         setOnClickListener { dialog.dismiss(); clicked?.invoke(dialog,which) }
                     }
                     dialog.actions[which]=button
-                    footer.addView(button,LinearLayout.LayoutParams(0,rowHeight,1f))
+                    footer.addView(button,LinearLayout.LayoutParams(0,-2,1f))
                 }
-                root.addView(footer,LinearLayout.LayoutParams(-1,rowHeight))
+                root.addView(footer,LinearLayout.LayoutParams(-1,-2))
             }
             dialog.setContentView(root)
-            val visible=Rect(); activity.window.decorView.getWindowVisibleDisplayFrame(visible)
-            val metrics=activity.resources.displayMetrics
-            val availableWidth=if(visible.width()>0) visible.width() else metrics.widthPixels
-            val availableHeight=if(visible.height()>0) visible.height() else metrics.heightPixels
-            val messageLines=message?.split('\n')?.sumOf { maxOf(1,(it.length+55)/56) } ?: 0
-            val desired=if(custom!=null || items!=null) dp(340) else
-                maxOf(dp(160),rowHeight*(if(buttons.isEmpty()) 1 else 2)+dp(32+(messageLines*20*scale).toInt()))
-            dialog.window?.apply {
-                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND); setDimAmount(.48f)
-                setGravity(Gravity.CENTER)
-                attributes=attributes.apply { x=0; y=0; windowAnimations=0 }
-                setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-                setLayout(minOf(dp(520),(availableWidth-dp(32)).coerceAtLeast(1)),
-                    minOf(desired,dp(340),(availableHeight-dp(24)).coerceAtLeast(1)))
+            val width=when {
+                custom!=null -> 440
+                items!=null -> 420
+                message.orEmpty().length>240 -> 480
+                else -> 360
             }
+            PopupLayout.configure(activity,dialog,root,scroll,width)
             return dialog
         }
     }
