@@ -9,6 +9,7 @@ adb shell pm grant "$PKG" android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant "$PKG" android.permission.ACCESS_COARSE_LOCATION
 adb shell am instrument -r -w "$PKG.test/$PKG.ThemeImageInstrumentation" | tee app/build/photo-evidence/result.txt
 grep 'INSTRUMENTATION_CODE: -1' app/build/photo-evidence/result.txt
+grep 'PASS: native ELRS setup' app/build/photo-evidence/result.txt
 grep 'PASS: waypoint planning' app/build/photo-evidence/result.txt
 grep 'PASS: native photo' app/build/photo-evidence/result.txt
 grep 'PASS: native maze' app/build/photo-evidence/result.txt
@@ -43,4 +44,10 @@ python -c 'import base64,pathlib; print("CATALOG_UI_PNG="+base64.b64encode(pathl
 for image in waypoint-light-menu.png waypoint-sepia-menu.png waypoint-dark-menu.png waypoint-light-plan.png waypoint-sepia-plan.png waypoint-dark-plan.png; do
   adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
 done
+python -c 'import base64,pathlib; print("WAYPOINT_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/waypoint-dark-plan.png").read_bytes()).decode())'
+
+for image in elrs-setup.png elrs-controls.png elrs-waypoint.png waypoint-light-plan.png waypoint-sepia-plan.png waypoint-dark-plan.png; do
+  adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
+done
+python -c 'import base64,pathlib; print("ELRS_SETUP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/elrs-setup.png").read_bytes()).decode())'
 python -c 'import base64,pathlib; print("WAYPOINT_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/waypoint-dark-plan.png").read_bytes()).decode())'

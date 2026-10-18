@@ -1,3 +1,7 @@
+# F405 ELRS and clear Waypoint flow — 0.8.80 development
+
+Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](docs/ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
+
 ## 0.8.79
 
 Add isolated Waypoint map/tab, single or multi waypoint saved drafts, confirmed ArduRover DO_REPOSITION sequencing, verified HOLD/readiness/failsafe parameters and cancellation on stale telemetry/lifecycle/timeout. Existing gateway sketches remain unchanged and planning-only; compatible navigation link and physical/SITL validation pending. Preserve existing tab bodies, FPV, wallet and manual protocol.

@@ -85,6 +85,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkEnvironmentsAndVehicles()
             checkFpvReconnectLifecycle()
             checkWaypointPlanning()
+            checkFcElrsSetup()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             checkThemeTransitions(photo = false)
@@ -92,7 +93,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and handset-only control; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -391,6 +392,41 @@ class ThemeImageInstrumentation : Instrumentation() {
         tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
+    private fun checkFcElrsSetup() {
+        val prefs=targetContext.getSharedPreferences("link",0)
+        val oldTransport=prefs.getString("transport","wifi")
+        val appearance=targetContext.getSharedPreferences("appearance",0)
+        val minimized=appearance.getBoolean("setup_minimized",false)
+        appearance.edit().putBoolean("setup_minimized",false).commit()
+        prefs.edit().putString("transport",FcElrs.TRANSPORT).putBoolean("auto_connect",false).commit()
+        val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitUntil { onMain { description(root(activity),"ELRS Backpack IPv4 address")!=null } }
+        onMain {
+            val view=root(activity)
+            check((description(view,"ELRS Backpack IPv4 address") as TextView).text.toString()==FcElrs.HOST)
+            check((description(view,"Send port; Backpack Listen port") as TextView).text.toString()=="14555")
+            check((description(view,"Listen port; Backpack Send port") as TextView).text.toString()=="14550")
+            check(find(view,"ELRS TX + RX setup")!=null)
+        }
+        screenshot("elrs-setup.png")
+        openTabMenu(activity,"Setup"); waitUntil { windowText("Controls")!=null }; clickWindow("Controls")
+        waitUntil { onMain { find(root(activity),"HANDSET CONTROL")!=null } }
+        onMain {
+            check(!find(root(activity),"HANDSET CONTROL")!!.isEnabled)
+            check(!find(root(activity),"USE HANDSET")!!.isEnabled)
+            check(find(root(activity),"Connect FPV")!=null)
+        }
+        screenshot("elrs-controls.png")
+        openTabMenu(activity,"Controls"); waitUntil { windowText("Waypoint")!=null }; clickWindow("Waypoint")
+        waitUntil { onMain { find(root(activity),"Check rover")!=null } }
+        onMain { find(root(activity),"Check rover")!!.performClick() }
+        waitUntil { windowText("Planning only")!=null }; clickWindow("OK")
+        waitUntil { windowText("Planning only")==null }
+        screenshot("elrs-waypoint.png")
+        onMain { activity.finish() }; waitForIdleSync()
+        prefs.edit().putString("transport",oldTransport).putBoolean("auto_connect",false).commit()
+        appearance.edit().putBoolean("setup_minimized",minimized).commit()
+    }
     private fun checkWaypointPlanning() {
         val prefs=targetContext.getSharedPreferences("waypoint_route",0)
         prefs.edit().clear().putString("draft","13.6218,123.1948;13.6219,123.1948").putBoolean("multiple",true).commit()
@@ -401,7 +437,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { description(root(activity),"Confirm and start waypoint route")!=null } }
             onMain {
                 val view=root(activity)
-                check(find(view,"Start mission")!=null && find(view,"STOP · HOLD")!=null)
+                check(find(view,"Review route")!=null && find(view,"STOP · HOLD")!=null)
                 check(description(view,"Waypoint map; tap to choose a destination")!!.width>view.width*.4f)
                 check(description(view,"Waypoint map; tap to choose a destination")!!.height>view.height*.4f)
                 check(description(view,"Waypoint 2, 13.621900, 123.194800; tap to remove")!=null)
@@ -409,13 +445,14 @@ class ThemeImageInstrumentation : Instrumentation() {
             }
             checkTabMenu(activity,"Waypoint","waypoint-${theme.lowercase()}-menu.png")
             screenshot("waypoint-${theme.lowercase()}-plan.png")
-            onMain { find(root(activity),"Start mission")!!.performClick() }
+            onMain { find(root(activity),"Review route")!!.performClick() }
             waitUntil { windowText("Route saved · movement locked")!=null }; clickWindow("OK")
             waitUntil { windowText("Route saved · movement locked")==null }
-            onMain { find(root(activity),"Check link")!!.performClick() }
-            waitUntil { windowText("Navigation unavailable")!=null }; clickWindow("OK")
-            waitUntil { windowText("Navigation unavailable")==null }
-            onMain { find(root(activity),"Mission · multiple")!!.performClick() }
+            onMain { find(root(activity),"Check rover")!!.performClick() }
+            waitUntil { windowText("Planning only")!=null }; clickWindow("OK")
+            waitUntil { windowText("Planning only")==null }
+            onMain { find(root(activity),"Mission ▾")!!.performClick() }
+            waitUntil { windowText("Route mode")!=null }; clickWindow("Single destination")
             waitUntil { windowText("Use single destination?")!=null }; clickWindow("Cancel")
             waitUntil { windowText("Use single destination?")==null }
             check(WaypointPlan.decode(prefs.getString("draft","").orEmpty()).size==2)

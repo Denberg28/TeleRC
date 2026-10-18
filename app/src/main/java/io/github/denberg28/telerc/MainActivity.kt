@@ -56,7 +56,12 @@ class MainActivity : Activity() {
     private var practiceDrive: JoystickView? = null
     @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
-    private val miniRoverMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
+    private val fcElrsMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == FcElrs.TRANSPORT
+    private val phoneCommandsAllowed get() = FcElrs.phoneCommandsAllowed(getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi"))
+    private val elrsMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == ElrsControl.TRANSPORT
+    private val elrsAuthority = ElrsAuthority()
+    private var elrsRequestEpoch = -1L
+    private val miniRoverMode get() = elrsMode || getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
     private val miniArmGate = MiniRoverArmGate()
     private var loraStatus: TextView? = null
     private var loraInfo = "Attach one T3-S3 by native USB, connect, then read board settings."
@@ -447,6 +452,7 @@ class MainActivity : Activity() {
         remotePort: Int,
         releaseToReceiver: Boolean
     ) {
+        if (!phoneCommandsAllowed) return // Native ELRS owns RC; neutral/release would contend with it.
         synchronized(commandLock) {
             repeat(3) { sequence ->
                 val neutral = Mavlink.override(sequence, system, 1, 1500, 1500, 1500, 1500)
@@ -466,6 +472,7 @@ class MainActivity : Activity() {
             commandEpoch++
             controlEnabled.disable()
             miniArmGate.reset()
+            elrsAuthority.cancel()
             steering = 1500
             drive = 1500
         }
@@ -482,6 +489,9 @@ class MainActivity : Activity() {
     }
 
     private fun toggleArmDisarm() {
+        if (!phoneCommandsAllowed) {
+            Toast.makeText(this, FcElrs.HANDSET_ONLY, Toast.LENGTH_LONG).show(); return
+        }
         val armed = vehicleArmed
         val udp = socket
         val remote = endpoint
@@ -655,37 +665,61 @@ class MainActivity : Activity() {
                 if (column.childCount > 0) topMargin = dp(6)
             })
         }
-        row(connection, button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "Wi-Fi bridge ▾", false) {
+        row(connection, button(if (usbMode) "ArduRover LoRa ▾" else if (fcElrsMode) "ArduRover ELRS ▾" else if (elrsMode) "ELRS + Wi-Fi ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "ArduRover Wi-Fi ▾", false) {
             if (!wantsLink) AlertDialog.Builder(this).setTitle("Control link")
-                .setItems(arrayOf("Mini rover Wi-Fi", "Wi-Fi bridge / flight controller", "LoRa via USB base")) { _, choice ->
+                .setItems(arrayOf("Mini rover · Wi-Fi", "ArduRover · Wi-Fi bridge", "ArduRover · LoRa USB base", "ArduRover · ELRS TX Backpack")) { _, choice ->
                     getSharedPreferences("link", MODE_PRIVATE).edit()
-                        .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; else -> "wifi" }).apply()
+                        .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; 3 -> FcElrs.TRANSPORT; else -> "wifi" }).apply()
                     render()
                 }.show()
             else Toast.makeText(this, "Disconnect before changing the control link.", Toast.LENGTH_SHORT).show()
         })
         host = EditText(this).apply {
-            setSingleLine(); hint = "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
+            setSingleLine(); hint = if(fcElrsMode) "Backpack IPv4" else "Bridge IPv4"; setTextColor(ink); setHintTextColor(muted)
             inputType = InputType.TYPE_CLASS_TEXT; textSize = 14f
             background = shape(pale, 10); setPadding(dp(10), 0, dp(10), 0)
             setText(if (connected.get()) endpoint?.hostAddress else
-                getSharedPreferences("link", MODE_PRIVATE).getString("host", "192.168.4.1"))
-            isEnabled = !connected.get(); contentDescription = "Bridge IPv4 address"
+                getSharedPreferences("link", MODE_PRIVATE).getString(if(fcElrsMode) FcElrs.HOST_KEY else "host", if(fcElrsMode) FcElrs.HOST else "192.168.4.1"))
+            isEnabled = !connected.get(); contentDescription = if(fcElrsMode) "ELRS Backpack IPv4 address" else "Bridge IPv4 address"
         }
         port = EditText(this).apply {
-            setSingleLine(); hint = "UDP port"; setTextColor(ink); setHintTextColor(muted)
+            setSingleLine(); hint = if(fcElrsMode) "Send port" else "UDP port"; setTextColor(ink); setHintTextColor(muted)
             inputType = InputType.TYPE_CLASS_NUMBER; textSize = 14f
             background = shape(pale, 10); setPadding(dp(10), 0, dp(10), 0)
-            setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt("port", 14550)).toString())
-            isEnabled = !connected.get(); contentDescription = "UDP port"
+            setText((if (connected.get()) endpointPort else getSharedPreferences("link", MODE_PRIVATE).getInt(if(fcElrsMode) FcElrs.PORT_KEY else "port", if(fcElrsMode) FcElrs.REMOTE_PORT else 14550)).toString())
+            isEnabled = !connected.get(); contentDescription = if(fcElrsMode) "Send port; Backpack Listen port" else "UDP port"
         }
         val endpointRow = LinearLayout(this)
         endpointRow.addView(host, LinearLayout.LayoutParams(0, -1, 2f).apply { rightMargin = dp(6) })
         endpointRow.addView(port, LinearLayout.LayoutParams(0, -1, 1f))
+        if (!miniRoverMode && !usbMode) row(connection, endpointRow)
+        if (fcElrsMode) {
+            val listen = EditText(this).apply {
+                setSingleLine(); hint="Listen port (Backpack Send)"; inputType=InputType.TYPE_CLASS_NUMBER
+                textSize=14f; setTextColor(ink); setHintTextColor(muted)
+                background=shape(pale,10); setPadding(dp(10),0,dp(10),0)
+                setText(getSharedPreferences("link",MODE_PRIVATE).getInt(FcElrs.LISTEN_KEY,FcElrs.LOCAL_PORT).toString())
+                isEnabled=!wantsLink; contentDescription="Listen port; Backpack Send port"
+            }
+            listen.addTextChangedListener(object: android.text.TextWatcher {
+                override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+                override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {
+                    getSharedPreferences("link",MODE_PRIVATE).edit().putInt(FcElrs.LISTEN_KEY,
+                        s?.toString()?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 0).apply()
+                }
+                override fun afterTextChanged(s:android.text.Editable?) {}
+            })
+            row(connection,listen)
+        }
         row(connection, when {
-            usbMode -> text("USB OTG → T3-S3 base → LoRa", 12f, muted)
+            fcElrsMode -> button("ELRS TX + RX setup",false) { showFcElrsSetup() }
+            usbMode -> button("ELRS handset setup",false) { showFcElrsSetup() }
+            elrsMode -> button("Mini ELRS setup", false) {
+                AlertDialog.Builder(this).setTitle("Mini ELRS + Wi-Fi").setMessage(ElrsControl.SETUP)
+                    .setPositiveButton("OK",null).show()
+            }
             miniRoverMode -> button("Wi-Fi setup", false) { showMiniRoverSetup() }
-            else -> endpointRow
+            else -> button("ELRS handset setup",false) { showFcElrsSetup() }
         })
         connect = button("Connect") {
             if (wantsLink) {
@@ -1001,13 +1035,13 @@ class MainActivity : Activity() {
     private fun renderWaypoint() {
         host=null; port=null; connect=null; status=null; enable=null
         val tab=waypointTab ?: WaypointTab(this,
-            { target to (connected.get() && !miniRoverMode && !usbMode) },
+            { target to (connected.get() && !miniRoverMode && !usbMode && phoneCommandsAllowed) },
             { dispatch ->
                 val udp=socket; val remote=endpoint; val portNumber=endpointPort
                 val submitted=SystemClock.elapsedRealtime()
                 if(udp!=null && remote!=null) txExecutor.execute {
                     synchronized(commandLock) {
-                        if(socket===udp && connected.get() && !miniRoverMode && !usbMode &&
+                        if(socket===udp && connected.get() && !miniRoverMode && !usbMode && phoneCommandsAllowed &&
                             (!controlEnabled.get() || dispatch.gcsHeartbeat) &&
                             (!dispatch.gcsHeartbeat || resumed) &&
                             SystemClock.elapsedRealtime()-submitted in 0..500 &&
@@ -1019,7 +1053,12 @@ class MainActivity : Activity() {
                         }
                     }
                 }
-            }).also { waypointTab=it }
+            }, linkHint = { when {
+                fcElrsMode -> "ELRS handset control: planning only. Use CRSF + FC Wi-Fi for phone navigation."
+                miniRoverMode -> "Mini rover: planning only. Live navigation needs ArduRover with GPS + compass."
+                usbMode -> "Current LoRa gateway: planning only. Live navigation needs a compatible MAVLink link."
+                else -> "Connect to ArduRover in Setup, then tap Check rover. A compatible MAVLink link is required."
+            } }).also { waypointTab=it }
         val root=shell()
         tab.create(root,pageDropdown("Waypoint"),started,resumed)
         setContentView(root)
@@ -1056,7 +1095,7 @@ class MainActivity : Activity() {
         val actions = card().apply {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             val scene = FrameLayout(this@MainActivity)
-            controlsPlaceholder = text("Rover · CH1 / CH2\n\nEnable control to show recovery map", 12f, muted).apply {
+            controlsPlaceholder = text(if(fcElrsMode) "ELRS handset control\n\nTelemetry and FPV only\nUse the transmitter to drive and arm" else "Rover · CH1 / CH2\n\nEnable control to show recovery map", 12f, muted).apply {
                 gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
             }
             scene.addView(controlsPlaceholder, FrameLayout.LayoutParams(-1, -1))
@@ -1104,24 +1143,9 @@ class MainActivity : Activity() {
             addView(viewButtons, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
         }
         enable = button("Enable control") {
-            if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (synchronized(commandLock) {
-                val allowed = controlEnabled.enable(target, heartbeatAt, SystemClock.elapsedRealtime())
-                if (allowed) commandEpoch++
-                allowed
-            }) {
-                steeringStick?.isEnabled = true; driveStick?.isEnabled = true
-                if (!mapActive) setControlsMapVisible(true) else {
-                    deadReckoning.hold()
-                    if (routeMap?.livePreviewActive != true) routeMap?.beginLivePreview()
-                    controlsEstimate?.text = "RC ACTIVE · estimate resumes with sent frames"
-                }
-                refreshUi()
-            } else {
-                android.widget.Toast.makeText(this,
-                    if (miniRoverMode) "Join TeleRC-MiniRover Wi-Fi, tap Connect and wait for the rover heartbeat."
-                    else "Waiting for rover heartbeat. Check bridge Wi-Fi, UART RX/TX and SERIAL3 settings.",
-                    android.widget.Toast.LENGTH_LONG).show()
-            }
+            if (controlEnabled.get()) disableControl(releaseToReceiver = true)
+            else if (elrsMode) requestElrsControl()
+            else activatePhoneControl()
         }
         enable?.textSize = 13f
         val rightSlot = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -1411,7 +1435,19 @@ class MainActivity : Activity() {
             .setPositiveButton("Open Wi-Fi settings") { _, _ -> startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
             .setNegativeButton("Close", null).show()
     }
+    private fun showFcElrsSetup() {
+        AlertDialog.Builder(this).setTitle(if(fcElrsMode) "ELRS TX Backpack" else "ELRS handset + ArduRover")
+            .setMessage(if(fcElrsMode) FcElrs.BACKPACK_SETUP else FcElrs.CRSF_SETUP)
+            .setPositiveButton("Wi-Fi settings") { _,_ -> startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+            .setNegativeButton("Close",null).show()
+    }
     private fun linkDiagnosis(): String {
+        if (fcElrsMode) return "${if(linkFresh()) "F405 heartbeat received." else "Waiting for F405 heartbeat."} " +
+            "Backpack ${endpoint?.hostAddress ?: host?.text}, send ${endpointPort}, listen " +
+            "${getSharedPreferences("link",MODE_PRIVATE).getInt(FcElrs.LISTEN_KEY,FcElrs.LOCAL_PORT)}. " +
+            "Check TX/RX binding, MAVLink mode and Backpack Telemetry → WiFi. Match both UDP ports. " +
+            "Handset drives; phone commands are locked. Bridge counters do not apply. $lastLinkError"
+
         if (miniRoverMode) {
             val state = if (linkFresh()) "Rover heartbeat received; ${if (vehicleArmed == true) "ARMED" else "DISARMED"}. "
                 else "No fresh rover heartbeat. Join ${MiniRoverWifi.SSID}, keep the no-internet Wi-Fi connected, and tap Connect. "
@@ -1471,9 +1507,18 @@ class MainActivity : Activity() {
         connect?.contentDescription = if (compact && wantsLink)
             "${connect?.text}; tap to disconnect. ${status?.text?.toString().orEmpty()}" else connect?.text
         connect?.tooltipText = if (wantsLink) "Disconnect" else "Connect"
-        enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
-        enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
-        armButton?.apply { text = armCaption(); isEnabled = linkFresh() && vehicleArmed != null }
+        if(fcElrsMode) { steeringStick?.isEnabled=false; driveStick?.isEnabled=false }
+        enable?.isEnabled = phoneCommandsAllowed && connected.get() && (controlEnabled.get() || linkFresh())
+        enable?.text = if(fcElrsMode) "HANDSET CONTROL" else if(elrsMode) when {
+            controlEnabled.get() -> "Release control"
+            elrsAuthority.pending(now) -> "Taking control…"
+            else -> "Take control"
+        } else if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
+        if(elrsMode) {
+            status?.text=if(linkFresh()) elrsAuthority.label(now) else status?.text
+            enable?.tooltipText=elrsAuthority.label(now)
+        }
+        armButton?.apply { text = if(fcElrsMode) "USE HANDSET" else armCaption(); isEnabled = phoneCommandsAllowed && linkFresh() && vehicleArmed != null }
         val localUsb = usbMode && connected.get()
         loraRead?.isEnabled = localUsb && loraExchange.pending == null && !loraExchange.blocked
         loraSave?.isEnabled = localUsb && loraExchange.canSave && vehicleArmed != true
@@ -1494,6 +1539,52 @@ class MainActivity : Activity() {
         }
         refreshFunctionButtons()
     }
+    private fun activatePhoneControl() {
+        if (!phoneCommandsAllowed) return
+        if (page!=Page.CONTROLS || !resumed) return
+        val allowed=synchronized(commandLock) {
+            if(elrsMode && !elrsAuthority.allowed(SystemClock.elapsedRealtime())) false
+            else controlEnabled.enable(target,heartbeatAt,SystemClock.elapsedRealtime()).also { if(it) commandEpoch++ }
+        }
+        if(allowed) {
+                steeringStick?.isEnabled = true; driveStick?.isEnabled = true
+                if (!mapActive) setControlsMapVisible(true) else {
+                    deadReckoning.hold()
+                    if (routeMap?.livePreviewActive != true) routeMap?.beginLivePreview()
+                    controlsEstimate?.text = "RC ACTIVE · estimate resumes with sent frames"
+                }
+                refreshUi()
+
+        } else Toast.makeText(this,"Connect and wait for a fresh rover heartbeat.",Toast.LENGTH_SHORT).show()
+    }
+    private fun requestElrsControl() {
+        if(!linkFresh() || elrsAuthority.pending(SystemClock.elapsedRealtime())) return
+        disableControlState()
+        val udp=socket ?: return
+        val remote=endpoint ?: return
+        val system=target; val remotePort=endpointPort
+        val now=SystemClock.elapsedRealtime()
+        val epoch=synchronized(commandLock) { commandEpoch }
+        elrsRequestEpoch=epoch; elrsAuthority.request(now)
+        txExecutor.execute {
+            synchronized(commandLock) {
+                if(socket===udp && commandEpoch==epoch && elrsAuthority.pending(SystemClock.elapsedRealtime())) {
+                    try {
+                        val bytes=ElrsControl.take(201,system)
+                        udp.send(DatagramPacket(bytes,bytes.size,remote,remotePort))
+                    } catch(_:Exception) { elrsAuthority.cancel() }
+                }
+            }
+        }
+        refreshUi()
+        reconnectHandler.postDelayed({
+            if(elrsMode && elrsRequestEpoch==epoch && !controlEnabled.get()) {
+                Toast.makeText(this,"Takeover unconfirmed. Center transmitter, release STOP and check ELRS firmware.",Toast.LENGTH_LONG).show()
+                refreshUi()
+            }
+        },1100)
+    }
+
     private fun disableControl(releaseToReceiver: Boolean = false) {
         // State changes are immediate; UDP safety/handover packets run on the dedicated TX thread.
         val system = target
@@ -1549,13 +1640,15 @@ class MainActivity : Activity() {
     private fun start() {
         if (page == Page.TEST || connected.get()) return
         val saved = getSharedPreferences("link", MODE_PRIVATE)
+        val backpack = fcElrsMode // Immutable session profile.
         val address = if (miniRoverMode) MiniRoverWifi.HOST else if (usbMode) "127.0.0.1" else
-            (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
+            (host?.text?.toString() ?: saved.getString(if(backpack) FcElrs.HOST_KEY else "host", if(backpack) FcElrs.HOST else "192.168.4.1")).orEmpty().trim()
         val valid = Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$").matches(address) &&
             address.split('.').all { it.toInt() in 0..255 }
         val number = if (miniRoverMode) MiniRoverWifi.PORT else if (usbMode) 14550 else
-            (port?.text?.toString() ?: saved.getInt("port", 14550).toString()).toIntOrNull()
-        if (!valid || number == null || number !in 1..65535) {
+            (port?.text?.toString() ?: saved.getInt(if(backpack) FcElrs.PORT_KEY else "port", if(backpack) FcElrs.REMOTE_PORT else 14550).toString()).toIntOrNull()
+        val localPort = if(backpack) saved.getInt(FcElrs.LISTEN_KEY,FcElrs.LOCAL_PORT) else number
+        if (!valid || number == null || number !in 1..65535 || localPort == null || localPort !in 1..65535) {
             wantsLink = false
             saved.edit().putBoolean("auto_connect", false).apply()
             refreshUi(); status?.text = "INVALID ADDRESS OR PORT"; return
@@ -1576,17 +1669,17 @@ class MainActivity : Activity() {
             try { UsbLoRaTransport.open(manager, device) }
             catch (error: Exception) { lastLinkError = "USB open failed. Close other serial apps and reconnect the data cable."; refreshUi(); status?.text = "USB LoRa OPEN FAILED"; return }
         } else {
-            if (!miniRoverMode) saved.edit().putString("host", address).putInt("port", number).apply()
+            if (!miniRoverMode) saved.edit().putString(if(backpack) FcElrs.HOST_KEY else "host", address).putInt(if(backpack) FcElrs.PORT_KEY else "port", number).apply()
             val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
             val wifi = connectivity.allNetworks.firstOrNull {
                 connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
             }
             if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
             try {
-                UdpTransport(DatagramSocket(number).also { transport ->
+                UdpTransport(DatagramSocket(localPort).also { transport ->
                     try { wifi.bindSocket(transport); transport.soTimeout = 50 }
                     catch (error: Exception) { transport.close(); throw error }
-                })
+                }).let { if(backpack) FcElrsTelemetryTransport(it) else it }
             } catch (error: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         }
         socket = udp; endpoint = remote; endpointPort = number
@@ -1598,7 +1691,7 @@ class MainActivity : Activity() {
         disableControl(); connected.set(true)
         host?.isEnabled = false; port?.isEnabled = false; refreshUi()
         thread(name = "telerc-link") {
-            val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
+            val input = ByteArray(if(backpack) FcElrs.MAX_DATAGRAM else 512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
             while (connected.get() && socket === udp) {
                 revokeExpiredControl(udp)
@@ -1607,7 +1700,7 @@ class MainActivity : Activity() {
                 // is authoritative: only an actual UDP failure or explicit
                 // Disconnect tears down the transport.
                 val discoveryNow = SystemClock.elapsedRealtime()
-                if (discoveryNow - lastDiscovery >= 1000) {
+                if (!backpack && discoveryNow - lastDiscovery >= 1000) {
                     try {
                         udp.send(DatagramPacket(discovery, discovery.size, remote, number))
                         lastDiscovery = discoveryNow
@@ -1616,13 +1709,20 @@ class MainActivity : Activity() {
                         break
                     }
                 }
+                if (backpack && resumed && (target==0 || linkFresh()) && discoveryNow - lastDiscovery >= 1000) {
+                    // GCS liveness/peer registration only; no bridge discovery or RC.
+                    try {
+                        val beat=WaypointProtocol.heartbeat(sequence++)
+                        udp.send(DatagramPacket(beat,beat.size,remote,number)); lastDiscovery=discoveryNow
+                    } catch (e:Exception) { lastLinkError="ELRS heartbeat send " + e.javaClass.simpleName; break }
+                }
                 try {
                     val packet = DatagramPacket(input, input.size)
                     udp.receive(packet)
                     if (socket !== udp || !connected.get()) break
                     // Inspect the old heartbeat before accepting a recovery heartbeat.
                     revokeExpiredControl(udp)
-                    if (packet.address == remote && packet.port == number) {
+                    if (FcElrs.acceptsPeer(remote.hostAddress.orEmpty(),number,packet.address?.hostAddress,packet.port)) {
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                         if (usbMode && payload.size <= 280 && String(payload, Charsets.US_ASCII).startsWith("TELERC_LORA_")) {
                             val reply = String(payload, Charsets.US_ASCII)
@@ -1666,6 +1766,16 @@ class MainActivity : Activity() {
                             if (waypointTab!=null) {
                                 val receivedAt=SystemClock.elapsedRealtime()
                                 runOnUiThread { if(socket===udp) waypointTab?.receive(frame,target,receivedAt) }
+                            }
+                            if(elrsMode) ElrsControl.status(frame,target)?.let { state ->
+                                val receivedAt=SystemClock.elapsedRealtime()
+                                runOnUiThread {
+                                    if(socket===udp && SystemClock.elapsedRealtime()-receivedAt in 0..250) {
+                                        val acquired=elrsAuthority.receive(state,receivedAt)
+                                        if(acquired && commandEpoch==elrsRequestEpoch) activatePhoneControl()
+                                        refreshUi()
+                                    }
+                                }
                             }
                             val heartbeat = Mavlink.heartbeat(frame)
                             if (heartbeat != null && (target == 0 || target == heartbeat.system)) {
@@ -1745,10 +1855,10 @@ class MainActivity : Activity() {
                 // loop alive; only an actual socket/send/receive failure or explicit
                 // Disconnect is allowed to tear down the transport.
                 val fresh = HeartbeatHealth.isFresh(target, heartbeatAt, now)
-                if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
+                if (!backpack && now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
                         val rc = synchronized(commandLock) {
-                            if (!controlEnabled.get() || !linkFresh()) null else {
+                            if (!controlEnabled.get() || !linkFresh() || elrsMode && !elrsAuthority.allowed(now)) null else {
                                 val channels = RoverControls.channels(steering, drive)
                                 val bytes = Mavlink.override(sequence++, target, 1,
                                     channels.one, channels.two, channels.three, channels.four)
@@ -1798,8 +1908,11 @@ class MainActivity : Activity() {
     }
     private fun revokeExpiredControl(transport: LinkTransport) {
         val expired = synchronized(commandLock) {
-            if (socket !== transport || !controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime())) false
+            val lostElrs=elrsMode && controlEnabled.get() && !elrsAuthority.allowed(SystemClock.elapsedRealtime())
+            if (socket !== transport || !(lostElrs || controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime()))) false
             else {
+                controlEnabled.disable()
+                elrsAuthority.cancel()
                 commandEpoch++
                 miniArmGate.reset()
                 steering = 1500
@@ -1843,7 +1956,7 @@ class MainActivity : Activity() {
         port?.isEnabled = true
         refreshUi()
 
-        if (explicitDisconnect && udp != null && remote != null && system != 0) {
+        if (explicitDisconnect && phoneCommandsAllowed && udp != null && remote != null && system != 0) {
             txExecutor.execute {
                 try {
                     // Neutralize first. The bridge owns the actual receiver-release
