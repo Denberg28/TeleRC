@@ -1,3 +1,7 @@
+# Replay coins and clear mission flow — 0.8.85 test candidate
+
+Completed-level replays have a saved 25% chance of one bonus coin, banked after pickup plus END. Restart level immediately begins a neutral fresh attempt. Waypoint clearly explains Single point versus Multiple points and planning-only locks. [Scope, wallet v3 migration/rollback, checks and acceptance](docs/REPLAY_COINS_085.md). App-only; no reflash.
+
 # TeleRC v0.8.84 — owner-selected stable
 
 Stable/Latest promotion retains the qualified code102 APK and all source/evidence/checksums unchanged. [Promotion record, installation, qualification and hardware limits](docs/STABLE_084.md). No firmware reflash; physical phone/rover acceptance remains pending.

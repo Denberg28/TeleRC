@@ -1,3 +1,9 @@
+# 0.8.85 / code103
+
+- Add one possible replay bonus coin on completed levels: 25% saved chance, clear-only payout, bounded v3 earnings retaining v1/v2 wallet data.
+- Start practice immediately after either Restart level action, with neutral sticks/reset state.
+- Clarify Waypoint Single/Multiple points, ordered-route confirmation and planning-only connection guidance. [Checks and migration/rollback](docs/REPLAY_COINS_085.md).
+
 # 0.8.84 / code102
 
 - Measure actual popup content before opening; compact short forms/lists/notices and scroll long guides/lists within screen bounds.

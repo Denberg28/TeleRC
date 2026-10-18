@@ -1,3 +1,7 @@
+# Replay reward boundary — 0.8.85
+
+MainActivity persists one boolean offer per completed level until clear. MazePractice handles the bonus slot separately from first-play claims and exposes a one-shot clear-only reward; reset restores an unbanked offer, and restart explicitly resets then starts. Wallet v3 adds bounded replay earnings while decoding v1/v2; completion/wallet/offer boundary share one preference transaction. Waypoint presentation clarifies route mode and guards confirmation mode snapshots; navigation and live-control engines remain unchanged. [Compatibility](REPLAY_COINS_085.md).
+
 # Measured popup frames — 0.8.84
 
 `PopupLayout` measures each fully populated sheet at a preferred content width before show, temporarily removing the body weight to obtain its intrinsic height, then restores one scrolling body inside a bounded frame. AppDialog and MazePracticeDialogs share this policy and tracked lifecycle. Header/actions scale with text; Market fixes its initial measured frame across category updates. Models, transport and authority engines are unchanged. [Scope](POPUP_LAYOUT_084.md).

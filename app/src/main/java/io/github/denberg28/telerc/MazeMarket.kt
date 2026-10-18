@@ -7,7 +7,7 @@ internal enum class MazeVehicleClass(val label:String) { LAND("Land"), SEA("Sea"
 internal data class MazeMarketItem(val id:String,val name:String,val kind:MazeItemKind,val price:Int,
     val color:Int,val vehicleClass:MazeVehicleClass=MazeVehicleClass.LAND)
 
-/** Cosmetic catalog. Fixed lifetime supply and total paid catalog cost are both 220. */
+/** Cosmetic catalog. First-play supply and total paid catalog cost are both 220. */
 internal object MazeMarket {
     val items=listOf(
         MazeMarketItem("scout","Scout",MazeItemKind.VEHICLE,0,0xff4384b5.toInt()),
@@ -31,47 +31,58 @@ internal object MazeMarket {
     fun available(level:Int,wallet:MazeWallet)=(0 until quota(level)).filter { key(level,it) !in wallet.claimed }
 }
 
-/** Bounded v2 save. Removed v1 colors are refunded by retaining claims and omitting their cost. */
+/** Bounded v3 save with replay earnings; v1/v2 claims and cosmetics are retained. Removed v1 colors are refunded by retaining claims and omitting their cost. */
 internal class MazeWallet private constructor(val claimed:Set<Int>,val owned:Set<String>,val vehicle:String,
-    val accessories:Set<String>) {
-    val balance:Int get()=claimed.size-MazeMarket.items.filter { it.id in owned }.sumOf { it.price }
+    val accessories:Set<String>,val replayCoins:Int) {
+    val balance:Int get()=claimed.size+replayCoins-MazeMarket.items.filter { it.id in owned }.sumOf { it.price }
     fun equipped(id:String)=id==vehicle || id in accessories
     fun claim(level:Int,slot:Int):MazeWallet? {
         val key=MazeMarket.key(level,slot) ?: return null
         if(key in claimed) return null
-        return MazeWallet(claimed+key,owned,vehicle,accessories)
+        return MazeWallet(claimed+key,owned,vehicle,accessories,replayCoins)
     }
     fun buy(id:String):MazeWallet? {
         val item=MazeMarket.item(id) ?: return null
         if(id in owned || item.price>balance) return null
-        return MazeWallet(claimed,owned+id,vehicle,accessories)
+        return MazeWallet(claimed,owned+id,vehicle,accessories,replayCoins)
     }
     fun equip(id:String):MazeWallet? {
         val item=MazeMarket.item(id) ?: return null
         if(id !in owned) return null
-        return if(item.kind==MazeItemKind.VEHICLE) MazeWallet(claimed,owned,id,accessories)
-            else MazeWallet(claimed,owned,vehicle,accessories+id)
+        return if(item.kind==MazeItemKind.VEHICLE) MazeWallet(claimed,owned,id,accessories,replayCoins)
+            else MazeWallet(claimed,owned,vehicle,accessories+id,replayCoins)
     }
-    fun remove(id:String):MazeWallet? = if(id in accessories) MazeWallet(claimed,owned,vehicle,accessories-id) else null
-    fun encode()="2|${claimed.sorted().joinToString(",")}|${MazeMarket.items.filter { it.id in owned }.joinToString(",") { it.id }}|$vehicle|${accessories.sorted().joinToString(",")}"
+    fun remove(id:String):MazeWallet? = if(id in accessories) MazeWallet(claimed,owned,vehicle,accessories-id,replayCoins) else null
+    fun creditReplay():MazeWallet? = if(replayCoins>=MAX_REPLAY_COINS) null else MazeWallet(claimed,owned,vehicle,accessories,replayCoins+1)
+    fun encode()="3|${claimed.sorted().joinToString(",")}|${MazeMarket.items.filter { it.id in owned }.joinToString(",") { it.id }}|$vehicle|${accessories.sorted().joinToString(",")}|$replayCoins"
     companion object {
+        const val MAX_REPLAY_COINS=1_000_000
         fun decode(raw:String):MazeWallet {
             val fields=if(raw.length<=8192) raw.split('|') else emptyList()
-            if(fields.size!=5 || fields[0] !in listOf("1","2")) return MazeWallet(emptySet(),MazeMarket.freeIds,"scout",emptySet())
+            if(!((fields.size==5 && fields[0] in listOf("1","2")) || (fields.size==6 && fields[0]=="3")))
+                return MazeWallet(emptySet(),MazeMarket.freeIds,"scout",emptySet(),0)
+            val replay=if(fields[0]=="3") fields[5].toIntOrNull()?.takeIf { it in 0..MAX_REPLAY_COINS } ?: 0 else 0
             val claims=fields[1].split(',').take(280).mapNotNull { it.toIntOrNull() }.filter(MazeMarket::validKey).toSet()
             val requested=fields[2].split(',').take(32).toSet()
-            var budget=claims.size
+            var budget=claims.size+replay
             val owned=MazeMarket.freeIds.toMutableSet()
             for(item in MazeMarket.items.filter { it.price>0 }) if(item.id in requested && item.price<=budget &&
-                (fields[0]=="2" || item.kind==MazeItemKind.VEHICLE && item.id in setOf("rally","buggy","hauler"))) {
+                (fields[0]!="1" || item.kind==MazeItemKind.VEHICLE && item.id in setOf("rally","buggy","hauler"))) {
                 owned.add(item.id); budget-=item.price
             }
             val vehicle=fields[3].takeIf { it in owned && MazeMarket.item(it)?.kind==MazeItemKind.VEHICLE } ?: "scout"
-            val accessories=if(fields[0]=="2") fields[4].split(',').take(32).filter {
+            val accessories=if(fields[0]!="1") fields[4].split(',').take(32).filter {
                 it in owned && MazeMarket.item(it)?.kind==MazeItemKind.ACCESSORY }.toSet() else emptySet()
-            return MazeWallet(claims,owned,vehicle,accessories)
+            return MazeWallet(claims,owned,vehicle,accessories,replay)
         }
     }
+}
+
+/** One saved offer per completed-level attempt; retry/reload must reuse it. */
+internal object MazeReplayCoins {
+    const val SLOT=-1
+    fun offer(completed:Boolean,saved:Boolean?,roll:()->Int={Random.nextInt(4)}):Boolean =
+        completed && (saved ?: (roll()==0))
 }
 
 internal data class MazeCoin(val slot:Int,val x:Float,val y:Float)
@@ -84,7 +95,7 @@ internal object MazeCoins {
                     !(px==maze.endX && py==maze.endY)) add(px to py)
             }
         }.shuffled(Random(seed))
-        return slots.distinct().filter { MazeMarket.key(maze.level,it)!=null }.sorted().take(cells.size)
+        return slots.distinct().filter { (it==MazeReplayCoins.SLOT || MazeMarket.key(maze.level,it)!=null) }.sorted().take(cells.size)
             .mapIndexed { index,slot -> MazeCoin(slot,cells[index].first,cells[index].second) }
     }
 }

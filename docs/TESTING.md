@@ -1,3 +1,7 @@
+# Replay/Waypoint qualification — 0.8.85
+
+Baseline stable 0.8.84/code102; candidate code103. [A–F gates, wallet v3 migration/rollback and phone procedures](REPLAY_COINS_085.md). Required new JVM/native replay chance/pickup/clear/reload/migration/restart/mode checks plus full existing software/build/signing/package gates. Physical phone/FC/HIL remains BLOCKED; final successful workflow and BUILD_INFO supply software outcomes.
+
 # Stable channel promotion — v0.8.84
 
 Owner-authorized on 19 October 2026. Product f3eba8b / qualification run39161856095 passed A–C and software D/F. Promotion verifies immutable artifact bytes/digests, native evidence and source/tag, then stable/Latest metadata. Physical integration/installation/compatibility and E HIL remain BLOCKED/NOT TESTED. [Audit and acceptance](STABLE_084.md).

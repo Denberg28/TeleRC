@@ -63,3 +63,9 @@ python -c 'import base64,pathlib; print("SHARED_POPUP_UI_PNG="+base64.b64encode(
 
 grep "PASS: measured popup sizing" app/build/photo-evidence/result.txt
 python -c 'import base64,pathlib; print("COMPACT_POPUP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/shared-dark-message.png").read_bytes()).decode())'
+
+grep 'PASS: replay bonus' app/build/photo-evidence/result.txt
+for image in replay-one-coin.png replay-coin-banked.png; do
+  adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
+done
+python -c 'import base64,pathlib; print("REPLAY_COIN_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/replay-one-coin.png").read_bytes()).decode())'

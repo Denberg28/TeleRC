@@ -44,6 +44,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(stored.readBytes().contentEquals(previous)) { "Oversized import replaced the old photo" }
             excessive.delete()
             checkSharedPopups()
+            checkReplayRewards()
             for (theme in listOf("LIGHT", "SEPIA", "DARK")) {
                 app.getSharedPreferences("appearance", 0).edit().putString("background", theme).commit()
                 var activity = startActivitySync(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -94,7 +95,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -393,6 +394,71 @@ class ThemeImageInstrumentation : Instrumentation() {
         tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
+    private fun checkReplayRewards() {
+        val prefs=targetContext.getSharedPreferences("maze_practice",0)
+        // Existing v2 ownership/claims migrate while a known offer makes payout deterministic.
+        prefs.edit().clear().putString("wallet","2|0,1,2,3,4,5,6,7|scout|scout|")
+            .putInt("level",1).putInt("completed_level",1).putBoolean("replay_coin_1",true).commit()
+        fun launch():Activity {
+            val a=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            openTabMenu(a,"Setup"); clickWindow("Test")
+            waitUntil { onMain { findMaze(root(a))?.width?.let { it>0 }==true } }
+            return a
+        }
+        var activity=launch()
+        var scene=onMain { findMaze(root(activity))!! }
+        onMain {
+            check(scene.practice.coins.single().slot==MazeReplayCoins.SLOT)
+            check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==8)
+            find(root(activity),"Restart level")!!.performClick()
+            check(scene.practice.state==MazePractice.State.RUNNING && find(root(activity),"Pause")!=null)
+            check(scene.practice.pose.speed==0f && scene.practice.bumps==0)
+        }
+        screenshot("replay-one-coin.png")
+        onMain {
+            val coin=scene.practice.coins.single()
+            approachFinish(scene.practice,coin.x.toInt() to coin.y.toInt(),.12f)
+            scene.changed(); scene.pause()
+            check(scene.practice.coins.isEmpty())
+            check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==8)
+            activity.finish()
+        }
+        waitForIdleSync()
+        check(prefs.getBoolean("replay_coin_1",false)) // Abandoning does not reroll or credit.
+        activity=launch(); scene=onMain { findMaze(root(activity))!! }
+        onMain {
+            check(scene.practice.coins.single().slot==MazeReplayCoins.SLOT)
+            find(root(activity),"Restart level")!!.performClick()
+            val coin=scene.practice.coins.single()
+            approachFinish(scene.practice,coin.x.toInt() to coin.y.toInt(),.12f)
+            scene.changed(); scene.pause(); scene.practice.start()
+            approachFinish(scene.practice)
+            scene.changed()
+        }
+        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).replayCoins==1 }
+        onMain {
+            check(scene.practice.state==MazePractice.State.CLEARED)
+            repeat(3) { scene.changed() }
+            check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==9)
+            check(!prefs.contains("replay_coin_1"))
+        }
+        screenshot("replay-coin-banked.png")
+        onMain { activity.finish() }; waitForIdleSync()
+        prefs.edit().putBoolean("replay_coin_1",false).putBoolean("replay_coin_2",true).commit()
+        activity=launch()
+        onMain {
+            check(findMaze(root(activity))!!.practice.coins.isEmpty())
+            check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==9)
+            find(root(activity),"Levels")!!.performClick()
+        }
+        waitUntil { windowText("Level 2")!=null }; clickWindow("Level 2")
+        waitUntil { onMain { findMaze(root(activity))?.practice?.maze?.level==2 } }
+        onMain {
+            check(findMaze(root(activity))!!.practice.coins.none { it.slot==MazeReplayCoins.SLOT })
+            activity.finish()
+        }
+        waitForIdleSync(); prefs.edit().clear().commit()
+    }
     private fun checkSharedPopups() {
         val prefs=targetContext.getSharedPreferences("appearance",0)
         val oldTheme=prefs.getString("background","LIGHT")
@@ -599,7 +665,9 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkTabMenu(activity,"Waypoint","waypoint-${theme.lowercase()}-menu.png")
             screenshot("waypoint-${theme.lowercase()}-plan.png")
             onMain { find(root(activity),"Mission start")!!.performClick() }
-            waitUntil { windowText("Planning only")!=null }; clickWindow("OK")
+            waitUntil { windowText("Planning only")!=null }
+            check(uiAutomation.windows.any { nodeText(it.root).contains("Multiple points: visits the listed points in order.") })
+            clickWindow("OK")
             waitUntil { windowText("Planning only")==null }
             onMain {
                 val connectedField=MainActivity::class.java.getDeclaredField("connected").apply { isAccessible=true }
@@ -616,7 +684,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                 check(!requested.getBoolean(tab) && !tab.navigation.moving)
                 connection.set(false); targetField.setInt(activity,0); tab.disconnected()
             }
-            onMain { find(root(activity),"Mission ▾")!!.performClick() }
+            onMain { find(root(activity),"Multiple points ▾")!!.performClick() }
             waitUntil { windowText("Route mode")!=null }; clickWindow("Single destination")
             waitUntil { windowText("Use single destination?")!=null }; clickWindow("Cancel")
             waitUntil { windowText("Use single destination?")==null }
@@ -814,14 +882,14 @@ class ThemeImageInstrumentation : Instrumentation() {
         waitUntil { windowText("Restart level 1?")!=null }
         screenshot("maze-three-bumps.png")
         clickWindow("Restart level")
-        waitUntil { onMain { scene.practice.state==MazePractice.State.READY } }
+        waitUntil { onMain { scene.practice.state==MazePractice.State.RUNNING && find(root(activity),"Pause")!=null } }
         checkBumpPixel(scene,firstMarks.single(),expectRed=false)
         screenshot("maze-bump-reset.png")
         onMain {
-            check(scene.practice.elapsedMillis==0L && scene.practice.bumps==0)
+            check(scene.practice.bumps==0)
             check(scene.practice.bumpMarks.isEmpty())
-            check(find(root(activity),"Lv 1 · City · 00:00.00")!=null)
-            find(root(activity),"Start practice")!!.performClick()
+            check(scene.practice.pose.x==scene.practice.maze.startX && scene.practice.pose.y==scene.practice.maze.startY)
+            check(find(root(activity),"Pause")!=null)
             approachFinish(scene.practice)
             scene.changed() // The real animation frame reaches END and invokes the clear callback.
         }

@@ -1,3 +1,7 @@
+# Replay wallet compatibility — 0.8.85
+
+Wallet v3 retains v1/v2 data but older unmodified parsers cannot read it. Rollback needs a higher-code v3-compatible rebuild preserving earnings/ownership, without clearing data. Bonus pickup pays only after END; retry/reload preserves the chance. Waypoint Mini/LoRa/native handset-only ELRS remain planning-only. Phone/migration and FC/HIL acceptance pending. [Details](REPLAY_COINS_085.md).
+
 # Compact popup limits — 0.8.84
 
 Actual OEM phone/keyboard/display-mode layouts remain pending physical checks; native API35 normal/large text and all themes are required software gates. System permission/picker/installer windows retain Android styling. [Checks and acceptance](POPUP_LAYOUT_084.md). Existing unsigned Wi-Fi/MAVLink and physical connection/neutral/HOLD limitations remain. App-only; no reflash.

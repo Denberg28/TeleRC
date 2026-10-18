@@ -73,7 +73,7 @@ class WaypointTab(private val activity: Activity,
             addView(bottom,LinearLayout.LayoutParams(-1,height()).apply { topMargin=dp(8) })
         }
         val routePanel=panel()
-        modeButton=button(if(mission) "Mission ▾" else "Single point ▾") { changeMode() }
+        modeButton=button(if(mission) "Multiple points ▾" else "Single point ▾") { changeMode() }
         routePanel.addView(modeButton,LinearLayout.LayoutParams(-1,height()))
         routeRows=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
         routePanel.addView(ScrollView(activity).apply { addView(routeRows) },LinearLayout.LayoutParams(-1,0,1f))
@@ -137,7 +137,10 @@ class WaypointTab(private val activity: Activity,
     }
     private fun requestStart() {
         val (target,connected)=link()
-        if (!connected || target==0) { notice("Planning only",linkHint()); return }
+        if (!connected || target==0) {
+            notice("Planning only",(if(mission) "Multiple points: visits the listed points in order." else "Single point: goes to the selected destination.")+"\n\n"+linkHint()+"\n\nMovement has not started.")
+            return
+        }
         if (points.isEmpty()) { notice("Select a destination","Tap the map or add coordinates first."); return }
         if (navigation.busy) return
         if (navigation.state==WaypointNavigation.State.READY) { confirmStart(); return }
@@ -150,11 +153,12 @@ class WaypointTab(private val activity: Activity,
             if(navigation.state!=WaypointNavigation.State.READY) "Tap Mission start to check the rover" else null
         if(problem!=null) { notice("Route saved · movement locked",problem); return }
         val snapshot=points.toList()
+        val multiple=mission
         confirm(if(mission) "Start route?" else "Go to this point?",
-            "${snapshot.size} point(s) · 0.5 m/s · within 100 m of start\n"+
+            "${if(multiple) "Multiple points · in listed order" else "Single destination"}\n${snapshot.size} point(s) · 0.5 m/s · within 100 m of start\n"+
             snapshot.mapIndexed { i,p -> "${i+1}. ${p.label()}" }.joinToString("\n")+
             "\n\nKeep TeleRC open and connected. Check the path is clear; no obstacle avoidance. STOP or leaving this tab requests HOLD. HOLD keeps the rover armed.","Start") {
-                if (!visible || !foreground || points!=snapshot) return@confirm
+                if (!visible || !foreground || points!=snapshot || mission!=multiple) return@confirm
                 navigation.start(snapshot,now())?.let { notice("Cannot start",it) }
                 flush(); kick(); update()
             }
@@ -176,7 +180,7 @@ class WaypointTab(private val activity: Activity,
         if(navigation.busy) return
         dialog?.dismiss()
         dialog=AppDialog.Builder(activity).setTitle("Route mode")
-            .setSingleChoiceItems(arrayOf("Single destination","Mission · up to 20 points"),if(mission) 1 else 0) { d,choice ->
+            .setSingleChoiceItems(arrayOf("Single destination","Multiple points · up to 20"),if(mission) 1 else 0) { d,choice ->
                 d.dismiss()
                 val next=choice==1
                 if(next!=mission) {
@@ -196,7 +200,8 @@ class WaypointTab(private val activity: Activity,
         dialog?.window?.setWindowAnimations(0)
     }
     private fun safetyInfo()=notice("Help & safety",
-        "1. Select points on the map.\n2. Arm separately.\n3. Tap Mission start, then confirm.\n\n" +
+        "Single point: one destination. Multiple points: visit the list in order, then HOLD.\n\n" +
+        "Select points, connect a compatible ArduRover link and arm separately. Mission start runs rover checks, then asks for confirmation; it never arms automatically.\n\n" +
         "Keep TeleRC open. STOP or leaving this tab requests HOLD; verify the rover has stopped. Keep a transmitter HOLD switch or power cutoff ready.\n\n" +
         "No obstacle avoidance or automatic resume. Live navigation needs a compatible ArduRover link, GPS, compass and passed checks.\n\n" +
         "F1–F3 assign servos; M5–M8 stay reserved for drive motors.")
@@ -213,7 +218,7 @@ class WaypointTab(private val activity: Activity,
             else -> n.blocker(now()) ?: if(n.state==WaypointNavigation.State.READY)
                 "Ready. Tap Mission start to confirm the route." else "Tap Mission start to check the rover."
         }
-        val title=when(n.state) {
+        val title=if(!connected) "Movement locked" else when(n.state) {
             WaypointNavigation.State.IDLE -> "Planning"
             WaypointNavigation.State.CHECKING -> "Checking rover"
             WaypointNavigation.State.READY -> "Ready"
@@ -232,11 +237,11 @@ class WaypointTab(private val activity: Activity,
         }
         readiness?.text="$title\n$concise"
         readiness?.setOnClickListener { notice("Rover checks",detail) }
-        steps?.text=if(n.moving) "Keep TeleRC open\nSTOP requests HOLD" else "1. Select points\n2. Start · 3. Confirm"
+        steps?.text=if(n.moving) "Keep TeleRC open\nSTOP requests HOLD" else if(mission) "1. Add points in order\n2. Start · 3. Confirm route" else "1. Select one point\n2. Start · 3. Confirm point"
         check?.text=if(n.state==WaypointNavigation.State.CHECKING) "Checking…" else "Mission start"
         check?.isEnabled=!n.busy
         stopButton?.isEnabled=n.system!=0
-        modeButton?.text=if(mission) "Mission ▾" else "Single point ▾"
+        modeButton?.text=if(mission) "Multiple points ▾" else "Single point ▾"
         modeButton?.isEnabled=!n.busy
         val key=WaypointPlan.encode(points)+n.busy
         if(key!=routeFingerprint) {

@@ -931,7 +931,14 @@ class MainActivity : Activity() {
         var progress=MazeProgress.restore(prefs.getInt("level",1),prefs.getInt("completed_level",0))
         var wallet=MazeWallet.decode(prefs.getString("wallet","").orEmpty())
         prefs.edit().putString("wallet",wallet.encode()).apply()
-        fun newPractice(level:Int)=MazePractice(MazeLevels.layout(level),MazeMarket.available(level,wallet))
+        fun replayOffer(level:Int):Boolean {
+            val key="replay_coin_$level"
+            val saved=if(prefs.contains(key)) prefs.getBoolean(key,false) else null
+            val offered=MazeReplayCoins.offer(level<=progress.completed && wallet.replayCoins<MazeWallet.MAX_REPLAY_COINS,saved)
+            if(level<=progress.completed && saved==null) prefs.edit().putBoolean(key,offered).apply()
+            return offered
+        }
+        fun newPractice(level:Int)=MazePractice(MazeLevels.layout(level),MazeMarket.available(level,wallet),replayCoin=replayOffer(level))
         val practice=mazePractice ?: newPractice(progress.current).also { mazePractice=it }
         fun saveProgress() {
             prefs.edit().putInt("level",progress.current).putInt("completed_level",progress.completed).apply()
@@ -944,14 +951,14 @@ class MainActivity : Activity() {
         val start=button("Start practice") {}
         val levels=button("Levels",false) {}.apply { textSize=12f }
         val market=button("Market · ${wallet.balance}") {}.apply { textSize=13f }
-        fun saveWallet(next:MazeWallet) {
+        fun saveWallet(next:MazeWallet,persist:Boolean=true) {
             wallet=next
-            prefs.edit().putString("wallet",wallet.encode()).apply()
+            if(persist) prefs.edit().putString("wallet",wallet.encode()).apply()
             scene.vehicleId=wallet.vehicle; scene.accessories=wallet.accessories; scene.invalidate()
             market.text="Market · ${wallet.balance}"
             market.contentDescription="Market, ${wallet.balance} coins, offline practice"
         }
-        scene.onCoin={ slot -> wallet.claim(practice.maze.level,slot)?.let(::saveWallet) }
+        scene.onCoin={ slot -> wallet.claim(practice.maze.level,slot)?.let { saveWallet(it) } }
         fun update() {
             timer.text="Lv ${practice.maze.level} · ${MazeEnvironment.forLevel(practice.maze.level).label} · ${MazeRecords.time(practice.elapsedMillis)}"
             levels.text=if(practice.state==MazePractice.State.CLEARED && practice.maze.level<MazeLevels.COUNT) "Next level" else "Levels"
@@ -971,8 +978,12 @@ class MainActivity : Activity() {
         scene.onClear={ millis ->
             val records=MazeRecords.add(MazeRecords.decode(prefs.getString("records","").orEmpty()),
                 MazeClear(practice.maze.seed,millis,System.currentTimeMillis(),MazeLayout.COURSE_VERSION,practice.maze.level))
-            prefs.edit().putString("records",MazeRecords.encode(records)).apply()
-            progress=progress.clear(); saveProgress()
+            if(practice.takeReplayReward()) wallet.creditReplay()?.let { saveWallet(it,persist=false) }
+            progress=progress.clear()
+            // Record completion, payout and the next-offer boundary in one save.
+            prefs.edit().putString("records",MazeRecords.encode(records)).putString("wallet",wallet.encode())
+                .putInt("level",progress.current).putInt("completed_level",progress.completed)
+                .remove("replay_coin_${practice.maze.level}").apply()
             resetSticks(); update()
         }
         scene.onFailure={
@@ -980,7 +991,7 @@ class MainActivity : Activity() {
                 resetSticks(); update()
                 mazeRestartDialog=MazePracticeDialogs(this).restart(practice.maze.level,practice.elapsedMillis,practice.bumps) {
                     mazeRestartDialog=null
-                    resetSticks(); practice.reset(); scene.changed()
+                    resetSticks(); practice.restart(replayOffer(practice.maze.level)); scene.changed()
                 }
             }
         }
@@ -1023,14 +1034,14 @@ class MainActivity : Activity() {
             val actions=LinearLayout(this@MainActivity)
             actions.addView(levels,LinearLayout.LayoutParams(0,-1,1f))
             actions.addView(button("Restart level",false) {
-                resetSticks(); practice.reset(); scene.changed()
+                resetSticks(); practice.restart(replayOffer(practice.maze.level)); scene.changed()
             }.apply { textSize=12f },LinearLayout.LayoutParams(0,-1,1f).apply { leftMargin=dp(4) })
             addView(actions,LinearLayout.LayoutParams(-1,dp(40)).apply { topMargin=dp(4) })
         }
         market.contentDescription="Market, ${wallet.balance} coins, offline practice"
         market.setOnClickListener {
             scene.pause(); resetSticks()
-            mazeMarketDialog=MazePracticeDialogs(this).market({ wallet },::saveWallet)
+            mazeMarketDialog=MazePracticeDialogs(this).market({ wallet }) { saveWallet(it) }
             mazeMarketDialog?.setOnDismissListener { mazeMarketDialog=null }
         }
         start.textSize=13f
@@ -1082,10 +1093,10 @@ class MainActivity : Activity() {
                     }
                 }
             }, linkHint = { when {
-                fcElrsMode -> "Planning only. Use FC Wi-Fi to navigate."
-                miniRoverMode -> "Planning only. Needs ArduRover + GPS."
-                usbMode -> "Planning only on this LoRa gateway."
-                else -> "Connect in Setup, then start."
+                fcElrsMode -> "ELRS handset link is planning only. Use ArduRover Wi-Fi + GPS."
+                miniRoverMode -> "Mini rover cannot navigate GPS routes. Use ArduRover Wi-Fi + GPS."
+                usbMode -> "This LoRa gateway is planning only. Use a compatible ArduRover Wi-Fi link."
+                else -> "Connect to ArduRover Wi-Fi in Setup, then tap Mission start."
             } }, servoButton = ::servoAssignmentButton).also { waypointTab=it }
         val root=shell()
         tab.create(root,pageDropdown("Waypoint"),started,resumed)

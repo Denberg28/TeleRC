@@ -120,12 +120,17 @@ internal data class MazeProgress private constructor(val current: Int, val compl
 }
 
 /** Local input and monotonic active time only; deliberately has no transport dependency. */
-internal class MazePractice(val maze: MazeLayout, coinSlots: List<Int> = emptyList(), coinSeed: Int = Random.nextInt()) {
+internal class MazePractice(val maze: MazeLayout, coinSlots: List<Int> = emptyList(), coinSeed: Int = Random.nextInt(), replayCoin:Boolean = false) {
     private val coinRandom=Random(coinSeed)
     private val availableSlots=coinSlots.filter { MazeMarket.key(maze.level,it)!=null }.toMutableSet()
+    private var replayEnabled=replayCoin
+    private var replayPicked=false
+    init { if(replayEnabled) availableSlots.add(MazeReplayCoins.SLOT) }
     private val pickedCoins=java.util.ArrayDeque<Int>()
     var coins:List<MazeCoin> = MazeCoins.spawn(maze,availableSlots.toList(),coinRandom.nextInt()); private set
     fun drainCollectedCoins():List<Int> = pickedCoins.toList().also { pickedCoins.clear() }
+    /** Provisional replay pickup pays only on clear, at most once per attempt. */
+    fun takeReplayReward():Boolean = (state==State.CLEARED && replayPicked).also { if(it) replayPicked=false }
     enum class State { READY, RUNNING, PAUSED, CLEARED, FAILED }
     var state = State.READY; private set
     var elapsedMillis = 0L; private set
@@ -154,11 +159,15 @@ internal class MazePractice(val maze: MazeLayout, coinSlots: List<Int> = emptyLi
         steer = 0f; drive = 0f
         pose = pose.copy(speed=0f,leftTrack=0f,rightTrack=0f)
     }
-    fun reset() {
+    fun reset(replayCoin:Boolean=replayEnabled) {
         state = State.READY; elapsedMillis = 0L; pose = initialPose(); steer = 0f; drive = 0f
         impacts.clear(); contact = null
+        replayEnabled=replayCoin; replayPicked=false
+        availableSlots.remove(MazeReplayCoins.SLOT)
+        if(replayEnabled) availableSlots.add(MazeReplayCoins.SLOT)
         coins=MazeCoins.spawn(maze,availableSlots.toList(),coinRandom.nextInt())
     }
+    fun restart(replayCoin:Boolean=replayEnabled) { reset(replayCoin); start() }
     /** Returns true once, on the frame that reaches END. Long frames cannot tunnel through walls. */
     fun advance(milliseconds: Long): Boolean {
         if (state != State.RUNNING || milliseconds <= 0) return false
@@ -186,7 +195,9 @@ internal class MazePractice(val maze: MazeLayout, coinSlots: List<Int> = emptyLi
             contact?.let { if (hypot(pose.x-it.first,pose.y-it.second) >= .15f && maze.fits(pose.x,pose.y,MazeLayout.RADIUS+.10f)) contact = null }
         }
         val collected=coins.filter { hypot(pose.x-it.x,pose.y-it.y)<=.50f }
-        for(coin in collected) if(availableSlots.remove(coin.slot)) pickedCoins.add(coin.slot)
+        for(coin in collected) if(availableSlots.remove(coin.slot)) {
+            if(coin.slot==MazeReplayCoins.SLOT) replayPicked=true else pickedCoins.add(coin.slot)
+        }
         if(collected.isNotEmpty()) coins=coins.filterNot { it in collected }
         if (hypot(pose.x-maze.endX,pose.y-maze.endY) > .30f) return false
         state = State.CLEARED; steer=0f; drive=0f

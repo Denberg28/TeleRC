@@ -3,7 +3,7 @@ android {
  namespace = "io.github.denberg28.telerc"
  compileSdk = 35
  buildFeatures { buildConfig = true }
- defaultConfig { applicationId = "io.github.denberg28.telerc"; minSdk = 26; targetSdk = 35; versionCode = 102; versionName = "0.8.84"; testInstrumentationRunner = "io.github.denberg28.telerc.ThemeImageInstrumentation" }
+ defaultConfig { applicationId = "io.github.denberg28.telerc"; minSdk = 26; targetSdk = 35; versionCode = 103; versionName = "0.8.85"; testInstrumentationRunner = "io.github.denberg28.telerc.ThemeImageInstrumentation" }
  signingConfigs {
    create("teleRcRelease") {
      val keystorePath = System.getenv("TELERC_KEYSTORE_FILE")
