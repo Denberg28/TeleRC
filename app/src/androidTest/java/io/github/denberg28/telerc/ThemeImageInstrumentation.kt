@@ -93,7 +93,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and handset-only control; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and handset-only control; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -407,6 +407,25 @@ class ThemeImageInstrumentation : Instrumentation() {
             check((description(view,"Send port; Backpack Listen port") as TextView).text.toString()=="14555")
             check((description(view,"Listen port; Backpack Send port") as TextView).text.toString()=="14550")
             check(find(view,"ELRS TX + RX setup")!=null)
+            fun field(name: String) = MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }
+            val connection = field("connected").get(activity) as java.util.concurrent.atomic.AtomicBoolean
+            val refresh = MainActivity::class.java.getDeclaredMethod("refreshUi").apply { isAccessible=true }
+            fun statusText() = (field("status").get(activity) as TextView).text.toString()
+            connection.set(true)
+            refresh.invoke(activity)
+            check(statusText()=="BACKPACK UDP OPEN · WAITING FOR F405")
+            field("target").setInt(activity,1)
+            field("heartbeatAt").setLong(activity,SystemClock.elapsedRealtime())
+            refresh.invoke(activity)
+            check(statusText()=="F405 TELEMETRY LIVE · HANDSET CONTROL")
+            field("heartbeatAt").setLong(activity,SystemClock.elapsedRealtime()-HeartbeatHealth.TIMEOUT_MS)
+            refresh.invoke(activity)
+            check(statusText()=="F405 TELEMETRY STALE · HANDSET CONTROL")
+            check(!(field("controlEnabled").get(activity) as LiveControlGate).get())
+            connection.set(false)
+            field("target").setInt(activity,0)
+            field("heartbeatAt").setLong(activity,0)
+            refresh.invoke(activity)
         }
         screenshot("elrs-setup.png")
         openTabMenu(activity,"Setup"); waitUntil { windowText("Controls")!=null }; clickWindow("Controls")
@@ -955,3 +974,4 @@ class ThemeImageInstrumentation : Instrumentation() {
         bitmap.recycle()
     }
 }
+

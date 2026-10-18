@@ -86,7 +86,7 @@ class MainActivity : Activity() {
     private var usbPermissionReceiver: BroadcastReceiver? = null
     private val connected = AtomicBoolean(false)
     private val reconnectHandler = Handler(Looper.getMainLooper())
-    private var wantsLink = false
+    @Volatile private var wantsLink = false
     private val reconnect = object : Runnable {
         override fun run() {
             if (!resumed || !wantsLink || page == Page.TEST) return
@@ -1446,7 +1446,7 @@ class MainActivity : Activity() {
             "Backpack ${endpoint?.hostAddress ?: host?.text}, send ${endpointPort}, listen " +
             "${getSharedPreferences("link",MODE_PRIVATE).getInt(FcElrs.LISTEN_KEY,FcElrs.LOCAL_PORT)}. " +
             "Check TX/RX binding, MAVLink mode and Backpack Telemetry → WiFi. Match both UDP ports. " +
-            "Handset drives; phone commands are locked. Bridge counters do not apply. $lastLinkError"
+            "Handset drives; phone commands are locked. Registration retries continue while foregrounded, including stale telemetry. Bridge counters do not apply. $lastLinkError"
 
         if (miniRoverMode) {
             val state = if (linkFresh()) "Rover heartbeat received; ${if (vehicleArmed == true) "ARMED" else "DISARMED"}. "
@@ -1488,8 +1488,13 @@ class MainActivity : Activity() {
         val now = SystemClock.elapsedRealtime()
         status?.text = when {
             usbMode && usbPermissionPending -> "USB PERMISSION PENDING"
-            !connected.get() && wantsLink -> if (usbMode) "CONNECT USB LoRa BASE" else "RECONNECTING · CHECK ROVER WI-FI"
+            !connected.get() && wantsLink -> if (usbMode) "CONNECT USB LoRa BASE" else if (fcElrsMode) "RECONNECTING · CHECK BACKPACK WI-FI" else "RECONNECTING · CHECK ROVER WI-FI"
             !connected.get() -> "DISCONNECTED"
+            fcElrsMode -> when {
+                target == 0 -> "BACKPACK UDP OPEN · WAITING FOR F405"
+                !linkFresh() -> "F405 TELEMETRY STALE · HANDSET CONTROL"
+                else -> "F405 TELEMETRY LIVE · HANDSET CONTROL"
+            }
             target == 0 -> "WAITING FOR HEARTBEAT"
             controlEnabled.get() && !HeartbeatHealth.isFresh(target, heartbeatAt, now) ->
                 "SYSTEM $target  •  CONTROL PAUSED"
@@ -1654,6 +1659,7 @@ class MainActivity : Activity() {
             refreshUi(); status?.text = "INVALID ADDRESS OR PORT"; return
         }
         val remote = InetAddress.getByName(address)
+        var boundWifi: android.net.Network? = null
         val udp: LinkTransport = if (usbMode) {
             val manager = getSystemService(USB_SERVICE) as UsbManager
             val devices = UsbLoRaTransport.candidates(manager)
@@ -1677,7 +1683,7 @@ class MainActivity : Activity() {
             if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
             try {
                 UdpTransport(DatagramSocket(localPort).also { transport ->
-                    try { wifi.bindSocket(transport); transport.soTimeout = 50 }
+                    try { wifi.bindSocket(transport); boundWifi = wifi; transport.soTimeout = 50 }
                     catch (error: Exception) { transport.close(); throw error }
                 }).let { if(backpack) FcElrsTelemetryTransport(it) else it }
             } catch (error: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
@@ -1693,6 +1699,7 @@ class MainActivity : Activity() {
         thread(name = "telerc-link") {
             val input = ByteArray(if(backpack) FcElrs.MAX_DATAGRAM else 512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
+            val recovery = BackpackRecovery()
             while (connected.get() && socket === udp) {
                 revokeExpiredControl(udp)
                 // Do not tear down the socket because Android temporarily changes
@@ -1709,12 +1716,27 @@ class MainActivity : Activity() {
                         break
                     }
                 }
-                if (backpack && resumed && (target==0 || linkFresh()) && discoveryNow - lastDiscovery >= 1000) {
-                    // Non-control PING registers the Backpack peer without starting/refreshing the FC GCS heartbeat failsafe.
+                if (backpack) {
                     try {
-                        val beat=FcElrs.registration(sequence++)
-                        udp.send(DatagramPacket(beat,beat.size,remote,number)); lastDiscovery=discoveryNow
-                    } catch (e:Exception) { lastLinkError="ELRS registration send " + e.javaClass.simpleName; break }
+                        // Only removal of the captured Network requests a new socket. Capability
+                        // churn and missing FC heartbeats retain the current bound session.
+                        val action = recovery.poll(discoveryNow, resumed, wantsLink) {
+                            val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+                            boundWifi != null && connectivity.allNetworks.any { it == boundWifi }
+                        }
+                        if (action == BackpackRecovery.Action.REBIND) {
+                            lastLinkError = "Backpack Wi-Fi network lost; waiting to rebind"
+                            break
+                        }
+                        if (action == BackpackRecovery.Action.REGISTER) {
+                            // PING cannot start/refresh GCS heartbeat failsafe or restore authority.
+                            val ping = FcElrs.registration(sequence++)
+                            udp.send(DatagramPacket(ping, ping.size, remote, number))
+                        }
+                    } catch (e: Exception) {
+                        lastLinkError = "ELRS recovery " + e.javaClass.simpleName
+                        break
+                    }
                 }
                 try {
                     val packet = DatagramPacket(input, input.size)
@@ -1983,3 +2005,4 @@ class MainActivity : Activity() {
     override fun onLowMemory() { super.onLowMemory(); waypointTab?.lowMemory(); routeMap?.onLowMemory() }
     override fun onDestroy() { waypointTab?.close(); pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }
+

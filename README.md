@@ -1,3 +1,7 @@
+# TeleRC 0.8.81 — ELRS recovery test candidate
+
+Backpack registration continues through stale F405 telemetry, and removed Android Wi-Fi networks trigger bounded socket rebinding. UDP-open, live and stale telemetry states are distinct. Handset authority stays exclusive; native phone driving/arming/Waypoint commands remain locked. App-only; no firmware reflash. [Setup, verification gates, installation and raised-wheel checks](docs/ELRS_RECOVERY_081.md). Final workflow/BUILD_INFO supplies software evidence; physical phone/RF/FC HIL remains BLOCKED.
+
 # F405 ELRS and clear Waypoint flow — 0.8.80 development
 
 Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](docs/ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
@@ -150,3 +154,4 @@ The reviewed tab follows a device → radio/pairing → link-check sequence insp
 The compact tab uses centered, equal-width landscape columns (stacked below 640 dp), 12 dp horizontal/10 dp vertical card padding, 8 dp card gaps, persistent field labels, and 48 dp controls. Pairing-key Show/Hide preserves the caret; the key is hidden again on pause/navigation/disconnect. Generate asks before replacing an existing draft. Drafts remain in memory while navigating; only a board-confirmed Save updates the private phone pairing settings. Replies time out after 3 seconds; reconnect after a missing reply before retrying.
 
 The profile remains fixed at SF7/500 kHz/CR4:5. Region tables, configurable modem presets, BLE, Meshtastic channel QR import and mesh routing are not implemented. The USB workflow needs no Wi-Fi password; the pairing key authenticates TeleRC's direct radio packets and does not encrypt payloads. Protocol and firmware are unchanged. This source review does not publish or change the installed 0.8.52 APK. See [review and device checks](docs/LORA_SETUP_REVIEW.md).
+

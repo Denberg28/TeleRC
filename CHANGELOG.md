@@ -1,3 +1,10 @@
+## 0.8.81 — ELRS recovery
+- Continue bounded Backpack registration after F405 telemetry becomes stale.
+- Rebind a removed Android Wi-Fi Network through the existing safe reconnect path.
+- Distinguish UDP-open/live/stale telemetry and retain native handset-only command guard.
+- Add outage/network-removal/background/command-guard JVM regressions and native status checks.
+- App-only/code99; hardware/RF stopping and phone installation remain pending.
+
 # F405 ELRS and clear Waypoint flow — 0.8.80 development
 
 Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](docs/ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
@@ -486,3 +493,4 @@ Add isolated Waypoint map/tab, single or multi waypoint saved drafts, confirmed 
 - Record transmitted live rover controls and validated global position telemetry in the Test route session.
 - Set a fixed Home from the first precise phone GPS fix and draw later phone movement as a separate route.
 - Add MapLibre Test map with pinch, compass, route reset, CSV export, and access to the offline simulator.
+

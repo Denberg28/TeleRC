@@ -1,3 +1,7 @@
+# ELRS recovery limits — 0.8.81
+
+[0.8.81](ELRS_RECOVERY_081.md) addresses heartbeat-dependent registration and removed-network rebinding in the native Backpack profile. Native phone drive/arm/live Waypoint remain locked. The phone must stay near Backpack Wi-Fi; the configured remote IPv4 address does not auto-update on router DHCP changes. Actual Wi-Fi replacement/ELRS/FC recovery latency and stopping are unmeasured; physical HIL remains BLOCKED. Retry PING is not GCS failsafe supervision or RF-health proof.
+
 # F405 ELRS and clear Waypoint flow — 0.8.80 development
 
 Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
@@ -87,3 +91,4 @@ Next: verify the final release `BUILD_INFO.txt` and checksums, then run `docs/TE
 
 
 0.8.58 USB FPV: based on released v0.8.57, retaining separate sensitivities/expo and Mini rover Wi-Fi/ARM behavior. Only USB UVC receivers are supported. Phone/receiver/powered-hub integration, physical installation, visual/device QA and RF/latency behavior remain NOT TESTED. USB frames do not prove healthy FPV RF reception. Default local leak inspection is blocked by the runtime; the cloud workflow retains default ASan/UBSan/leak checks before prerelease publishing. No stable promotion. See USB_FPV.md.
+

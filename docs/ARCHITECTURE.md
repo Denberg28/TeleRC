@@ -1,3 +1,7 @@
+# Native ELRS recovery — 0.8.81
+
+The native Backpack worker polls BackpackRecovery at most once per second in foreground while connection is requested. FC heartbeat freshness never gates registration. The captured Android Network must remain in ConnectivityManager.allNetworks; actual removal exits through existing session stop and two-second reconnect, which binds the replacement socket to Wi-Fi. Capability churn/heartbeat silence retain the socket. Registration stays exact checksum-valid PING, guarded by FcElrsTelemetryTransport; no GCS heartbeat or phone authority is introduced. Other transport loops, navigation safety engine/codecs, firmware and FPV remain protected. See [contract and acceptance](ELRS_RECOVERY_081.md).
+
 # F405 ELRS and clear Waypoint flow — 0.8.80 development
 
 Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
@@ -96,3 +100,4 @@ No paired firmware upgrade is required by the unchanged 0.8.52 wire format. The 
 ## 0.8.53 candidate compatibility
 
 Android versionCode 71 packages reviewed source `8e2e6df550f919d27d9ee00c5a6dc0ed45e9c9d2` plus release metadata/build tooling. CH1/CH2, 1500 µs neutral, UART/radio format, pins, profile, key and NVS schema remain compatible. Updated BASE preserves sparse axes and stop priority; updated ROVER latches RX restart failures; dedicated motor initializes output GPIOs before delays. PWM-only users require 300 ms fresh neutral at startup/recovery and get immediate invalid/stale-input stop. Deploy and bench-test the intended firmware roles together. The binary package uses explicit generic motor and manufacturer T3-S3 profiles, rather than treating host tests as target compilation. See `bridge/FIRMWARE_FLASHING.md` and `docs/LORA_MOTOR_REVIEW.md`.
+

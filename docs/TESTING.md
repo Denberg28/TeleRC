@@ -1,3 +1,7 @@
+# ELRS recovery gates — 0.8.81
+
+Follow [scope, A–F gates and executable restrained-wheel acceptance](ELRS_RECOVERY_081.md). Required cloud gates include the new BackpackRecoveryTest suite, existing command-guard regressions, native UDP/live/stale state checks, full JVM/debug+release lint/build, protected-source scope, host/default sanitizers, retained signer/code99, source/evidence/checksums. Local source review/diff and Python verifier syntax checked; local Android toolchain BLOCKED. Final workflow results supersede pending software gates. Actual Android Wi-Fi replacement, RF/FC stopping, phone install and HIL remain NOT TESTED/BLOCKED. No affected ESP32 targets or reflash; no stable promotion.
+
 # F405 ELRS and clear Waypoint flow — 0.8.80 development
 
 Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
@@ -327,3 +331,4 @@ See [scope, acceptance, A–F gates, installation and rollback](CONSOLE_076.md).
 # Persistent USB FPV — 0.8.77
 
 See [scope, gates, Android default/permission limits, phone acceptance and rollback](FPV_PERSISTENT_077.md). Baseline b193dda/code94; candidate code95. Required checks are rerun on the modified sources. Actual UVC detach/replug/default chooser/HIL remain BLOCKED; emulator no-device lifecycle checks do not establish physical reliability.
+
