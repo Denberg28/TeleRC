@@ -1,4 +1,4 @@
-# Expanded console — 0.8.76 review build
+# Expanded console — 0.8.76 test release
 
 Baseline: v0.8.75/code93, c9d307919d59423f3e76d845174f5a16cbe26a6f. Candidate code94. App-only: no firmware or protocol changes, no reflash.
 
@@ -21,17 +21,8 @@ Phone acceptance: install over 0.8.75, confirm settings/wallet retained; verify 
 
 Rollback: retain v0.8.75 and its data. Android blocks a versionCode downgrade; restoring the prior layout should use a forward-version rebuild of v0.8.75, retaining signing identity. Avoid uninstalling unless data loss is acceptable. Next concrete check: review cloud qualification and phone geometry/raised-wheel behavior.
 
-## Final software result
+## Authorized release packaging
 
-Built source: `cfa044896a2f8ca40dffb78366d635a38b3722b5`. [Qualification run 39083855942](https://github.com/Denberg28/TeleRC/actions/runs/39083855942) completed all verification and packaging steps successfully; its overall FAILURE is exclusively the two Actions artifact-upload steps, which reported account storage quota exhausted. Do not describe the overall workflow as successful or provide an APK download that was not retained.
+The owner requested a release build after the qualification above. Release packaging verifies an exact git diff match for app, firmware, build configuration, scripts and tests against qualified source cfa044896a2f8ca40dffb78366d635a38b3722b5. It recovers the original successful job metadata/log/native results/screenshots, rebuilds the signed release APK, and repeats signing continuity against v0.8.75 plus identity/code94/permissions/USB/CRC/alignment checks. Native/JVM/lint/sanitizer evidence is reused only after that exact source match; it is not claimed as rerun in packaging.
 
-| Gate | Final evidence |
-| --- | --- |
-| A | PASS — build verified: JVM tests, debug/release lint/build and instrumentation APK |
-| B | PASS — simulator tested: full-height console, no side-action intersection, visible bottom actions; three themes, normal and 1.3 font |
-| C | PASS — existing bridge sync/host/default sanitizers, JVM and native theme/maze/photo/FPV-menu regressions |
-| D | PASS — software reviewed/build verified: retained signer vs 0.8.75, app/code94/USB registration/permissions/alignment; physical NOT TESTED |
-| E | BLOCKED — actual phone, receiver and rover unavailable |
-| F | PASS — signed packaging, source/evidence ZIP generation and checksum checks; BLOCKED — artifact retention/download due to account Actions storage quota |
-
-Native Controls and Test frames were recovered from the job log and visually reviewed: center pane extends to the side action baseline, button labels remain visible, and removed footers are absent. No firmware reflash. No main merge, published release, stable promotion, deletion of old artifacts, or quota/billing changes. Next concrete check: restore artifact delivery when requested, then run the phone acceptance sequence above. This documentation-only follow-up does not alter the tested app source.
+The release uses GitHub Releases assets rather than Actions artifact storage, retaining APK, source, evidence ZIPs, BUILD_INFO and SHA256SUMS. v0.8.76 is a prerelease; v0.8.75 remains the latest stable. The previous quota blocker is resolved for delivery only when the release-packaging workflow succeeds. No firmware update or main merge. Phone/receiver/rover HIL remains BLOCKED. Install over 0.8.75 without uninstalling, retain settings, and perform the phone acceptance steps above.

@@ -3,7 +3,7 @@
 - Extend Controls and Test center panes through the former footer by placing bottom actions in their joystick columns.
 - Remove the Test version and Controls connection-status footer; retain Setup diagnostics and all control gating.
 - Size Enable/Stop and Clear times to their side columns; share F1–F3 width without fixed-width overflow.
-- Add native full-height, no-overlap and visible-action checks across themes/font sizes. Signed review artifact only; phone/HIL pending.
+- Add native full-height, no-overlap and visible-action checks across themes/font sizes. Signed test release; phone/HIL pending.
 
 ## 0.8.75
 
