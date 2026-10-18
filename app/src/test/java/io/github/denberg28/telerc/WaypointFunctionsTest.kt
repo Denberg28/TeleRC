@@ -35,9 +35,27 @@ class WaypointFunctionsTest {
         assertEquals(1,b.get(31).toInt()); assertEquals(2,b.get(32).toInt())
         assertThrows(IllegalArgumentException::class.java) { WaypointProtocol.servo(0,1,5,1900) }
         assertThrows(IllegalArgumentException::class.java) { WaypointProtocol.servo(0,1,1,999) }
-        val raw=WaypointProtocol.frame(36,1,ByteArray(21))
+        // Incoming telemetry must identify the autopilot, not the outgoing GCS encoder.
+        fun telemetry(payload:ByteArray,v2:Boolean=false):ByteArray {
+            val header=if(v2) byteArrayOf(253.toByte(),payload.size.toByte(),0,0,1,1,1,36,0,0)
+                else byteArrayOf(254.toByte(),payload.size.toByte(),1,1,1,36)
+            val bytes=header+payload
+            var crc=65535
+            for(value in bytes.drop(1).map { it.toInt() and 255 }+222) {
+                var t=value xor (crc and 255); t=t xor ((t shl 4) and 255)
+                crc=((crc ushr 8) xor (t shl 8) xor (t shl 3) xor (t ushr 4)) and 65535
+            }
+            return bytes+byteArrayOf(crc.toByte(),(crc ushr 8).toByte())
+        }
+        val raw=telemetry(ByteArray(21))
         assertEquals(21,WaypointProtocol.decode(raw)!!.data.size)
         raw[10]=(raw[10].toInt() xor 1).toByte(); assertNull(WaypointProtocol.decode(raw))
+        val extended=ByteBuffer.allocate(37).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putInt(1000); position(21); repeat(8) { putShort((1100+it).toShort()) }
+        }.array()
+        val decoded=WaypointProtocol.decode(telemetry(extended,true))!!
+        assertEquals(1100,decoded.u16(21)); assertEquals(1107,decoded.u16(35))
+        assertNull(WaypointProtocol.decode(telemetry(extended))) // Extensions are MAVLink2 only.
     }
     @Test fun ackAndOutputBeforeActualSendCannotCompleteAndRetryIsBounded() {
         data class Sent(val pwm:Int,val retry:Int,val cleanup:Boolean,val token:Long)
