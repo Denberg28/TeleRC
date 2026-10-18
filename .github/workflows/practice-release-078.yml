@@ -1,0 +1,96 @@
+name: Publish qualified TeleRC 0.8.78
+on:
+  push:
+    branches: ['release/practice-worlds-078-*']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-practice-078
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Recover source-identical qualified build and original evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --exit-code 0f01aa9c85b51ace456536e4a1143360bda42202 HEAD -- app bridge scripts tests build.gradle.kts settings.gradle.kts gradle.properties gradle gradlew gradlew.bat
+          mkdir -p deliverables validation-evidence app/build/photo-evidence
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/39102476856 > validation-evidence/native-run.json
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/39102476856/jobs > validation-evidence/native-jobs.json
+          gh api --allow-escape-sequences repos/$GITHUB_REPOSITORY/actions/jobs/117601393687/logs > validation-evidence/native.log
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/39092597154 > validation-evidence/product-run.json
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/39092597154/jobs > validation-evidence/product-jobs.json
+          gh api --allow-escape-sequences repos/$GITHUB_REPOSITORY/actions/jobs/117572303572/logs > validation-evidence/product.log
+          python - <<'PY'
+          import base64,json,pathlib,re
+          p=pathlib.Path('validation-evidence')
+          run=json.loads((p/'native-run.json').read_text())
+          assert run['head_sha']=='0f01aa9c85b51ace456536e4a1143360bda42202' and run['status']=='completed'
+          job=next(j for j in json.loads((p/'native-jobs.json').read_text())['jobs'] if j['id']==117601393687)
+          for name in ['Prove unchanged APK sources and recover the retained signed build','Build current native test APK and debug app, lint changed test harness','Native maze, photo background and FPV menu checks','Verify compiled USB registration and retained signing identity','Package check evidence']:
+              assert next(s for s in job['steps'] if s['name']==name)['conclusion']=='success',name
+          assert [s['name'] for s in job['steps'] if s['conclusion']=='failure']==['Publish qualified test release']
+          logs=(p/'native.log').read_text(encoding='utf-8-sig')
+          assert 'HTTP 403: Resource not accessible by integration' in logs
+          result=re.search(r'INSTRUMENTATION_RESULT: stream=(PASS:[^\n]+)',logs).group(1)
+          assert 'PASS: environment and accessory rendering' in result and 'PASS: persistent FPV lifecycle' in result
+          assert 'INSTRUMENTATION_CODE: -1' in logs
+          pathlib.Path('app/build/photo-evidence/result.txt').write_text(result+'\nINSTRUMENTATION_CODE: -1\n')
+          (p/'native-result.txt').write_text(result+'\n')
+          for name,data in re.findall(r'([A-Z_]+)_UI_PNG=([A-Za-z0-9+/=]+)',logs):
+              raw=base64.b64decode(data,validate=True)
+              assert raw.startswith(b'\x89PNG\r\n\x1a\n')
+              (p/(name.lower()+'.png')).write_bytes(raw)
+          prod=json.loads((p/'product-run.json').read_text())
+          assert prod['head_sha']=='5138b1ad51c11d51ad98c09726fd3476713ac92f' and prod['status']=='completed'
+          job=next(j for j in json.loads((p/'product-jobs.json').read_text())['jobs'] if j['id']==117572303572)
+          for name in ['Existing control and firmware host regression','JVM tests, debug and release lint/build','Retain review APK in draft before native qualification']:
+              assert next(s for s in job['steps'] if s['name']==name)['conclusion']=='success',name
+          print('PASS: exact app/test/firmware/build/script source match to qualified native commit')
+          print('PASS: product JVM/debug/release lint/build and host/default sanitizer gates; fresh full API35 native and package gates')
+          print('Only final publication failed previously; software checks are retained without rerunning unchanged tests')
+          PY
+          gh release download practice-review-5138b1ad51c11d51ad98c09726fd3476713ac92f --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.78.apk --output deliverables/TeleRC-v0.8.78.apk
+          gh release download v0.8.77 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.77.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Verify retained APK and package the qualified sources and evidence
+        run: |
+          GITHUB_SHA=5138b1ad51c11d51ad98c09726fd3476713ac92f python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.78.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          python - <<'PY'
+          import os,pathlib
+          p=pathlib.Path('deliverables/BUILD_INFO.txt')
+          s=p.read_text().replace('PASS (preceding required steps)','PASS (source-identical product run 39092597154)')
+          s+='\nSigned APK build source: 5138b1ad51c11d51ad98c09726fd3476713ac92f; run39092597154\n'
+          s+='Full native qualification source: 0f01aa9c85b51ace456536e4a1143360bda42202; run39102476856; job117601393687\n'
+          s+='Release/source-archive commit: '+os.environ['GITHUB_SHA']+'\n'
+          s+='Exact app/test/firmware/build/script equivalence verified. This job repeats signer/version/USB registration/alignment/CRC/package checks, not software tests.\n'
+          s+='Evidence includes original product/native logs, metadata, native PASS result and representative original logged PNG frames. Other original runner images/lint reports are not reconstructed.\n'
+          s+='Prior publication alone returned HTTP403. This release uses the publishing workflow current commit as tag target; APK/native source provenance remains explicit.\n'
+          p.write_text(s); print(s)
+          PY
+          cp docs/PRACTICE_WORLDS_078.md deliverables/START_HERE.md
+          git archive --format=zip -o deliverables/TeleRC-v0.8.78-source.zip HEAD
+          zip -qr deliverables/TeleRC-v0.8.78-check-evidence.zip validation-evidence app/build/photo-evidence app/src/androidTest
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          python -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
+      - name: Publish qualified test release from current source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
+          cd deliverables
+          gh release create v0.8.78 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "TeleRC v0.8.78 — practice worlds and accessories" TeleRC-v0.8.78.apk
+          gh release upload v0.8.78 --repo "$GITHUB_REPOSITORY" *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+          gh release edit v0.8.78 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false --notes-file START_HERE.md
+          gh release view v0.8.78 --repo "$GITHUB_REPOSITORY" --json url,tagName,isPrerelease,isDraft
