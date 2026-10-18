@@ -88,7 +88,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and version footer; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
@@ -198,6 +198,7 @@ class ThemeImageInstrumentation : Instrumentation() {
     private fun checkJoystickPanels(activity:Activity) = onMain {
         fun sticks(view:View):List<JoystickView> = if(view is JoystickView) listOf(view) else if(view is ViewGroup)
             (0 until view.childCount).flatMap { sticks(view.getChildAt(it)) } else emptyList()
+        checkConsoleGeometry(activity)
         val inputs=sticks(root(activity))
         check(inputs.size==2)
         val centers=mutableListOf<Float>()
@@ -229,6 +230,34 @@ class ThemeImageInstrumentation : Instrumentation() {
             val xy=IntArray(2); input.getLocationOnScreen(xy); centers.add(xy[1]+input.height/2f)
         }
         check(abs(centers[0]-centers[1])<=2) { "Joystick centers are not aligned" }
+    }
+    private fun checkConsoleGeometry(activity:Activity) {
+        val shell=root(activity) as ViewGroup
+        check(shell.childCount==1) { "A full-width footer still reserves console space" }
+        val row=shell.getChildAt(0) as ViewGroup
+        check(row.childCount==3)
+        val center=row.getChildAt(1)
+        fun bounds(view:View)=android.graphics.Rect().also { check(view.getGlobalVisibleRect(it)) }
+        val console=bounds(center)
+        val available=bounds(row)
+        check(console.top==available.top && console.bottom==available.bottom) { "Console does not fill the available height" }
+        for(index in listOf(0,2)) {
+            val column=row.getChildAt(index) as ViewGroup
+            check(column.childCount==3)
+            val bottom=bounds(column.getChildAt(2))
+            check(bottom.bottom==console.bottom && !android.graphics.Rect.intersects(console,bottom)) { "Side actions overlap the console" }
+            check(bottom.height()==column.getChildAt(2).height) { "Bottom actions are clipped" }
+        }
+        val test=findMaze(shell)!=null
+        if(test) {
+            check(find(shell,"TeleRC v${BuildConfig.VERSION_NAME}")==null)
+            check(find(shell,"Start practice")!=null || find(shell,"Pause")!=null || find(shell,"Resume")!=null)
+            check(find(shell,"Clear times")!=null)
+        } else {
+            check(find(shell,"DISCONNECTED")==null)
+            check(find(shell,"ENABLE CONTROL")!=null || find(shell,"STOP CONTROL")!=null)
+            check(find(shell,"F1")!=null && find(shell,"F2")!=null && find(shell,"F3")!=null)
+        }
     }
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
         val anchor=onMain { find(root(activity),"$label ▾")!! }
@@ -372,7 +401,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             check(scene.practice.maze.level==1)
             check(find(root(activity),"Lv 1 · 00:00.00")!=null)
-            check(find(root(activity),"TeleRC v${BuildConfig.VERSION_NAME}")!=null)
+            check(find(root(activity),"TeleRC v${BuildConfig.VERSION_NAME}")==null)
             check(find(root(activity),"Shuffle maze")==null)
             check(scene.height>scene.width*.45f) { "Maze has not gained vertical space" }
             check(root(activity).background is ThemeImageDrawable)

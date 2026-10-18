@@ -370,10 +370,11 @@ class MainActivity : Activity() {
         anchor.contentDescription = "$label tab menu"
         return anchor
     }
-    private fun controlColumn(top: View, joystick: View): LinearLayout = LinearLayout(this).apply {
+    private fun controlColumn(top: View, joystick: View, bottom: View): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         addView(top, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
         addView(joystick, LinearLayout.LayoutParams(-1, 0, 1f))
+        addView(bottom, LinearLayout.LayoutParams(-1, barHeight()).apply { topMargin = dp(8) })
     }
 
     private fun render() {
@@ -867,7 +868,6 @@ class MainActivity : Activity() {
         val timer=text("",14f,ink,true)
         val start=button("Start practice") {}
         val levels=button("Levels",false) {}.apply { textSize=12f }
-        val summary=text("TeleRC v${BuildConfig.VERSION_NAME}",11f,muted,true)
         val market=button("Market · ${wallet.balance}") {}.apply { textSize=13f }
         fun saveWallet(next:MazeWallet) {
             wallet=next
@@ -958,21 +958,13 @@ class MainActivity : Activity() {
             mazeMarketDialog=MazePracticeDialogs(this).market({ wallet },::saveWallet)
             mazeMarketDialog?.setOnDismissListener { mazeMarketDialog=null }
         }
-        val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        row.addView(controlColumn(pageDropdown("Test"),steerPanel),LinearLayout.LayoutParams(0,-1,1.6f).apply { rightMargin=dp(8) })
-        row.addView(center,LinearLayout.LayoutParams(0,-1,3.8f).apply { rightMargin=dp(8) })
-        row.addView(controlColumn(market,drivePanel),LinearLayout.LayoutParams(0,-1,1.6f))
-        root.addView(row,LinearLayout.LayoutParams(-1,0,1f))
-        val footer=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         start.textSize=13f
         start.setOnClickListener {
             resetSticks()
             if(practice.state==MazePractice.State.RUNNING) scene.pause() else practice.start()
             scene.changed()
         }
-        footer.addView(start,LinearLayout.LayoutParams(0,-1,1f))
-        footer.addView(summary,LinearLayout.LayoutParams(0,-1,1.5f))
-        footer.addView(button("Clear times",false) {
+        val clearTimes=button("Clear times",false) {
             scene.pause(); resetSticks()
             val records=MazeRecords.decode(prefs.getString("records","").orEmpty())
             val message=if(records.isEmpty()) "No clears yet. Drive from START to END to save your time."
@@ -984,15 +976,19 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("Clear times · latest ${records.size}")
                 .setMessage("$message\n\nTimes count active practice only. Up to 50 clears are saved; best times for fixed levels are shown in Levels. Legacy random clears stay separate.")
                 .setPositiveButton("Done",null).show()
-        }.apply { textSize=13f },LinearLayout.LayoutParams(0,-1,1f))
-        root.addView(footer,LinearLayout.LayoutParams(-1,barHeight()).apply { topMargin=dp(8) })
+        }.apply { textSize=13f }
+        val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        row.addView(controlColumn(pageDropdown("Test"),steerPanel,start),LinearLayout.LayoutParams(0,-1,1.6f).apply { rightMargin=dp(8) })
+        row.addView(center,LinearLayout.LayoutParams(0,-1,3.8f).apply { rightMargin=dp(8) })
+        row.addView(controlColumn(market,drivePanel,clearTimes),LinearLayout.LayoutParams(0,-1,1.6f))
+        root.addView(row,LinearLayout.LayoutParams(-1,0,1f))
         update(); setContentView(root)
     }
 
     private fun renderControls() {
         host = null; port = null; connect = null
         val root = shell()
-        status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
+        status = null
         val pages = pageDropdown("Controls")
         val arm = armDisarmButton()
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -1086,30 +1082,17 @@ class MainActivity : Activity() {
                     android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1.6f).apply { rightMargin = dp(8) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 3.8f).apply { rightMargin = dp(8) })
-        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1.6f))
-        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        // Three-zone footer keeps link state centered and prevents control buttons from
-        // entering its space on narrow landscape screens.
-        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val leftSlot = LinearLayout(this).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL }
         enable?.textSize = 13f
-        leftSlot.addView(enable, LinearLayout.LayoutParams(dp(156), -1))
-        toolbar.addView(leftSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        status?.apply {
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        toolbar.addView(status, LinearLayout.LayoutParams(dp(156), -1))
-        val rightSlot = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        val rightSlot = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         for (label in listOf("F1", "F2", "F3")) {
             rightSlot.addView(servoAssignmentButton(label),
-                LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
+                LinearLayout.LayoutParams(0, -1, 1f).apply { if (label != "F1") leftMargin = dp(4) })
         }
-        toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, barHeight()).apply { topMargin = dp(8) })
+        // Reserve action height in the side columns so the console fills the former footer.
+        row.addView(controlColumn(pages, steerPanel, requireNotNull(enable)), LinearLayout.LayoutParams(0, -1, 1.6f).apply { rightMargin = dp(8) })
+        row.addView(actions, LinearLayout.LayoutParams(0, -1, 3.8f).apply { rightMargin = dp(8) })
+        row.addView(controlColumn(arm, drivePanel, rightSlot), LinearLayout.LayoutParams(0, -1, 1.6f))
+        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
         updateControlsScene()
