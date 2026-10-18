@@ -636,7 +636,7 @@ class MainActivity : Activity() {
         }
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(112), -1))
-        header.addView(text("TeleRC ${BuildConfig.VERSION_NAME}", 12f, muted), LinearLayout.LayoutParams(0, -1, 1f))
+        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         header.addView(button("Controls ›", false) { switchTo(Page.CONTROLS) }, LinearLayout.LayoutParams(dp(112), -1))
         val collapse = button("−", false) {}.apply { textSize = 20f }
         header.addView(collapse, 2, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
@@ -766,10 +766,16 @@ class MainActivity : Activity() {
         panel.addView(updateStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         viewport.addView(centered, FrameLayout.LayoutParams(-1, -2))
         root.addView(viewport, LinearLayout.LayoutParams(-1, 0, 1f))
-        val corners = LinearLayout(this).apply { gravity = Gravity.BOTTOM }
-        val spacer = View(this)
-        corners.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
-        root.addView(corners, LinearLayout.LayoutParams(-1, height(48)))
+        val corners = FrameLayout(this)
+        val narrowFooter = resources.configuration.screenWidthDp < 560
+        val cornerWidth = dp(minOf(176, (resources.configuration.screenWidthDp - 32) / 2))
+        val version = text("TeleRC ${BuildConfig.VERSION_NAME}", 12f, muted).apply {
+            contentDescription = "TeleRC version ${BuildConfig.VERSION_NAME}"
+            gravity = Gravity.CENTER; includeFontPadding = false
+        }
+        corners.addView(version, FrameLayout.LayoutParams(-2, if(narrowFooter) dp(24) else -1,
+            if(narrowFooter) Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL else Gravity.CENTER))
+        root.addView(corners, LinearLayout.LayoutParams(-1, height(48) + if(narrowFooter) dp(24) else 0))
         val connectIndex = connection.indexOfChild(connect)
         val connectLayout = connect!!.layoutParams as LinearLayout.LayoutParams
         val updatesIndex = preferences.indexOfChild(checkUpdates)
@@ -786,14 +792,14 @@ class MainActivity : Activity() {
                     focus.clearFocus()
                 }
                 // Shared views/listeners/state: collapsing never reconnects or loses draft inputs.
-                corners.addView(connect, 0, LinearLayout.LayoutParams(dp(176), -1).apply { rightMargin = dp(8) })
-                corners.addView(checkUpdates, LinearLayout.LayoutParams(dp(176), -1).apply { leftMargin = dp(8) })
+                corners.addView(connect, FrameLayout.LayoutParams(cornerWidth, height(48), Gravity.TOP or Gravity.START))
+                corners.addView(checkUpdates, FrameLayout.LayoutParams(cornerWidth, height(48), Gravity.TOP or Gravity.END))
             } else {
                 connection.addView(connect, connectIndex, connectLayout)
                 preferences.addView(checkUpdates, updatesIndex, updatesLayout)
             }
             viewport.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
-            corners.visibility = if (minimized) View.VISIBLE else View.GONE
+            corners.visibility = View.VISIBLE
             collapse.text = if (minimized) "+" else "−"
             collapse.contentDescription = if (minimized) "Show setup panels" else "Minimize setup panels"
             collapse.tooltipText = collapse.contentDescription
@@ -858,6 +864,7 @@ class MainActivity : Activity() {
         val prefs=getSharedPreferences("maze_practice",MODE_PRIVATE)
         var progress=MazeProgress.restore(prefs.getInt("level",1),prefs.getInt("completed_level",0))
         var wallet=MazeWallet.decode(prefs.getString("wallet","").orEmpty())
+        prefs.edit().putString("wallet",wallet.encode()).apply()
         fun newPractice(level:Int)=MazePractice(MazeLevels.layout(level),MazeMarket.available(level,wallet))
         val practice=mazePractice ?: newPractice(progress.current).also { mazePractice=it }
         fun saveProgress() {
@@ -865,7 +872,7 @@ class MainActivity : Activity() {
         }
         saveProgress()
         val root=shell()
-        val scene=MazePracticeView(this,practice).apply { vehicleId=wallet.vehicle; themeId=wallet.theme }
+        val scene=MazePracticeView(this,practice).apply { vehicleId=wallet.vehicle; accessories=wallet.accessories }
         mazeView=scene
         val timer=text("",14f,ink,true)
         val start=button("Start practice") {}
@@ -874,13 +881,13 @@ class MainActivity : Activity() {
         fun saveWallet(next:MazeWallet) {
             wallet=next
             prefs.edit().putString("wallet",wallet.encode()).apply()
-            scene.vehicleId=wallet.vehicle; scene.themeId=wallet.theme; scene.invalidate()
+            scene.vehicleId=wallet.vehicle; scene.accessories=wallet.accessories; scene.invalidate()
             market.text="Market · ${wallet.balance}"
             market.contentDescription="Market, ${wallet.balance} coins, offline practice"
         }
         scene.onCoin={ slot -> wallet.claim(practice.maze.level,slot)?.let(::saveWallet) }
         fun update() {
-            timer.text="Lv ${practice.maze.level} · ${MazeRecords.time(practice.elapsedMillis)}"
+            timer.text="Lv ${practice.maze.level} · ${MazeEnvironment.forLevel(practice.maze.level).label} · ${MazeRecords.time(practice.elapsedMillis)}"
             levels.text=if(practice.state==MazePractice.State.CLEARED && practice.maze.level<MazeLevels.COUNT) "Next level" else "Levels"
             start.text=when(practice.state) {
                 MazePractice.State.READY -> "Start practice"

@@ -1,0 +1,99 @@
+name: Practice environments and accessories qualification
+on:
+  push:
+    branches: ['feature/practice-worlds-078*']
+concurrency:
+  group: practice-worlds-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight retained signed baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.8.77 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.77.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Existing control and firmware host regression
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+      - name: Prepare existing signer
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: JVM tests, debug and release lint/build
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:lintRelease :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon
+      - name: Retain review APK in draft before native qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.78.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify deliverables/TeleRC-v0.8.78.apk
+          gh release create "practice-review-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "Practice review $GITHUB_SHA" deliverables/TeleRC-v0.8.78.apk
+      - name: Reclaim completed tooling before emulator
+        run: python scripts/reclaim-ui-runner.py
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native maze, photo background and FPV menu checks
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          cores: 4
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            bash scripts/check-photo-ui.sh || { adb logcat -d -b crash; adb logcat -d -s AndroidRuntime ActivityManager ActivityTaskManager; exit 1; }
+      - name: Verify compiled USB registration and retained signing identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.78.apk
+          python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.78.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          cp docs/PRACTICE_WORLDS_078.md deliverables/START_HERE.md
+          git archive --format=zip -o deliverables/TeleRC-v0.8.78-source.zip HEAD
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+      - name: Package check evidence
+        run: |
+          zip -qr deliverables/TeleRC-v0.8.78-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-* app/build/photo-evidence
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+      - name: Publish qualified test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
+          cd deliverables
+          python -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
+          gh release create v0.8.78 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.78 — practice worlds and accessories" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
+

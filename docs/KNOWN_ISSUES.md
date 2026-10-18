@@ -1,3 +1,7 @@
+# Practice worlds and accessories — 0.8.78
+
+Vehicle categories and Armament/accessories are offline cosmetics; all retain rover maze handling and the same collision envelope. They do not enable real sea/air/space control or firing. v2 wallet saves cannot be read by an unmodified 0.8.77 parser; rollback needs a forward-version compatibility build that preserves v2 claims and refunds unsupported cosmetics. Phone installation, OEM/font/orientation rendering and rover/receiver HIL remain BLOCKED. See [acceptance/rollback](PRACTICE_WORLDS_078.md).
+
 # Persistent FPV limits — 0.8.77
 
 Android controls USB defaults and grants. TeleRC cannot set Always silently; choose it in the system chooser when offered. Automatic reconnect reuses actual grants and otherwise waits for explicit Connect. A physical detach, revoked/one-time CAMERA permission or OEM default handling can still require approval. VID/PID cannot distinguish two identical receivers without serial identity, so ambiguous matches are not opened. Native cleanup timing, power loss, actual UVC/RF stability and phone chooser behavior are unmeasured; run [acceptance](FPV_PERSISTENT_077.md). Retry frequency is bounded, not a guarantee of recovery or glitch-free RF.

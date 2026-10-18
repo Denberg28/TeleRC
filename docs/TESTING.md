@@ -1,3 +1,7 @@
+# Practice worlds and accessories — 0.8.78
+
+Baseline 0.8.77/code95 product `965a5782b5600df681c141cf7913b5fdefdbf852`, validation/docs head `b1997536dafc90f245bb1581e98b890fa81e19cd`. Candidate code96. Gates A–D and F require fresh cloud build/JVM/debug+release lint/native/signing/package evidence. E (phone/receiver/rover HIL) is BLOCKED. Required bridge sync/host/default ASan/UBSan rerun; firmware/protocol unchanged, no affected actual-board targets. [Scope, evidence rules, installation, acceptance and rollback](PRACTICE_WORLDS_078.md). A successful completed workflow/BUILD_INFO supersedes pending software statuses only. Next: inspect native environment/catalog images and run phone acceptance.
+
 # Stable theme transitions and compact navigation — 0.8.75
 
 Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.

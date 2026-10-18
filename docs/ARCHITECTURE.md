@@ -1,3 +1,7 @@
+# Practice worlds and accessories — 0.8.78
+
+`MazeEnvironment` maps each fixed five-level group to a palette; the deterministic Canvas renderer paints scenery below collision walls/coins/markers. `MazeVehicleRenderer` shares seven bounded top-view silhouettes and stackable accessory overlays with Market previews. Course version3 and physics are unchanged. Wallet v2 retains unique claims and existing vehicle IDs/prices, omits retired colors (returning their spent balance), validates owned accessory selections and persists the migrated snapshot on Test entry. Accessories remove without a second purchase or refund; balances remain derived from the fixed 220-coin supply. Setup uses an always-visible centered version footer, with a separate line on narrow screens. [Gates and acceptance](PRACTICE_WORLDS_078.md).
+
 # Persistent USB FPV — 0.8.77
 
 `FpvReconnectPolicy` owns desired receiver type, one explicit permission transaction, grant/attachment selection and rate-limited recovery. `UsbFpvView` supplies current Android device/grant snapshots, requests USB access only on explicit user attempts, and creates the UVC helper only after access exists. The generation/attachment guard rejects stale callbacks. VID/PID and desired preview are preferences; USB grants remain Android-owned. MainActivity handles the system attach chooser and ignores duplicate intents for an owned receiver. Returning to Controls restores the saved preview only; vehicle authority remains explicit. See [gates/phone limits](FPV_PERSISTENT_077.md).

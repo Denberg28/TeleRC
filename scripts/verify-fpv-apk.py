@@ -26,7 +26,7 @@ def identity(apk):
 
 current, signer = identity(candidate)
 previous, old_signer = identity(baseline)
-assert current == ('io.github.denberg28.telerc', '95', '0.8.77'), current
+assert current == ('io.github.denberg28.telerc', '96', '0.8.78'), current
 assert previous[0] == current[0] and int(previous[1]) < int(current[1])
 assert signer == old_signer, 'Signing continuity failed'
 manifest = run(build_tools / 'aapt', 'dump', 'xmltree', candidate, 'AndroidManifest.xml')
@@ -54,7 +54,7 @@ assert not any(p in permissions for p in ('RECORD_AUDIO', 'MANAGE_EXTERNAL_STORA
 run(build_tools / 'zipalign', '-c', '-P', '16', '4', candidate)
 with zipfile.ZipFile(candidate) as archive:
     assert archive.testzip() is None, 'APK CRC failure'
-print('TeleRC 0.8.77/code95 test candidate — persistent USB FPV')
+print('TeleRC 0.8.78/code96 test candidate — practice environments and accessories')
 print('Source:', os.environ['GITHUB_SHA'])
 print('JVM, debug/release lint/build, host regression and full sanitizers: PASS (preceding required steps)')
 print('Compiled USB video attach intent/metadata/class filter/singleTop: PASS')
@@ -74,9 +74,12 @@ print('Native Market buy/equip, insufficient funds, coin collection and wallet p
 print('Native red impact pixels, no fade after pause/delay, reset removal: PASS')
 print('Native API 35 maze restart, clear/unlock/next level and persistence: PASS')
 print('Native API 35 photo import/rollback/persistence/render/removal and FPV options: PASS')
-print('Signing continuity with v0.8.76, app identity, increasing code, permissions and ZIP alignment: PASS')
+print('Signing continuity with v0.8.77, app identity, increasing code, permissions and ZIP alignment: PASS')
 print('Receiver enumeration, default chooser, real preview, USB pause/resume and phone installation: BLOCKED; no hardware')
 print('Firmware/protocol unchanged. No firmware reflash. Actions review artifact; physical hardware/field qualification remains BLOCKED.')
 
 assert 'PASS: persistent FPV lifecycle' in Path('app/build/photo-evidence/result.txt').read_text()
 print('Persistent FPV policy JVM regressions and native no-device lifecycle/default-help/cleanup: PASS; physical UVC reconnect/OS default choice: BLOCKED')
+
+assert 'PASS: environment and accessory rendering' in Path('app/build/photo-evidence/result.txt').read_text()
+print('Four native level environments, distinct bounded land/sea/air/space silhouettes, accessories persistence/removal and lower-center Setup version: PASS')
