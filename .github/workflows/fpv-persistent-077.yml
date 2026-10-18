@@ -67,7 +67,8 @@ jobs:
           cores: 4
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash scripts/check-photo-ui.sh
+          script: |
+            bash scripts/check-photo-ui.sh || { adb logcat -d -b crash; adb logcat -d -s AndroidRuntime ActivityManager ActivityTaskManager; exit 1; }
       - name: Verify compiled USB registration and retained signing identity
         env:
           GH_TOKEN: ${{ github.token }}

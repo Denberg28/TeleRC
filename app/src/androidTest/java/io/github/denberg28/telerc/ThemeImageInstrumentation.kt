@@ -755,9 +755,11 @@ class ThemeImageInstrumentation : Instrumentation() {
         return null
     }
     private fun <T> onMain(action: () -> T): T {
-        var value: T? = null
-        runOnMainSync { value = action() }
-        @Suppress("UNCHECKED_CAST") return value as T
+        // Report assertion failures to the instrumentation thread instead of crashing
+        // the app main thread before the suite can emit its failure evidence.
+        var value: Result<T>? = null
+        runOnMainSync { value = runCatching(action) }
+        return value!!.getOrThrow()
     }
     private fun waitUntil(condition: () -> Boolean) {
         val end = SystemClock.elapsedRealtime() + 12000
