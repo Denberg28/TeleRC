@@ -27,18 +27,29 @@ class FcElrsTest {
         fun packet(bytes:ByteArray)=java.net.DatagramPacket(bytes,bytes.size)
         for(bytes in listOf(Mavlink.override(1,1,1,1900,1500,1500,1500),Mavlink.release(2,1,1),
             Mavlink.armDisarm(3,1,1,true),WaypointProtocol.hold(4,1),
-            "TELERC_DISCOVER_V1".toByteArray(),byteArrayOf(),ByteArray(17))) {
+            "TELERC_DISCOVER_V1".toByteArray(),byteArrayOf(),ByteArray(17),WaypointProtocol.heartbeat(2))) {
             assertThrows(java.net.SocketException::class.java) { transport.send(packet(bytes)) }
         }
         assertTrue(sent.isEmpty())
-        for(sequence in listOf(0,127,255)) transport.send(packet(WaypointProtocol.heartbeat(sequence)))
+        for(sequence in listOf(0,127,255)) transport.send(packet(FcElrs.registration(sequence)))
         assertEquals(3,sent.size)
-        val withOffset=byteArrayOf(99)+WaypointProtocol.heartbeat(5)+byteArrayOf(98)
-        transport.send(java.net.DatagramPacket(withOffset,1,17))
+        val withOffset=byteArrayOf(99)+FcElrs.registration(5)+byteArrayOf(98)
+        transport.send(java.net.DatagramPacket(withOffset,1,22))
         assertEquals(4,sent.size)
-        val corrupt=WaypointProtocol.heartbeat(4); corrupt[8]=5
+        val corrupt=FcElrs.registration(4); corrupt[8]=5
         assertThrows(java.net.SocketException::class.java) { transport.send(packet(corrupt)) }
         assertEquals(4,sent.size)
+    }
+    @Test fun backpackRegistrationIsPingRatherThanGcsHeartbeat() {
+        for(sequence in listOf(0,255,256,Int.MAX_VALUE,Int.MIN_VALUE)) {
+            val p=FcElrs.registration(sequence)
+            assertEquals(22,p.size); assertEquals(4,p[5].toInt())
+            assertTrue(p.copyOfRange(6,14).all { it==0.toByte() })
+            assertEquals(0,p[18].toInt()); assertEquals(0,p[19].toInt())
+            assertTrue(FcElrs.isRegistration(p))
+            assertNull(Mavlink.heartbeat(p))
+        }
+        assertFalse(FcElrs.isRegistration(WaypointProtocol.heartbeat(0)))
     }
     private fun autopilotHeartbeat(sequence:Int):ByteArray {
         val frame=byteArrayOf(0xfe.toByte(),9,sequence.toByte(),1,1,0,4,0,0,0,10,3,0,4,3)

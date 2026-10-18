@@ -1710,11 +1710,11 @@ class MainActivity : Activity() {
                     }
                 }
                 if (backpack && resumed && (target==0 || linkFresh()) && discoveryNow - lastDiscovery >= 1000) {
-                    // GCS liveness/peer registration only; no bridge discovery or RC.
+                    // Non-control PING registers the Backpack peer without starting/refreshing the FC GCS heartbeat failsafe.
                     try {
-                        val beat=WaypointProtocol.heartbeat(sequence++)
+                        val beat=FcElrs.registration(sequence++)
                         udp.send(DatagramPacket(beat,beat.size,remote,number)); lastDiscovery=discoveryNow
-                    } catch (e:Exception) { lastLinkError="ELRS heartbeat send " + e.javaClass.simpleName; break }
+                    } catch (e:Exception) { lastLinkError="ELRS registration send " + e.javaClass.simpleName; break }
                 }
                 try {
                     val packet = DatagramPacket(input, input.size)

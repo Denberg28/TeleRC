@@ -15,6 +15,25 @@ internal object FcElrs {
     fun acceptsPeer(expectedHost: String, expectedPort: Int, actualHost: String?, actualPort: Int) =
         actualHost == expectedHost && actualPort == expectedPort && expectedPort in 1..65535
 
+    // MAVLink PING registers our address at the Backpack without refreshing ArduRover's GCS heartbeat failsafe.
+    fun registration(sequence:Int):ByteArray {
+        val p=ByteArray(14) // time_usec=0; target_system=target_component=0 (ping request).
+        for(i in 0..3) p[8+i]=(sequence ushr (8*i)).toByte()
+        val frame=byteArrayOf(0xfe.toByte(),14,sequence.toByte(),255.toByte(),190.toByte(),4)+p
+        var crc=65535
+        for(value in frame.drop(1).map { it.toInt() and 255 } + 237) {
+            var t=(value xor (crc and 255)) and 255; t=(t xor (t shl 4)) and 255
+            crc=((crc ushr 8) xor (t shl 8) xor (t shl 3) xor (t ushr 4)) and 65535
+        }
+        return frame+byteArrayOf(crc.toByte(),(crc ushr 8).toByte())
+    }
+    fun isRegistration(bytes:ByteArray):Boolean {
+        if(bytes.size!=22) return false
+        var sequence=0
+        for(i in 0..3) sequence=sequence or ((bytes[14+i].toInt() and 255) shl (8*i))
+        return bytes.contentEquals(registration(sequence))
+    }
+
     const val CRSF_SETUP = "1. Receiver TX → F405 R2; receiver RX → T2; GND → GND. Use the receiver's rated supply. Keep Wi-Fi/LoRa on UART3 and GPS on UART6.\n\n" +
         "2. Mission Planner: SERIAL2_PROTOCOL=23, RSSI_TYPE=3. Enable CRSF in RC_PROTOCOLS (bit 9); preserve other required protocols. Set RC_OPTIONS bit 13 (ELRS 420 kbaud) where supported; preserve other bits. Reboot and calibrate RC.\n\n" +
         "3. Bind transmitter and receiver: same band, compatible firmware and binding phrase. Set CH1 steer and CH2 centered forward/reverse. Assign and test a transmitter HOLD mode switch.\n\n" +
@@ -34,7 +53,7 @@ internal object FcElrs {
 internal class FcElrsTelemetryTransport(private val delegate: LinkTransport) : LinkTransport {
     override fun send(packet: java.net.DatagramPacket) {
         val payload=packet.data.copyOfRange(packet.offset,packet.offset+packet.length)
-        if(payload.size!=17 || !payload.contentEquals(WaypointProtocol.heartbeat(payload[2].toInt() and 255)))
+        if(!FcElrs.isRegistration(payload))
             throw java.net.SocketException("ELRS handset link rejects phone commands")
         delegate.send(packet)
     }
