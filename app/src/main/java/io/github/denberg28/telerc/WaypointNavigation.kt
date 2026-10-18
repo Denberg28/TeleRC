@@ -60,6 +60,8 @@ class WaypointNavigation {
     private var monitoring = false
     private var sequence = 0
     private var heartbeatAt = -10000L
+    private var positionClock = -1L
+    private var gpsClock = -1L
     private var positionAt = -10000L
     private var homeAt = -10000L
     private var gpsAt = -10000L
@@ -165,7 +167,7 @@ class WaypointNavigation {
         if (moving || state == State.HOLDING) { state=State.ERROR; message="Link lost · HOLD unconfirmed; FC failsafe must stop rover" }
         else { state=State.IDLE; message="Disconnected · planning only; Check link again after reconnect" }
         system=0; heartbeatAt=-10000; positionAt=-10000; gpsAt=-10000; ekfAt=-10000; healthAt=-10000
-        autopilotGood=false; armed=false; mode=-1; parameters.clear(); home=null; heading=null; rover=null
+        autopilotGood=false; armed=false; mode=-1; positionClock=-1; gpsClock=-1; parameters.clear(); home=null; heading=null; rover=null
     }
     @Synchronized fun receive(frame: WaypointProtocol.Frame, now: Long, target: Int) {
         if (frame.system != target || target !in 1..254 || system != 0 && system != target) return
@@ -190,8 +192,21 @@ class WaypointNavigation {
             }
             22 -> { val name=p.text(8,16); val value=p.f32(0)
                 if (name in required && value.isFinite()) parameters[name]=value to now }
-            24 -> { gpsAt=now; gpsGood=p.u8(28) in 3..6 && p.u8(29) in 6..254 && p.u16(20) in 1..250 }
+            24 -> {
+                val stamp=p.i64(0)
+                if (stamp<=0 || stamp<=gpsClock) return
+                gpsClock=stamp; gpsAt=now; gpsGood=p.u8(28) in 3..6 && p.u8(29) in 6..254 && p.u16(20) in 1..250 }
             33 -> {
+                val stamp=p.i32(0).toLong() and 0xffffffffL
+                if (positionClock>=0) {
+                    val delta=(stamp-positionClock) and 0xffffffffL
+                    if (delta==0L) return
+                    if (delta>0x7fffffffL) {
+                        if (moving) stop("FC clock reset / reordered position",now,State.ERROR)
+                        return
+                    }
+                }
+                positionClock=stamp
                 val point=Waypoint(p.i32(4)/1e7,p.i32(8)/1e7)
                 if (point.valid) {
                     if (moving && rover?.distance(point)?.let { it > 10 + (now-positionAt).coerceAtLeast(0)/1000.0*3 } == true)

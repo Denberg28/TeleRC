@@ -14,8 +14,8 @@ class WaypointNavigationTest {
         putInt(mode); put(10); put(3); put(if(armed) 129.toByte() else 1.toByte()); put(4); put(3)
     })
     private fun ack(command:Int,result:Int=0)=frame(77,payload(3) { putShort(command.toShort()); put(result.toByte()) })
-    private fun position(p:Waypoint=start)=frame(33,payload(28) {
-        putInt(0); putInt((p.latitude*1e7).toInt()); putInt((p.longitude*1e7).toInt()); position(26); putShort(0)
+    private fun position(p:Waypoint=start,time:Long=1000)=frame(33,payload(28) {
+        putInt(time.toInt()); putInt((p.latitude*1e7).toInt()); putInt((p.longitude*1e7).toInt()); position(26); putShort(0)
     })
     private fun echo(p:Waypoint=destination)=frame(87,payload(51) {
         position(4); putInt((p.latitude*1e7).toInt()); putInt((p.longitude*1e7).toInt()); position(50); put(6)
@@ -23,8 +23,8 @@ class WaypointNavigationTest {
     private fun param(name:String,value:Float)=frame(22,payload(25) { putFloat(value); position(8); put(name.toByteArray()); position(24); put(9) })
     private fun telemetry(n:WaypointNavigation,time:Long,mode:Int=4,p:Waypoint=start,armed:Boolean=true,battery:Int=80) {
         n.receive(heartbeat(mode,armed),time,1)
-        n.receive(position(p),time,1)
-        n.receive(frame(24,payload(30) { position(20); putShort(100); position(28); put(3); put(12) }),time,1)
+        n.receive(position(p,time),time,1)
+        n.receive(frame(24,payload(30) { putLong(time*1000); position(20); putShort(100); position(28); put(3); put(12) }),time,1)
         n.receive(frame(193,payload(22) { putFloat(.1f); putFloat(.1f); putFloat(.1f); putFloat(.1f); position(20); putShort(19) }),time,1)
         n.receive(frame(1,payload(31) { val mask=(1 shl 2) or (1 shl 5) or (1 shl 21); putInt(mask); putInt(mask); putInt(mask); position(30); put(battery.toByte()) }),time,1)
         n.receive(frame(242,payload(52) { putInt((start.latitude*1e7).toInt()); putInt((start.longitude*1e7).toInt()) }),time,1)
@@ -116,10 +116,20 @@ class WaypointNavigationTest {
         val n=running(); n.receive(heartbeat(15),2500,1); n.receive(position(),3501,1)
         assertEquals(WaypointNavigation.State.HOLDING,n.state)
     }
+    @Test fun repeatedOrReorderedRemotePositionDoesNotRefreshOrAdvance() {
+        val n=running()
+        // A replay carries the original FC timestamp even if it arrives later.
+        n.receive(position(start,1000),2000,1)
+        n.receive(heartbeat(15),2500,1)
+        n.receive(position(start,1000),3101,1)
+        assertEquals(WaypointNavigation.State.HOLDING,n.state)
+        val reset=running(); reset.receive(position(start,999),1400,1)
+        assertEquals(WaypointNavigation.State.HOLDING,reset.state)
+    }
     @Test fun lowBatteryGpsJumpPilotModeAndBackgroundRequestHold() {
         val battery=running(); telemetry(battery,1400,15,battery=19); battery.tick(1400,true,true)
         assertEquals(WaypointNavigation.State.HOLDING,battery.state)
-        val jump=running(); jump.receive(position(Waypoint(13.6228,123.1948)),1400,1)
+        val jump=running(); jump.receive(position(Waypoint(13.6228,123.1948),1400),1400,1)
         assertEquals(WaypointNavigation.State.HOLDING,jump.state)
         val pilot=running(); pilot.receive(heartbeat(0),1400,1)
         assertEquals(WaypointNavigation.State.HOLDING,pilot.state)

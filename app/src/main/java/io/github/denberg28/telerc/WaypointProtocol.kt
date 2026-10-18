@@ -13,6 +13,7 @@ object WaypointProtocol {
         fun u8(i: Int) = data[i].toInt() and 255
         fun u16(i: Int) = buffer.getShort(i).toInt() and 65535
         fun i32(i: Int) = buffer.getInt(i)
+        fun i64(i: Int) = buffer.getLong(i)
         fun f32(i: Int) = buffer.getFloat(i)
         fun text(i: Int, count: Int) = data.copyOfRange(i, i + count).takeWhile { it != 0.toByte() }
             .toByteArray().toString(Charsets.US_ASCII)
