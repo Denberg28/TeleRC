@@ -13,10 +13,10 @@ class MazeMarketTest {
     @Test fun finiteSupplyCoversEntireCatalogAndEarlyUnlocks() {
         val w=funded()
         assertEquals(220,w.balance)
-        assertEquals(180,MazeMarket.items.sumOf { it.price })
+        assertEquals(220,MazeMarket.items.sumOf { it.price })
         assertEquals(listOf(8,10,12,14),listOf(1,6,11,16).map(MazeMarket::quota))
         val twoLevels=(1..2).sumOf(MazeMarket::quota)
-        assertTrue(twoLevels>=MazeMarket.item("forest")!!.price)
+        assertTrue(twoLevels>=MazeMarket.item("hood")!!.price)
         assertTrue(twoLevels<MazeMarket.item("rally")!!.price)
         assertTrue(twoLevels+MazeMarket.quota(3)>=MazeMarket.item("rally")!!.price)
         var bought=w
@@ -25,11 +25,11 @@ class MazeMarketTest {
             assertTrue(bought.balance>=0)
             assertNull(bought.buy(item.id)) // Cannot double charge/rebuy.
         }
-        assertEquals(40,bought.balance)
+        assertEquals(0,bought.balance)
         assertEquals(MazeMarket.items.size,bought.owned.size)
         val restored=MazeWallet.decode(bought.encode())
         assertEquals(bought.encode(),restored.encode())
-        assertEquals("hauler",restored.vehicle); assertEquals("glacier",restored.theme)
+        assertEquals("shuttle",restored.vehicle); assertEquals(5,restored.accessories.size)
     }
     @Test fun transactionsRejectInvalidUnownedUnaffordableAndDuplicateClaims() {
         val empty=MazeWallet.decode("")
@@ -41,9 +41,46 @@ class MazeMarketTest {
         assertNull(MazeWallet.decode(one.encode()).claim(1,0))
         for(raw in listOf("bad","1|0,0,-1,9999|hauler,hacked|hauler|glacier","x".repeat(8193))) {
             val w=MazeWallet.decode(raw)
-            assertTrue(w.balance>=0); assertEquals("scout",w.vehicle); assertEquals("navy",w.theme)
+            assertTrue(w.balance>=0); assertEquals("scout",w.vehicle); assertTrue(w.accessories.isEmpty())
             assertFalse("hacked" in w.owned)
         }
+    }
+    @Test fun legacyColorsRefundExactlyOnceAndPreserveClaimsAndVehicle() {
+        val full=funded()
+        for(colors in listOf("forest","ember","glacier","forest,ember,glacier")) {
+            val claims=full.claimed.sorted().joinToString(",")
+            val old="1|$claims|scout,rally,buggy,hauler,navy,$colors|rally|${colors.substringBefore(',')}"
+            val migrated=MazeWallet.decode(old)
+            assertEquals(full.claimed,migrated.claimed)
+            assertEquals(setOf("scout","rally","buggy","hauler"),migrated.owned)
+            assertEquals("rally",migrated.vehicle); assertEquals(115,migrated.balance)
+            assertTrue(migrated.accessories.isEmpty())
+            assertEquals(migrated.encode(),MazeWallet.decode(migrated.encode()).encode())
+            for(key in migrated.claimed) assertNull(migrated.claim(key/14+1,key%14))
+        }
+    }
+    @Test fun accessoriesStackRemoveWithoutRefundAndPersistAcrossVehicleChanges() {
+        var wallet=funded()
+        for(id in listOf("hood","armament","wheels","exhaust","spoiler")) wallet=wallet.buy(id)!!.equip(id)!!
+        assertEquals(170,wallet.balance); assertEquals(5,wallet.accessories.size)
+        wallet=wallet.buy("plane")!!.equip("plane")!!
+        assertEquals(5,wallet.accessories.size)
+        val removed=wallet.remove("hood")!!
+        assertEquals(wallet.balance,removed.balance); assertTrue("hood" in removed.owned)
+        assertFalse(removed.equipped("hood")); assertNull(removed.remove("hood")); assertNull(removed.remove("plane"))
+        assertEquals(removed.encode(),MazeWallet.decode(removed.encode()).encode())
+        val reequipped=removed.equip("hood")!!
+        assertEquals(wallet.encode(),reequipped.encode()); assertNull(reequipped.buy("hood"))
+        val invalid=MazeWallet.decode("2|0|scout,shuttle,hood|shuttle|hood,shuttle,hacked")
+        assertEquals("scout",invalid.vehicle); assertTrue(invalid.accessories.isEmpty()); assertEquals(1,invalid.balance)
+    }
+    @Test fun environmentBoundariesAndVehicleClassesAreComplete() {
+        assertEquals(List(5){MazeEnvironment.CITY}+List(5){MazeEnvironment.FOREST}+
+            List(5){MazeEnvironment.DESERT}+List(5){MazeEnvironment.SPACE},(1..20).map(MazeEnvironment::forLevel))
+        assertEquals(MazeEnvironment.CITY,MazeEnvironment.forLevel(-1))
+        assertEquals(MazeEnvironment.SPACE,MazeEnvironment.forLevel(999))
+        assertEquals(MazeVehicleClass.entries.toSet(),MazeMarket.items.filter { it.kind==MazeItemKind.VEHICLE }.map { it.vehicleClass }.toSet())
+        assertEquals(MazeMarket.items.size,MazeMarket.items.map { it.id }.toSet().size)
     }
     @Test fun randomCoinsAreUniqueReachableFitAndExcludeStartAndEndForEveryLevel() {
         for(level in 1..MazeLevels.COUNT) {
@@ -107,3 +144,4 @@ class MazeMarketTest {
         return out.reversed()
     }
 }
+

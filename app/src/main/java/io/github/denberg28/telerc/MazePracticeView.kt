@@ -12,7 +12,7 @@ import android.view.View
 internal class MazePracticeView(context: Context, val practice: MazePractice) : View(context) {
     var onUpdate: (() -> Unit)? = null
     var vehicleId="scout"
-    var themeId="navy"
+    var accessories:Set<String> = emptySet()
     var onCoin: ((Int) -> Unit)? = null
     private fun collectCoins() { for(slot in practice.drainCollectedCoins()) onCoin?.invoke(slot) }
     var onClear: ((Long) -> Unit)? = null
@@ -20,8 +20,6 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
     private var failureReported = false
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val surface = AppColors.surface(context)
-    private val wallColor = AppColors.muted(context)
-    private val passageColor = AppColors.softAccent(context)
     private val roverColor = AppColors.buttonFill(context)
     private val nose = Path()
     private var active = false
@@ -44,7 +42,7 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
             if (practice.state == MazePractice.State.RUNNING) postDelayed(this,16) else active=false
         }
     }
-    init { contentDescription = "Offline level ${practice.maze.level}, START at lower left, END at the longest path from START" }
+    init { contentDescription = "Offline level ${practice.maze.level}, ${MazeEnvironment.forLevel(practice.maze.level).label}, START at lower left, END at the longest path from START" }
     private fun reportFailure() {
         if (practice.state != MazePractice.State.FAILED) failureReported = false
         else if (!failureReported) { failureReported = true; onFailure?.invoke() }
@@ -68,10 +66,8 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
         paint.style=Paint.Style.FILL
         paint.color=surface
         canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
-        val theme=MazeMarket.item(themeId)
-        paint.color=theme?.floor?.takeIf { it!=0 } ?: passageColor
-        canvas.drawRect(ox+.5f*scale,oy+.5f*scale,ox+(maze.width-.5f)*scale,oy+(maze.height-.5f)*scale,paint)
-        paint.color=theme?.wall?.takeIf { it!=0 } ?: wallColor
+        MazeEnvironmentRenderer.draw(canvas,paint,maze,scale,ox,oy)
+        paint.color=MazeEnvironment.forLevel(maze.level).wall
         for (wall in maze.wallShapes) {
             canvas.drawRect(ox+wall.left*scale,oy+wall.top*scale,
                 ox+wall.right*scale,oy+wall.bottom*scale,paint)
@@ -99,7 +95,7 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
         canvas.save(); canvas.translate(ox,oy)
         val vehicle=MazeMarket.item(vehicleId) ?: MazeMarket.items.first()
         MazeVehicleRenderer.draw(canvas,paint,nose,practice.pose,scale,
-            if(vehicle.id=="scout") roverColor else vehicle.color,vehicle.id)
+            vehicle.color,vehicle.id,accessories)
         canvas.restore()
         // World-anchored, opaque impact dots have no timer or fade. Only reset clears them.
         paint.style=Paint.Style.FILL
@@ -114,3 +110,4 @@ internal class MazePracticeView(context: Context, val practice: MazePractice) : 
         }
     }
 }
+

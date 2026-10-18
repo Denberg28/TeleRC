@@ -1,3 +1,7 @@
+# Practice worlds and accessories — 0.8.78
+
+Setup now keeps its version at lower center. Offline Test adds City/Forest/Desert/Space environments in five-level groups, land/sea/air/space vehicle silhouettes and stackable cosmetic accessories instead of purchased colors. Existing colors return their spent coins; vehicles, unique coin claims and course records remain. [Scope, validation, phone acceptance and wallet-compatible rollback](docs/PRACTICE_WORLDS_078.md). App-only test candidate; no firmware reflash.
+
 # Stable theme transitions and compact navigation — 0.8.75
 
 Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](docs/STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.

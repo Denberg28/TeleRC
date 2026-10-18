@@ -16,6 +16,7 @@ import kotlin.math.*
 
 /** Native bitmap/storage/render and FPV options checks; no USB hardware is simulated. */
 class ThemeImageInstrumentation : Instrumentation() {
+    private var lastTabActivity:Activity?=null
     override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
     override fun onStart() {
         try {
@@ -81,6 +82,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkMazeLevels()
             checkMarket()
             checkPracticeDialogLayouts()
+            checkEnvironmentsAndVehicles()
             checkFpvReconnectLifecycle()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
@@ -89,13 +91,88 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
+            val frame=runCatching {
+                val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
+                val bytes=java.io.ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.PNG,100,bytes); bitmap.recycle()
+                "FAILED_UI_PNG="+android.util.Base64.encodeToString(bytes.toByteArray(),android.util.Base64.NO_WRAP)
+            }.getOrDefault("")
+            val popupState=runCatching { onMain {
+                val activity=lastTabActivity ?: return@onMain "No tab activity"
+                val field=MainActivity::class.java.getDeclaredField("pageMenu").apply { isAccessible=true }
+                val popup=field.get(activity) as? android.widget.PopupWindow
+                "Tab activity focus=${activity.hasWindowFocus()}, destroyed=${activity.isDestroyed}, popup=${popup?.isShowing}, attached=${popup?.contentView?.isAttachedToWindow}, shown=${popup?.contentView?.isShown}"
+            } }.getOrDefault("Tab state unavailable")
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
-            finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
+            finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$popupState\n$windows\n$frame\n") })
         }
+    }
+    private fun checkSetupVersion(activity:Activity) {
+        val shell=root(activity)
+        val version=find(shell,"TeleRC ${BuildConfig.VERSION_NAME}") ?: error("Setup version missing")
+        val actual=android.graphics.Rect(); val parent=android.graphics.Rect()
+        check(version.getGlobalVisibleRect(actual) && shell.getGlobalVisibleRect(parent))
+        val tolerance=2*activity.resources.displayMetrics.density
+        val center=(parent.left+shell.paddingLeft+parent.right-shell.paddingRight)/2
+        check(abs(actual.centerX()-center)<=tolerance) { "Setup version is not horizontally centered" }
+        check(abs(actual.bottom-(parent.bottom-shell.paddingBottom))<=tolerance) { "Setup version is not in the footer" }
+    }
+    private fun checkEnvironmentsAndVehicles() {
+        val prefs=targetContext.getSharedPreferences("maze_practice",0)
+        var wallet=MazeWallet.decode("")
+        for(level in 1..20) for(slot in 0 until MazeMarket.quota(level)) wallet=wallet.claim(level,slot)!!
+        for(item in MazeMarket.items.filter { it.price>0 }) wallet=wallet.buy(item.id)!!.equip(item.id)!!
+        for(level in listOf(1,6,11,16)) {
+            prefs.edit().putInt("level",level).putInt("completed_level",20).putString("wallet",wallet.encode()).commit()
+            val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            openTabMenu(activity,"Setup"); clickWindow("Test")
+            waitUntil { onMain { findMaze(root(activity))?.let { it.width>0 && it.height>0 && !root(activity).isLayoutRequested }==true } }
+            onMain {
+                val scene=findMaze(root(activity))!!
+                val environment=MazeEnvironment.forLevel(level)
+                check(scene.practice.maze.level==level && scene.vehicleId=="shuttle" && scene.accessories.size==5)
+                check(find(root(activity),"Lv $level · ${environment.label} · 00:00.00")!=null)
+                val bitmap=Bitmap.createBitmap(scene.width,scene.height,Bitmap.Config.ARGB_8888)
+                scene.draw(android.graphics.Canvas(bitmap))
+                val pixels=IntArray(bitmap.width*bitmap.height); bitmap.getPixels(pixels,0,bitmap.width,0,0,bitmap.width,bitmap.height)
+                check(pixels.count { it==environment.floor }>100 && pixels.count { it==environment.wall }>100)
+                bitmap.recycle()
+            }
+            screenshot("environment-${MazeEnvironment.forLevel(level).label.lowercase()}.png")
+            onMain { activity.finish() }; waitForIdleSync()
+        }
+        // Pixel bounds prove visible cosmetics still fit the unchanged collision envelope.
+        val vehicles=MazeMarket.items.filter { it.kind==MazeItemKind.VEHICLE }
+        val allAccessories=MazeMarket.items.filter { it.kind==MazeItemKind.ACCESSORY }.map { it.id }.toSet()
+        val atlas=Bitmap.createBitmap(vehicles.size*160,3*180,Bitmap.Config.ARGB_8888)
+        val atlasCanvas=android.graphics.Canvas(atlas)
+        atlasCanvas.drawColor(Color.rgb(25,35,49))
+        val paint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val path=android.graphics.Path()
+        val signatures=mutableSetOf<Int>()
+        for((index,vehicle) in vehicles.withIndex()) for(row in 0..2) {
+            val bitmap=Bitmap.createBitmap(160,160,Bitmap.Config.ARGB_8888)
+            val canvas=android.graphics.Canvas(bitmap)
+            MazeVehicleRenderer.draw(canvas,paint,path,RoverPose(.8f,.8f,if(row==2) (Math.PI/2).toFloat() else 0f),
+                100f,vehicle.color,vehicle.id,if(row==0) emptySet() else allAccessories)
+            val pixels=IntArray(160*160); bitmap.getPixels(pixels,0,160,0,0,160,160)
+            for(y in 0 until 160) for(x in 0 until 160) if(Color.alpha(pixels[y*160+x])>0)
+                check(hypot(x+.5f-80,y+.5f-80)<=70f) { "${vehicle.id} accessory exceeds collision envelope" }
+            if(row==0) {
+                val silhouette=pixels.map { Color.alpha(it)>0 }.hashCode()
+                check(signatures.add(silhouette)) { "Duplicate vehicle silhouette: ${vehicle.id}" }
+            }
+            atlasCanvas.drawBitmap(bitmap,index*160f,row*180f,paint); bitmap.recycle()
+            paint.style=android.graphics.Paint.Style.FILL; paint.color=Color.WHITE; paint.textSize=14f; paint.textAlign=android.graphics.Paint.Align.CENTER
+            atlasCanvas.drawText(vehicle.name,index*160f+80,row*180f+173,paint)
+        }
+        File(targetContext.filesDir,"vehicle-catalog.png").outputStream().use { check(atlas.compress(Bitmap.CompressFormat.PNG,100,it)) }
+        atlas.recycle()
+        prefs.edit().putInt("level",1).putInt("completed_level",0).commit()
     }
     private fun checkFpvReconnectLifecycle() {
         val prefs=targetContext.getSharedPreferences("fpv",0)
@@ -295,16 +372,31 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(shell,"F1")!=null && find(shell,"F2")!=null && find(shell,"F3")!=null)
         }
     }
+    private fun tapView(view:View) {
+        val bounds=onMain { android.graphics.Rect().also { check(view.getGlobalVisibleRect(it)) } }
+        val down=SystemClock.uptimeMillis()
+        for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)) {
+            val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,bounds.exactCenterX(),bounds.exactCenterY(),0)
+            event.source=android.view.InputDevice.SOURCE_TOUCHSCREEN
+            try { check(uiAutomation.injectInputEvent(event,true)) } finally { event.recycle() }
+            if(action==android.view.MotionEvent.ACTION_DOWN) SystemClock.sleep(40)
+        }
+        waitForIdleSync()
+    }
     private fun openTabMenu(activity:Activity,label:String) {
+        lastTabActivity=activity
         waitForIdleSync()
         waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
-        onMain { check(find(root(activity),"$label ▾")!!.performClick()) }
+        tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
+        lastTabActivity=activity
         waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
+        if(label=="Setup") onMain { checkSetupVersion(activity) }
         val anchor=onMain { find(root(activity),"$label ▾")!! }
-        val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)); anchor.performClick() } }
+        val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)) } }
+        tapView(anchor)
         waitUntil { windowText("Tab menu")!=null }
         val actual=android.graphics.Rect().also { windowText("Tab menu")!!.getBoundsInScreen(it) }
         val tolerance=2*activity.resources.displayMetrics.density
@@ -368,6 +460,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             description(root(activity),"Preferences")?.isShown==false } }
         onMain {
             val view=root(activity)
+            checkSetupVersion(activity)
             val connect=find(view,"Connect")!!
             val updates=find(view,"Check for updates")!!
             fun bounds(v:View)=android.graphics.Rect().also { check(v.getGlobalVisibleRect(it)) }
@@ -418,10 +511,14 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             val window=dialog.window!!; val attributes=window.attributes
             check(attributes.gravity==android.view.Gravity.CENTER && attributes.x==0 && attributes.y==0 && attributes.windowAnimations==0)
-            val decor=activity.window.decorView; val xy=IntArray(2); decor.getLocationOnScreen(xy)
+            val decor=activity.window.decorView
+            val available=android.graphics.Rect().also { decor.getWindowVisibleDisplayFrame(it) }
+            check(available.width()>0 && available.height()>0) { "No visible display frame" }
             val tolerance=4*activity.resources.displayMetrics.density
-            check(abs(first.exactCenterX()-(xy[0]+decor.width/2f))<=tolerance) { "Popup is horizontally off center" }
-            check(abs(first.exactCenterY()-(xy[1]+decor.height/2f))<=tolerance) { "Popup is vertically off center" }
+            // Floating dialogs center within the system's usable frame. AOSP's
+            // side navigation bar is outside it even when the Activity draws edge to edge.
+            check(abs(first.exactCenterX()-available.exactCenterX())<=tolerance) { "Popup is horizontally off center: $first vs $available" }
+            check(abs(first.exactCenterY()-available.exactCenterY())<=tolerance) { "Popup is vertically off center: $first vs $available" }
         }
         SystemClock.sleep(350)
         check(bounds()==first) { "Popup moved after opening" }
@@ -445,7 +542,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         val scene=onMain { findMaze(root(activity))!! }
         onMain {
             check(scene.practice.maze.level==1)
-            check(find(root(activity),"Lv 1 · 00:00.00")!=null)
+            check(find(root(activity),"Lv 1 · City · 00:00.00")!=null)
             check(find(root(activity),"TeleRC v${BuildConfig.VERSION_NAME}")==null)
             check(find(root(activity),"Shuffle maze")==null)
             check(scene.height>scene.width*.45f) { "Maze has not gained vertical space" }
@@ -482,7 +579,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             check(scene.practice.elapsedMillis==0L && scene.practice.bumps==0)
             check(scene.practice.bumpMarks.isEmpty())
-            check(find(root(activity),"Lv 1 · 00:00.00")!=null)
+            check(find(root(activity),"Lv 1 · City · 00:00.00")!=null)
             find(root(activity),"Start practice")!!.performClick()
             approachFinish(scene.practice)
             scene.changed() // The real animation frame reaches END and invokes the clear callback.
@@ -492,7 +589,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(MazeRecords.decode(prefs.getString("records","").orEmpty()).let { it.size==2 && it.first().level==1 && it.last().courseVersion==2 })
         screenshot("maze-level-cleared.png")
         onMain { find(root(activity),"Next level")!!.performClick() }
-        waitUntil { onMain { find(root(activity),"Lv 2 · 00:00.00")!=null } }
+        waitUntil { onMain { find(root(activity),"Lv 2 · City · 00:00.00")!=null } }
         check(prefs.getInt("level",0)==2)
         screenshot("maze-level-two.png")
         onMain { activity.finish() }; waitForIdleSync()
@@ -501,7 +598,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             check(findMaze(root(activity))!!.practice.maze.level==2)
             check(findMaze(root(activity))!!.practice.bumpMarks.isEmpty())
-            check(find(root(activity),"Lv 2 · 00:00.00")!=null)
+            check(find(root(activity),"Lv 2 · City · 00:00.00")!=null)
             find(root(activity),"Levels")!!.performClick()
         }
         waitUntil { windowText("2/20")!=null }
@@ -539,14 +636,19 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==15)
         showMarketItem("Buy Hauler · 50")
         check(windowText("Buy Hauler · 50")?.isEnabled==false)
-        clickWindow("Colors")
-        showMarketItem("Buy Forest · 15"); clickWindow("Buy Forest · 15")
-        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).theme=="forest" }
-        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==0)
-        showMarketItem("Forest · Equipped")
-        screenshot("market-colors.png")
+        clickWindow("Accessories")
+        showMarketItem("Buy Spoiler · 14"); clickWindow("Buy Spoiler · 14")
+        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).accessories==setOf("spoiler") }
+        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==1)
+        showMarketItem("Remove Spoiler")
+        screenshot("market-accessories.png")
+        clickWindow("Remove Spoiler")
+        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).accessories.isEmpty() }
+        check(MazeWallet.decode(prefs.getString("wallet","").orEmpty()).balance==1)
+        showMarketItem("Use Spoiler"); clickWindow("Use Spoiler")
+        waitUntil { MazeWallet.decode(prefs.getString("wallet","").orEmpty()).accessories==setOf("spoiler") }
         clickWindow("Done")
-        onMain { check(scene.vehicleId=="rally" && scene.themeId=="forest") }
+        onMain { check(scene.vehicleId=="rally" && scene.accessories==setOf("spoiler")) }
         screenshot("maze-equipped.png")
         val target=onMain { scene.practice.coins.first() }
         onMain {
@@ -557,7 +659,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         val targetKey=MazeMarket.key(1,target.slot)!!
         waitUntil { targetKey in MazeWallet.decode(prefs.getString("wallet","").orEmpty()).claimed }
         val earned=MazeWallet.decode(prefs.getString("wallet","").orEmpty())
-        check(earned.balance in 1..8)
+        check(earned.balance==1+earned.claimed.count { it !in fixture.claimed })
         onMain {
             scene.pause()
             check(scene.practice.coins.none { it.slot==target.slot })
@@ -570,7 +672,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         enter()
         onMain {
             val restored=findMaze(root(activity))!!
-            check(restored.vehicleId=="rally" && restored.themeId=="forest")
+            check(restored.vehicleId=="rally" && restored.accessories==setOf("spoiler"))
             check(restored.practice.coins.none { MazeMarket.key(1,it.slot) in earned.claimed })
             check(find(root(activity),"Market · ${earned.balance}")!=null)
         }
@@ -657,12 +759,12 @@ class ThemeImageInstrumentation : Instrumentation() {
                 screenshot("dialogs-${theme.lowercase()}-market-vehicles.png")
                 clickWindow("Buy Rally · 20")
                 waitUntil { onMain { wallet.vehicle=="rally" && wallet.balance==15 } }
-                clickWindow("Colors")
-                checkDialogButton(activity,market,"Colors")
-                showMarketItem("Buy Forest · 15")
-                screenshot("dialogs-${theme.lowercase()}-market-colors.png")
-                clickWindow("Buy Forest · 15")
-                waitUntil { onMain { wallet.theme=="forest" && wallet.balance==0 } }
+                clickWindow("Accessories")
+                checkDialogButton(activity,market,"Accessories")
+                showMarketItem("Buy Spoiler · 14")
+                screenshot("dialogs-${theme.lowercase()}-market-accessories.png")
+                clickWindow("Buy Spoiler · 14")
+                waitUntil { onMain { wallet.accessories==setOf("spoiler") && wallet.balance==1 } }
                 clickWindow("Done")
                 onMain { activity.finish() }; waitForIdleSync()
             }
@@ -724,11 +826,14 @@ class ThemeImageInstrumentation : Instrumentation() {
         if(view is ViewGroup) for(index in 0 until view.childCount) findMaze(view.getChildAt(index))?.let { return it }
         return null
     }
-    private fun windowText(text:String):android.view.accessibility.AccessibilityNodeInfo? = uiAutomation.windows
+    private fun windowText(text:String):android.view.accessibility.AccessibilityNodeInfo? {
+        if(android.os.Build.VERSION.SDK_INT>=34) uiAutomation.clearCache()
+        return uiAutomation.windows
         .mapNotNull { it.root }.flatMap { root ->
             root.findAccessibilityNodeInfosByText(text) + root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT))
         }
         .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && (it.text?.toString()?.equals(text,ignoreCase=true)==true || (it.contentDescription?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true)) }
+    }
     private fun clickWindow(text:String) {
         var node=windowText(text) ?: error("Missing UI: $text")
         while(!node.isClickable && node.parent!=null) node=node.parent

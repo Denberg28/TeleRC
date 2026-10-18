@@ -2,21 +2,26 @@ package io.github.denberg28.telerc
 
 import kotlin.random.Random
 
-internal enum class MazeItemKind { VEHICLE, COLOR }
+internal enum class MazeItemKind { VEHICLE, ACCESSORY }
+internal enum class MazeVehicleClass(val label:String) { LAND("Land"), SEA("Sea"), AIR("Air"), SPACE("Space") }
 internal data class MazeMarketItem(val id:String,val name:String,val kind:MazeItemKind,val price:Int,
-    val color:Int,val floor:Int=0,val wall:Int=0)
+    val color:Int,val vehicleClass:MazeVehicleClass=MazeVehicleClass.LAND)
 
-/** Cosmetic-only, fixed prices. 220 earnable coins, 180 total paid catalog cost. */
+/** Cosmetic catalog. Fixed lifetime supply and total paid catalog cost are both 220. */
 internal object MazeMarket {
     val items=listOf(
-        MazeMarketItem("scout","Scout",MazeItemKind.VEHICLE,0,0xff244366.toInt()),
+        MazeMarketItem("scout","Scout",MazeItemKind.VEHICLE,0,0xff4384b5.toInt()),
         MazeMarketItem("rally","Rally",MazeItemKind.VEHICLE,20,0xffdf7536.toInt()),
         MazeMarketItem("buggy","Buggy",MazeItemKind.VEHICLE,35,0xff248f84.toInt()),
-        MazeMarketItem("hauler","Hauler",MazeItemKind.VEHICLE,50,0xff82743b.toInt()),
-        MazeMarketItem("navy","Navy",MazeItemKind.COLOR,0,0xff809bbb.toInt()),
-        MazeMarketItem("forest","Forest",MazeItemKind.COLOR,15,0xffa5d6ae.toInt(),0xff203b30.toInt(),0xffa5d6ae.toInt()),
-        MazeMarketItem("ember","Ember",MazeItemKind.COLOR,25,0xffedb695.toInt(),0xff432e2a.toInt(),0xffedb695.toInt()),
-        MazeMarketItem("glacier","Glacier",MazeItemKind.COLOR,35,0xfface3ed.toInt(),0xff203a49.toInt(),0xfface3ed.toInt())
+        MazeMarketItem("hauler","Hauler",MazeItemKind.VEHICLE,50,0xffa89955.toInt()),
+        MazeMarketItem("skiff","Skiff",MazeItemKind.VEHICLE,18,0xff46bfc5.toInt(),MazeVehicleClass.SEA),
+        MazeMarketItem("plane","Skywing",MazeItemKind.VEHICLE,22,0xffe7ad60.toInt(),MazeVehicleClass.AIR),
+        MazeMarketItem("shuttle","Starship",MazeItemKind.VEHICLE,25,0xffa797e7.toInt(),MazeVehicleClass.SPACE),
+        MazeMarketItem("hood","Hood",MazeItemKind.ACCESSORY,6,0xffefc577.toInt()),
+        MazeMarketItem("armament","Armament",MazeItemKind.ACCESSORY,12,0xffb1c3d3.toInt()),
+        MazeMarketItem("wheels","Wheels",MazeItemKind.ACCESSORY,10,0xff68d3b4.toInt()),
+        MazeMarketItem("exhaust","Exhaust",MazeItemKind.ACCESSORY,8,0xffec9f6b.toInt()),
+        MazeMarketItem("spoiler","Spoiler",MazeItemKind.ACCESSORY,14,0xffd6a4d9.toInt())
     )
     val freeIds=items.filter { it.price==0 }.map { it.id }.toSet()
     fun item(id:String)=items.firstOrNull { it.id==id }
@@ -26,40 +31,45 @@ internal object MazeMarket {
     fun available(level:Int,wallet:MazeWallet)=(0 until quota(level)).filter { key(level,it) !in wallet.claimed }
 }
 
-/** A single bounded save: balance is derived from unique claims minus paid ownership. */
-internal class MazeWallet private constructor(val claimed:Set<Int>,val owned:Set<String>,val vehicle:String,val theme:String) {
+/** Bounded v2 save. Removed v1 colors are refunded by retaining claims and omitting their cost. */
+internal class MazeWallet private constructor(val claimed:Set<Int>,val owned:Set<String>,val vehicle:String,
+    val accessories:Set<String>) {
     val balance:Int get()=claimed.size-MazeMarket.items.filter { it.id in owned }.sumOf { it.price }
+    fun equipped(id:String)=id==vehicle || id in accessories
     fun claim(level:Int,slot:Int):MazeWallet? {
         val key=MazeMarket.key(level,slot) ?: return null
         if(key in claimed) return null
-        return MazeWallet(claimed+key,owned,vehicle,theme)
+        return MazeWallet(claimed+key,owned,vehicle,accessories)
     }
     fun buy(id:String):MazeWallet? {
         val item=MazeMarket.item(id) ?: return null
         if(id in owned || item.price>balance) return null
-        return MazeWallet(claimed,owned+id,vehicle,theme)
+        return MazeWallet(claimed,owned+id,vehicle,accessories)
     }
     fun equip(id:String):MazeWallet? {
         val item=MazeMarket.item(id) ?: return null
         if(id !in owned) return null
-        return MazeWallet(claimed,owned,if(item.kind==MazeItemKind.VEHICLE) id else vehicle,
-            if(item.kind==MazeItemKind.COLOR) id else theme)
+        return if(item.kind==MazeItemKind.VEHICLE) MazeWallet(claimed,owned,id,accessories)
+            else MazeWallet(claimed,owned,vehicle,accessories+id)
     }
-    fun encode()="1|${claimed.sorted().joinToString(",")}|${MazeMarket.items.filter { it.id in owned }.joinToString(",") { it.id }}|$vehicle|$theme"
+    fun remove(id:String):MazeWallet? = if(id in accessories) MazeWallet(claimed,owned,vehicle,accessories-id) else null
+    fun encode()="2|${claimed.sorted().joinToString(",")}|${MazeMarket.items.filter { it.id in owned }.joinToString(",") { it.id }}|$vehicle|${accessories.sorted().joinToString(",")}"
     companion object {
         fun decode(raw:String):MazeWallet {
             val fields=if(raw.length<=8192) raw.split('|') else emptyList()
-            if(fields.size!=5 || fields[0]!="1") return MazeWallet(emptySet(),MazeMarket.freeIds,"scout","navy")
+            if(fields.size!=5 || fields[0] !in listOf("1","2")) return MazeWallet(emptySet(),MazeMarket.freeIds,"scout",emptySet())
             val claims=fields[1].split(',').take(280).mapNotNull { it.toIntOrNull() }.filter(MazeMarket::validKey).toSet()
-            val requested=fields[2].split(',').take(MazeMarket.items.size).toSet()
+            val requested=fields[2].split(',').take(32).toSet()
             var budget=claims.size
             val owned=MazeMarket.freeIds.toMutableSet()
-            for(item in MazeMarket.items.filter { it.price>0 }) if(item.id in requested && item.price<=budget) {
+            for(item in MazeMarket.items.filter { it.price>0 }) if(item.id in requested && item.price<=budget &&
+                (fields[0]=="2" || item.kind==MazeItemKind.VEHICLE && item.id in setOf("rally","buggy","hauler"))) {
                 owned.add(item.id); budget-=item.price
             }
             val vehicle=fields[3].takeIf { it in owned && MazeMarket.item(it)?.kind==MazeItemKind.VEHICLE } ?: "scout"
-            val theme=fields[4].takeIf { it in owned && MazeMarket.item(it)?.kind==MazeItemKind.COLOR } ?: "navy"
-            return MazeWallet(claims,owned,vehicle,theme)
+            val accessories=if(fields[0]=="2") fields[4].split(',').take(32).filter {
+                it in owned && MazeMarket.item(it)?.kind==MazeItemKind.ACCESSORY }.toSet() else emptySet()
+            return MazeWallet(claims,owned,vehicle,accessories)
         }
     }
 }
@@ -78,3 +88,4 @@ internal object MazeCoins {
             .mapIndexed { index,slot -> MazeCoin(slot,cells[index].first,cells[index].second) }
     }
 }
+

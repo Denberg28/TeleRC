@@ -96,11 +96,11 @@ internal class MazePracticeDialogs(private val activity:Activity) {
                 setPadding(dp(4),dp(6),dp(4),dp(6))
                 background=RippleDrawable(ColorStateList.valueOf(soft),ColorDrawable(Color.TRANSPARENT),null)
                 isClickable=true; isFocusable=true
-                contentDescription="Level $level, $state, best ${best?.let(MazeRecords::time) ?: "not set"}"
+                contentDescription="Level $level, ${MazeEnvironment.forLevel(level).label}, $state, best ${best?.let(MazeRecords::time) ?: "not set"}"
                 setOnClickListener { sheet.dialog.dismiss(); selected(level) }
             }
             row.addView(label(if(current) "•" else if(level<=progress.completed) "✓" else "",14f,accent),LinearLayout.LayoutParams(dp(24),-2))
-            row.addView(label("Level $level",14f,if(current) accent else ink,current),LinearLayout.LayoutParams(0,-2,1f))
+            row.addView(label("Level $level · ${MazeEnvironment.forLevel(level).label}",14f,if(current) accent else ink,current),LinearLayout.LayoutParams(0,-2,1f))
             row.addView(label(best?.let(MazeRecords::time) ?: "—",12f,muted),LinearLayout.LayoutParams(-2,-2))
             sheet.body.addView(row,LinearLayout.LayoutParams(-1,-2))
             if(level<progress.unlocked) divider(sheet.body)
@@ -132,11 +132,12 @@ internal class MazePracticeDialogs(private val activity:Activity) {
             val current=wallet()
             balance.text="${current.balance} coins"
             for((item,button) in controls) {
-                val equipped=item.id==current.vehicle || item.id==current.theme
+                val equipped=current.equipped(item.id)
+                val removable=equipped && item.kind==MazeItemKind.ACCESSORY
                 val owned=item.id in current.owned
-                button.text=when { equipped -> "Selected"; owned -> "Use"; else -> "Buy · ${item.price}" }
-                button.contentDescription=when { equipped -> "${item.name} · Equipped"; owned -> "Use ${item.name}"; else -> "Buy ${item.name} · ${item.price}" }
-                button.isEnabled=!equipped && (owned || current.balance>=item.price)
+                button.text=when { removable -> "Remove"; equipped -> "Selected"; owned -> "Use"; else -> "Buy · ${item.price}" }
+                button.contentDescription=when { removable -> "Remove ${item.name}"; equipped -> "${item.name} · Equipped"; owned -> "Use ${item.name}"; else -> "Buy ${item.name} · ${item.price}" }
+                button.isEnabled=removable || !equipped && (owned || current.balance>=item.price)
             }
         }
         fun category(kind:MazeItemKind) {
@@ -152,25 +153,33 @@ internal class MazePracticeDialogs(private val activity:Activity) {
                 } }
             }
             controls.clear(); sheet.body.removeAllViews()
+            var group:MazeVehicleClass?=null
             for(item in MazeMarket.items.filter { it.kind==kind }) {
-                val row=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(52) }
-                row.addView(MazeMarketPreview(activity,item),LinearLayout.LayoutParams(dp(36),dp(36)).apply { rightMargin=dp(12) })
+                if(kind==MazeItemKind.VEHICLE && group!=item.vehicleClass) {
+                    group=item.vehicleClass
+                    sheet.body.addView(label(item.vehicleClass.label,12f,muted,true),LinearLayout.LayoutParams(-1,-2).apply {
+                        topMargin=dp(10); bottomMargin=dp(4)
+                    })
+                }
+                val row=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(56) }
+                row.addView(MazeMarketPreview(activity,item),LinearLayout.LayoutParams(dp(44),dp(44)).apply { rightMargin=dp(10) })
                 row.addView(label(item.name),LinearLayout.LayoutParams(0,-2,1f))
                 val buy=action("") {
                     val current=wallet()
-                    val next=if(item.id in current.owned) current.equip(item.id) else current.buy(item.id)?.equip(item.id)
+                    val next=if(item.kind==MazeItemKind.ACCESSORY && item.id in current.accessories) current.remove(item.id)
+                        else if(item.id in current.owned) current.equip(item.id) else current.buy(item.id)?.equip(item.id)
                     if(next!=null) changed(next)
                     refresh()
                 }
                 row.addView(buy,LinearLayout.LayoutParams(-2,dp(48)))
                 controls.add(item to buy)
-                sheet.body.addView(row,LinearLayout.LayoutParams(-1,dp(52)))
+                sheet.body.addView(row,LinearLayout.LayoutParams(-1,-2))
                 if(item!=MazeMarket.items.last { it.kind==kind }) divider(sheet.body)
             }
             sheet.scroll.scrollTo(0,0); refresh()
         }
         for(kind in MazeItemKind.entries) {
-            val button=action(if(kind==MazeItemKind.VEHICLE) "Vehicles" else "Colors") { category(kind) }
+            val button=action(if(kind==MazeItemKind.VEHICLE) "Vehicles" else "Accessories") { category(kind) }
             tabButtons.add(kind to button)
             tabs.addView(button,LinearLayout.LayoutParams(0,dp(48),1f))
         }
@@ -179,3 +188,4 @@ internal class MazePracticeDialogs(private val activity:Activity) {
         return sheet.dialog
     }
 }
+

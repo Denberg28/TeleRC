@@ -1,3 +1,11 @@
+# 0.8.78 — practice worlds and accessories
+
+- Setup version is centered in its bottom footer in expanded/minimized modes; narrow layouts place it below corner actions.
+- City (1–5), Forest (6–10), Desert (11–15), Space (16–20) have deterministic vector scenery, matching floor/wall palettes and environment labels. Course version/physics/times remain unchanged.
+- Market groups seven distinct silhouettes into Land/Sea/Air/Space. Adds Skiff, Skywing and Starship.
+- Accessories replaces Colors: stack/remove Hood, Armament, Wheels, Exhaust and Spoiler. Cosmetics only. Existing color purchases refund through v1-to-v2 wallet migration; vehicles, claimed coins and progress remain. Complete catalog costs the existing 220-coin supply.
+- App-only signed test candidate; no firmware reflash. Phone/rover acceptance remains pending; see docs/PRACTICE_WORLDS_078.md.
+
 ## 0.8.77
 
 - Persist desired FPV receiver and camera/map choice; reconnect granted receivers after USB re-enumeration and foreground resume.
