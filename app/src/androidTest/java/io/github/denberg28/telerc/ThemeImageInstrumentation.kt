@@ -434,8 +434,9 @@ class ThemeImageInstrumentation : Instrumentation() {
                 onMain { form.getButton(-1).performClick(); check(form.isShowing && input.error!=null) }
                 screenshot("shared-${theme.lowercase()}-form.png")
                 onMain { form.dismiss() }
+                var cancelled=false
                 val message=onMain { AppDialog.Builder(activity).setTitle("Help & safety").setMessage("Keep TeleRC open. STOP requests HOLD.")
-                    .setPositiveButton("OK",null).show() }
+                    .setOnCancelListener { cancelled=true }.setPositiveButton("OK",null).show() }
                 checkPopupStable(activity,message)
                 screenshot("shared-${theme.lowercase()}-message.png")
                 onMain {
@@ -448,6 +449,7 @@ class ThemeImageInstrumentation : Instrumentation() {
                     activity.finish()
                 }
                 waitForIdleSync()
+                waitUntil { cancelled }
             }
         } finally { font("1.0"); prefs.edit().putString("background",oldTheme).commit() }
     }

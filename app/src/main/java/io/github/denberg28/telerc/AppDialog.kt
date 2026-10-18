@@ -38,7 +38,7 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
     companion object {
         private val open=WeakHashMap<Activity,MutableList<WeakReference<AppDialog>>>()
         fun dismissAll(activity:Activity) {
-            open.remove(activity)?.mapNotNull { it.get() }?.forEach { it.dismiss() }
+            open.remove(activity)?.mapNotNull { it.get() }?.forEach { it.cancel() }
         }
     }
     class Builder(private val activity:Activity) {
@@ -51,10 +51,12 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
         private var choice:((DialogInterface,Int)->Unit)?=null
         private val buttons=linkedMapOf<Int,Pair<String,((DialogInterface,Int)->Unit)?>>()
         private var cancelable=true
+        private var cancelled:((DialogInterface)->Unit)?=null
         fun setTitle(value:String)=apply { title=value }
         fun setMessage(value:String)=apply { message=value }
         fun setView(value:View)=apply { custom=value }
         fun setCancelable(value:Boolean)=apply { cancelable=value }
+        fun setOnCancelListener(action:((DialogInterface)->Unit)?)=apply { cancelled=action }
         fun setItems(values:Array<out String>,action:(DialogInterface,Int)->Unit)=apply { items=values; choice=action; single=false }
         fun setSingleChoiceItems(values:Array<out String>,checked:Int,action:(DialogInterface,Int)->Unit)=apply {
             items=values; selected=checked; choice=action; single=true
@@ -67,6 +69,7 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
             val dialog=AppDialog(activity)
             dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
             dialog.setCancelable(cancelable); dialog.setCanceledOnTouchOutside(cancelable)
+            dialog.setOnCancelListener { cancelled?.invoke(it) }
             val density=activity.resources.displayMetrics.density
             fun dp(n:Int)=(n*density+.5f).toInt()
             val scale=maxOf(1f,activity.resources.configuration.fontScale)

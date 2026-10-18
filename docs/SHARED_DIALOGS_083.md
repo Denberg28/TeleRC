@@ -50,3 +50,5 @@ Final workflow and BUILD_INFO supersede pending software gates only. No stable o
 6. Verify update checks with public release access, no network, repeated presses, backgrounding, bad metadata/digest/signer, and Android installer handoff; no installation is allowed without valid identity/integrity and explicit user intent.
 
 Rollback uses a forward-version rebuild of the retained 0.8.82 product with wallet v2 compatibility and settings preserved. Keep the previous APK and FC parameter backup. Next: final software qualification, then the phone/raised-wheel procedures above.
+
+Qualification follow-up: initial run39158705216 passed source/host/default sanitizer gates and caught a missing Builder cancel-listener compatibility method during Kotlin compilation. The final shared factory preserves that listener and invokes cancellation cleanup on lifecycle/page teardown; native transition coverage asserts the callback. A complete build and UI rerun is required before publication.
