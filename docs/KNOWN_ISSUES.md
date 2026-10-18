@@ -1,3 +1,7 @@
+# Persistent FPV limits — 0.8.77
+
+Android controls USB defaults and grants. TeleRC cannot set Always silently; choose it in the system chooser when offered. Automatic reconnect reuses actual grants and otherwise waits for explicit Connect. A physical detach, revoked/one-time CAMERA permission or OEM default handling can still require approval. VID/PID cannot distinguish two identical receivers without serial identity, so ambiguous matches are not opened. Native cleanup timing, power loss, actual UVC/RF stability and phone chooser behavior are unmeasured; run [acceptance](FPV_PERSISTENT_077.md). Retry frequency is bounded, not a guarantee of recovery or glitch-free RF.
+
 # Stable theme transitions and compact navigation — 0.8.75
 
 Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.

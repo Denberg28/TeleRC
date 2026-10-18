@@ -311,3 +311,7 @@ GitHub workflow `full-ui-wifi-arm.yml` is restricted to `work/fpv-ui-058-*` and 
 See [scope, acceptance, A–F gates, installation and rollback](CONSOLE_076.md). Baseline c9d3079/code93; candidate code94. Cloud results supersede pending software gates only. Actual phone/rover HIL remains BLOCKED.
 
 0.8.76 final software result: tested source `cfa044896a2f8ca40dffb78366d635a38b3722b5`; run [39083855942](https://github.com/Denberg28/TeleRC/actions/runs/39083855942). Build/JVM/debug+release lint/native geometry/theme/maze/bridge sanitizers/signing/package checks PASS. Workflow overall FAILURE is artifact retention only: account Actions storage quota exhausted. No retained APK download. Physical HIL BLOCKED. See CONSOLE_076.md.
+
+# Persistent USB FPV — 0.8.77
+
+See [scope, gates, Android default/permission limits, phone acceptance and rollback](FPV_PERSISTENT_077.md). Baseline b193dda/code94; candidate code95. Required checks are rerun on the modified sources. Actual UVC detach/replug/default chooser/HIL remain BLOCKED; emulator no-device lifecycle checks do not establish physical reliability.

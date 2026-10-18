@@ -81,6 +81,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkMazeLevels()
             checkMarket()
             checkPracticeDialogLayouts()
+            checkFpvReconnectLifecycle()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             checkThemeTransitions(photo = false)
@@ -88,13 +89,48 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
         }
+    }
+    private fun checkFpvReconnectLifecycle() {
+        val prefs=targetContext.getSharedPreferences("fpv",0)
+        prefs.edit().putBoolean("auto_connect",false).putBoolean("show_camera",false)
+            .remove("receiver_vendor").remove("receiver_product").commit()
+        val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        onMain { find(root(activity),"Controls ›")!!.performClick() }
+        waitUntil { onMain { find(root(activity),"Connect FPV")!=null } }
+        fun camera(view:View):UsbFpvView? {
+            if(view is UsbFpvView) return view
+            if(view is ViewGroup) for(i in 0 until view.childCount) camera(view.getChildAt(i))?.let { return it }
+            return null
+        }
+        val view=onMain { camera(root(activity))!! }
+        val policyField=UsbFpvView::class.java.getDeclaredField("connection").apply { isAccessible=true }
+        val helperField=UsbFpvView::class.java.getDeclaredField("helper").apply { isAccessible=true }
+        val policy=onMain { policyField.get(view) as FpvReconnectPolicy }
+        onMain {
+            repeat(4) { find(root(activity),"Connect FPV")!!.performClick() }
+            check(policy.wanted && policy.pendingPermission==null && helperField.get(view)==null)
+            check(prefs.getBoolean("show_camera",false))
+            find(root(activity),"Connect FPV")!!.performLongClick()
+        }
+        waitUntil { windowText("USB default help")!=null }
+        clickWindow("USB default help")
+        waitUntil { windowText("Use TeleRC for this receiver")!=null }
+        screenshot("fpv-default-help.png"); clickWindow("Done")
+        onMain { view.setAutoReconnect(false) }
+        check(onMain { !policy.wanted && !view.autoReconnect() && helperField.get(view)==null })
+        onMain { find(root(activity),"Controls ▾")!!.performClick() }
+        waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
+        val registeredField=UsbFpvView::class.java.getDeclaredField("receiverRegistered").apply { isAccessible=true }
+        check(onMain { !policy.wanted && registeredField.get(view)==false && helperField.get(view)==null })
+        onMain { activity.finish() }; waitForIdleSync()
+        prefs.edit().putBoolean("show_camera",false).commit()
     }
     private fun checkThemeTransitions(photo:Boolean) {
         val prefs=targetContext.getSharedPreferences("appearance",0)

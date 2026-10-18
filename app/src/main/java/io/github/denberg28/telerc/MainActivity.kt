@@ -294,6 +294,7 @@ class MainActivity : Activity() {
         if (device.deviceId != supplied.deviceId || !UsbFpvView.isVideoDevice(device)) return
         // Consume this launch so a later theme/process recreation cannot replay it.
         setIntent(Intent(attachment).apply { action = Intent.ACTION_MAIN; removeExtra(UsbManager.EXTRA_DEVICE) })
+        if (page == Page.CONTROLS && fpvCamera?.handles(device) == true) return
         disableControl()
         switchTo(Page.CONTROLS)
         showingCamera = true
@@ -987,6 +988,7 @@ class MainActivity : Activity() {
 
     private fun renderControls() {
         host = null; port = null; connect = null
+        showingCamera = getSharedPreferences("fpv", MODE_PRIVATE).getBoolean("show_camera", false)
         val root = shell()
         status = null
         val pages = pageDropdown("Controls")
@@ -1096,6 +1098,7 @@ class MainActivity : Activity() {
         setContentView(root)
         if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
         updateControlsScene()
+        if (resumed) fpvCamera?.resume()
         updateRoute()
         // Ask while controls are still disabled; a permission dialog must never interrupt driving.
         if (!locationPermissionRequested && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -1108,6 +1111,9 @@ class MainActivity : Activity() {
     }
     private fun updateControlsScene() {
         if (page != Page.CONTROLS) return
+        val fpvPrefs = getSharedPreferences("fpv", MODE_PRIVATE)
+        if (fpvPrefs.getBoolean("show_camera", false) != showingCamera)
+            fpvPrefs.edit().putBoolean("show_camera", showingCamera).apply()
         val mapVisibility = if (mapActive && !showingCamera) View.VISIBLE else View.GONE
         routeMap?.view?.visibility = mapVisibility
         controlsLocate?.visibility = mapVisibility
@@ -1164,12 +1170,20 @@ class MainActivity : Activity() {
     private fun showFpvOptions() {
         disableControl()
         val camera = fpvCamera ?: return
-        val names = FpvStreamPolicy.Mode.entries.map { (if (it == camera.mode()) "✓ " else "") + it.label } + "USB diagnostics"
+        val modeCount = FpvStreamPolicy.Mode.entries.size
+        val names = FpvStreamPolicy.Mode.entries.map { (if (it == camera.mode()) "✓ " else "") + it.label } +
+            listOf("USB diagnostics", "Auto reconnect · ${if (camera.autoReconnect()) "On" else "Off"}", "USB default help")
         AlertDialog.Builder(this).setTitle("FPV video options")
             .setItems(names.toTypedArray()) { _, index ->
-                if (index == FpvStreamPolicy.Mode.entries.size) {
+                if (index == modeCount) {
                     AlertDialog.Builder(this).setTitle("USB FPV diagnostics").setMessage(camera.diagnosis())
                         .setPositiveButton("Close", null).show()
+                } else if (index == modeCount + 1) {
+                    camera.setAutoReconnect(!camera.autoReconnect())
+                } else if (index == modeCount + 2) {
+                    AlertDialog.Builder(this).setTitle("Use TeleRC for this receiver")
+                        .setMessage("When Android offers an app chooser on receiver attachment, select TeleRC and Always / Use by default. Android controls that choice. TeleRC reuses existing USB access on reconnect; if Android removes the grant, tap Connect FPV to approve access again. To change an existing choice, clear the other camera app's defaults in Android Settings, then reconnect the receiver.")
+                        .setPositiveButton("Done", null).show()
                 } else {
                     showingCamera = true; updateControlsScene()
                     // Persist the format before requesting runtime camera access.

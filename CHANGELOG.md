@@ -1,3 +1,10 @@
+## 0.8.77
+
+- Persist desired FPV receiver and camera/map choice; reconnect granted receivers after USB re-enumeration and foreground resume.
+- Separate and deduplicate explicit USB permission transactions; automatic recovery waits for missing access instead of prompting repeatedly. Android owns the Always/default chooser.
+- Keep existing sessions on repeated Connect, reject stale session/grant callbacks, restart replaced textures and reset recovery after sustained fresh frames. Retries slow to 30 seconds after three fast attempts.
+- Add Auto reconnect and USB default help to video options, production reconnect-policy regression tests and native no-device lifecycle checks. Physical UVC/phone validation remains pending.
+
 ## 0.8.76
 
 - Extend Controls and Test center panes through the former footer by placing bottom actions in their joystick columns.

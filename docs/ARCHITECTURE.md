@@ -1,3 +1,7 @@
+# Persistent USB FPV — 0.8.77
+
+`FpvReconnectPolicy` owns desired receiver type, one explicit permission transaction, grant/attachment selection and rate-limited recovery. `UsbFpvView` supplies current Android device/grant snapshots, requests USB access only on explicit user attempts, and creates the UVC helper only after access exists. The generation/attachment guard rejects stale callbacks. VID/PID and desired preview are preferences; USB grants remain Android-owned. MainActivity handles the system attach chooser and ignores duplicate intents for an owned receiver. Returning to Controls restores the saved preview only; vehicle authority remains explicit. See [gates/phone limits](FPV_PERSISTENT_077.md).
+
 # Stable theme transitions and compact navigation — 0.8.75
 
 Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.
