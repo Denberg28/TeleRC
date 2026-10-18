@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - name: Preflight retained signed baseline
         env:
           GH_TOKEN: ${{ github.token }}
@@ -22,32 +23,32 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
       - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
-      - name: Existing control and firmware host regression
-        run: |
-          python bridge/sync_motor_core.py --check
-          bridge/tests/run.sh
-          SANITIZE=1 bridge/tests/run.sh
-      - name: Prepare existing signer
-        env:
-          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
-        run: |
-          test -n "$KEYSTORE_BASE64"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
-          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
-      - name: JVM tests, debug and release lint/build
-        env:
-          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
-          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
-          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:lintRelease :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon
-      - name: Retain review APK in draft before native qualification
+      - name: Prove unchanged APK sources and recover the retained signed build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.78.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify deliverables/TeleRC-v0.8.78.apk
-          gh release create "practice-review-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "Practice review $GITHUB_SHA" deliverables/TeleRC-v0.8.78.apk
+          git diff --exit-code 5138b1ad51c11d51ad98c09726fd3476713ac92f HEAD -- app/src/main app/src/test app/build.gradle.kts bridge scripts tests build.gradle.kts settings.gradle.kts gradle.properties gradle gradlew gradlew.bat
+          mkdir -p deliverables validation-evidence
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/39092597154 > validation-evidence/product-run.json
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/39092597154/jobs > validation-evidence/product-jobs.json
+          gh api --allow-escape-sequences repos/$GITHUB_REPOSITORY/actions/jobs/117572303572/logs > validation-evidence/product-build.log
+          gh release view "practice-review-5138b1ad51c11d51ad98c09726fd3476713ac92f" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,tagName > validation-evidence/draft.json
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('validation-evidence')
+          run=json.loads((p/'product-run.json').read_text())
+          assert run['head_sha']=='5138b1ad51c11d51ad98c09726fd3476713ac92f' and run['status']=='completed'
+          job=next(j for j in json.loads((p/'product-jobs.json').read_text())['jobs'] if j['id']==117572303572)
+          for name in ['Existing control and firmware host regression','JVM tests, debug and release lint/build','Retain review APK in draft before native qualification']:
+              assert next(s for s in job['steps'] if s['name']==name)['conclusion']=='success',name
+          d=json.loads((p/'draft.json').read_text())
+          assert d['isDraft'] and d['tagName']=='practice-review-5138b1ad51c11d51ad98c09726fd3476713ac92f' and d['targetCommitish']=='5138b1ad51c11d51ad98c09726fd3476713ac92f'
+          print('PASS: exact product/unit/firmware/build source match; original build/JVM/lint/sanitizers retained')
+          print('Prior native tab-menu timeout is not reused as a passing UI result; fresh native qualification follows')
+          PY
+          gh release download "practice-review-5138b1ad51c11d51ad98c09726fd3476713ac92f" --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.78.apk --output deliverables/TeleRC-v0.8.78.apk
+      - name: Build current native test APK and debug app, lint changed test harness
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --no-daemon
       - name: Reclaim completed tooling before emulator
         run: python scripts/reclaim-ui-runner.py
       - name: Enable emulator KVM
@@ -73,8 +74,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p deliverables
-          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.78.apk
-          python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.78.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          GITHUB_SHA=5138b1ad51c11d51ad98c09726fd3476713ac92f python scripts/verify-fpv-apk.py deliverables/TeleRC-v0.8.78.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          python - <<'PY'
+          import os,pathlib
+          p=pathlib.Path('deliverables/BUILD_INFO.txt')
+          s=p.read_text().replace('PASS (preceding required steps)','PASS (source-identical product run 39092597154)')
+          s+='\nAPK build source: 5138b1ad51c11d51ad98c09726fd3476713ac92f; original run 39092597154\n'
+          s+='Validation/source-archive commit: '+os.environ['GITHUB_SHA']+'\n'
+          s+='Only native input/cache synchronization and workflow changed. Runtime/unit/firmware/build/script sources match exactly. Fresh native UI checks passed in this run.\n'
+          p.write_text(s)
+          print(s)
+          PY
           cp docs/PRACTICE_WORLDS_078.md deliverables/START_HERE.md
           git archive --format=zip -o deliverables/TeleRC-v0.8.78-source.zip HEAD
           cd deliverables
@@ -82,7 +92,7 @@ jobs:
           sha256sum -c SHA256SUMS.txt
       - name: Package check evidence
         run: |
-          zip -qr deliverables/TeleRC-v0.8.78-check-evidence.zip app/build/reports/tests app/build/reports/lint-results-* app/build/photo-evidence
+          zip -qr deliverables/TeleRC-v0.8.78-check-evidence.zip app/build/reports/lint-results-* app/build/photo-evidence validation-evidence app/src/androidTest
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
@@ -93,7 +103,5 @@ jobs:
           test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
           cd deliverables
           python -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
-          gh release create v0.8.78 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.78 — practice worlds and accessories" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
-      - if: always()
-        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
+          gh release create v0.8.78 --repo "$GITHUB_REPOSITORY" --target 5138b1ad51c11d51ad98c09726fd3476713ac92f --prerelease --latest=false --title "TeleRC v0.8.78 — practice worlds and accessories" --notes-file START_HERE.md *.apk *.zip *.md BUILD_INFO.txt SHA256SUMS.txt
 

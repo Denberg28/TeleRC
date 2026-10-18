@@ -44,3 +44,9 @@ Install over the existing signed TeleRC without uninstalling or clearing app dat
 Record phone model, OS/font/orientation, screenshots, starting/ending wallet balances and any failure. Actual hardware/installation HIL remains BLOCKED until measured.
 
 Rollback: Android prevents lower version codes. An unmodified 0.8.77 cannot read v2 wallet saves; use a forward-version repair build that reads v2, retains all claims and refunds unsupported cosmetics while restoring earlier presentation. Do not uninstall to downgrade because that loses private progress/settings.
+
+## Native qualification follow-up
+
+Product APK source `5138b1ad51c11d51ad98c09726fd3476713ac92f`, run 39092597154/job117572303572: bridge sync/host/default sanitizers, all JVM tests and debug/release lint/build PASS. The native attempt FAILed reopening the existing Test tab menu before reaching new environment/accessory tests; accessibility returned no app root and Android logged no preceding product crash. This failure is not reused as a native pass.
+
+The follow-up changes instrumentation input/cache handling and workflow only: real touch input for tab buttons, fresh API34+ accessibility snapshots, strict existing bounds/content assertions, and screen/popup diagnostics on failure. It proves exact runtime/unit/firmware/build/script source equivalence before reusing product tests and the retained signed APK. Updated instrumentation/debug builds, harness lint and a fresh full native suite remain required. BUILD_INFO identifies product APK and validation/source archive commits separately; publication requires all fresh native/signing/package checks.

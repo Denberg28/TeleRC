@@ -16,6 +16,7 @@ import kotlin.math.*
 
 /** Native bitmap/storage/render and FPV options checks; no USB hardware is simulated. */
 class ThemeImageInstrumentation : Instrumentation() {
+    private var lastTabActivity:Activity?=null
     override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
     override fun onStart() {
         try {
@@ -92,10 +93,22 @@ class ThemeImageInstrumentation : Instrumentation() {
             onMain { activity.finish() }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
+            val frame=runCatching {
+                val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
+                val bytes=java.io.ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.PNG,100,bytes); bitmap.recycle()
+                "FAILED_UI_PNG="+android.util.Base64.encodeToString(bytes.toByteArray(),android.util.Base64.NO_WRAP)
+            }.getOrDefault("")
+            val popupState=runCatching { onMain {
+                val activity=lastTabActivity ?: return@onMain "No tab activity"
+                val field=MainActivity::class.java.getDeclaredField("pageMenu").apply { isAccessible=true }
+                val popup=field.get(activity) as? android.widget.PopupWindow
+                "Tab activity focus=${activity.hasWindowFocus()}, destroyed=${activity.isDestroyed}, popup=${popup?.isShowing}, attached=${popup?.contentView?.isAttachedToWindow}, shown=${popup?.contentView?.isShown}"
+            } }.getOrDefault("Tab state unavailable")
             val windows = runCatching { uiAutomation.windows.joinToString("\n") { window ->
                 "Window ${window.type} active=${window.isActive}: " + nodeText(window.root)
             } }.getOrDefault("Accessibility unavailable")
-            finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$windows\n") })
+            finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAIL: ${error.stackTraceToString()}\n$popupState\n$windows\n$frame\n") })
         }
     }
     private fun checkSetupVersion(activity:Activity) {
@@ -359,17 +372,31 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(find(shell,"F1")!=null && find(shell,"F2")!=null && find(shell,"F3")!=null)
         }
     }
+    private fun tapView(view:View) {
+        val bounds=onMain { android.graphics.Rect().also { check(view.getGlobalVisibleRect(it)) } }
+        val down=SystemClock.uptimeMillis()
+        for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)) {
+            val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,bounds.exactCenterX(),bounds.exactCenterY(),0)
+            event.source=android.view.InputDevice.SOURCE_TOUCHSCREEN
+            try { check(uiAutomation.injectInputEvent(event,true)) } finally { event.recycle() }
+            if(action==android.view.MotionEvent.ACTION_DOWN) SystemClock.sleep(40)
+        }
+        waitForIdleSync()
+    }
     private fun openTabMenu(activity:Activity,label:String) {
+        lastTabActivity=activity
         waitForIdleSync()
         waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
-        onMain { check(find(root(activity),"$label ▾")!!.performClick()) }
+        tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
+        lastTabActivity=activity
         waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
         if(label=="Setup") onMain { checkSetupVersion(activity) }
         val anchor=onMain { find(root(activity),"$label ▾")!! }
-        val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)); anchor.performClick() } }
+        val expected=onMain { android.graphics.Rect().also { check(anchor.getGlobalVisibleRect(it)) } }
+        tapView(anchor)
         waitUntil { windowText("Tab menu")!=null }
         val actual=android.graphics.Rect().also { windowText("Tab menu")!!.getBoundsInScreen(it) }
         val tolerance=2*activity.resources.displayMetrics.density
@@ -795,11 +822,14 @@ class ThemeImageInstrumentation : Instrumentation() {
         if(view is ViewGroup) for(index in 0 until view.childCount) findMaze(view.getChildAt(index))?.let { return it }
         return null
     }
-    private fun windowText(text:String):android.view.accessibility.AccessibilityNodeInfo? = uiAutomation.windows
+    private fun windowText(text:String):android.view.accessibility.AccessibilityNodeInfo? {
+        if(android.os.Build.VERSION.SDK_INT>=34) uiAutomation.clearCache()
+        return uiAutomation.windows
         .mapNotNull { it.root }.flatMap { root ->
             root.findAccessibilityNodeInfosByText(text) + root.findAccessibilityNodeInfosByText(text.uppercase(java.util.Locale.ROOT))
         }
         .firstOrNull { it.packageName?.toString()==targetContext.packageName && it.isVisibleToUser && (it.text?.toString()?.equals(text,ignoreCase=true)==true || (it.contentDescription?.toString()?.equals(text,ignoreCase=true)==true || it.contentDescription?.toString()?.startsWith("$text,",ignoreCase=true)==true)) }
+    }
     private fun clickWindow(text:String) {
         var node=windowText(text) ?: error("Missing UI: $text")
         while(!node.isClickable && node.parent!=null) node=node.parent
