@@ -41,8 +41,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS, TEST }
-    private var page = Page.SETUP
+    private enum class Page { SETUP, CONTROLS, TEST, WAYPOINT }
+    @Volatile private var page = Page.SETUP
+    private var waypointTab: WaypointTab? = null
     private var mazePractice: MazePractice? = null
     private var mazeView: MazePracticeView? = null
     private var mazeRestartDialog: android.app.Dialog? = null
@@ -266,6 +267,7 @@ class MainActivity : Activity() {
         }.apply()
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
+            "WAYPOINT" -> Page.WAYPOINT
             "TEST" -> Page.TEST
             "CONTROLS" -> Page.CONTROLS
             else -> Page.SETUP
@@ -311,6 +313,7 @@ class MainActivity : Activity() {
     }
     private fun switchTo(next: Page) {
         if (page == next) return
+        if (page == Page.WAYPOINT) waypointTab?.leave()
         disableControl()
         releaseMap()
         page = next
@@ -353,7 +356,7 @@ class MainActivity : Activity() {
                 inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
                 animationStyle = 0
             }
-            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST)) {
+            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST, "Waypoint" to Page.WAYPOINT)) {
                 rows.addView(text(name, 14f, if (destination == page) accent else ink, destination == page).apply {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     setPadding(dp(12), 0, dp(12), 0)
@@ -400,6 +403,7 @@ class MainActivity : Activity() {
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
             Page.TEST -> renderTest()
+            Page.WAYPOINT -> renderWaypoint()
         }
         refreshUi()
     }
@@ -992,6 +996,30 @@ class MainActivity : Activity() {
         row.addView(controlColumn(market,drivePanel,clearTimes),LinearLayout.LayoutParams(0,-1,1.6f))
         root.addView(row,LinearLayout.LayoutParams(-1,0,1f))
         update(); setContentView(root)
+    }
+
+    private fun renderWaypoint() {
+        host=null; port=null; connect=null; status=null; enable=null
+        val tab=waypointTab ?: WaypointTab(this,
+            { target to (connected.get() && !miniRoverMode && !usbMode) },
+            { dispatch ->
+                val udp=socket; val remote=endpoint; val portNumber=endpointPort
+                val submitted=SystemClock.elapsedRealtime()
+                if(udp!=null && remote!=null) txExecutor.execute {
+                    synchronized(commandLock) {
+                        if(socket===udp && connected.get() && !miniRoverMode && !usbMode &&
+                            !controlEnabled.get() && waypointTab?.canSend(dispatch)==true &&
+                            SystemClock.elapsedRealtime()-submitted in 0..500 &&
+                            (!dispatch.motion || page==Page.WAYPOINT && resumed)) {
+                            try { udp.send(DatagramPacket(dispatch.bytes,dispatch.bytes.size,remote,portNumber)) }
+                            catch (_:Exception) { runOnUiThread { waypointTab?.stop("Navigation send failed") } }
+                        }
+                    }
+                }
+            }).also { waypointTab=it }
+        val root=shell()
+        tab.create(root,pageDropdown("Waypoint"),started,resumed)
+        setContentView(root)
     }
 
     private fun renderControls() {
@@ -1632,6 +1660,10 @@ class MainActivity : Activity() {
                                 }
                             }
                         } else for (frame in Mavlink.frames(payload)) {
+                            if (waypointTab!=null) {
+                                val receivedAt=SystemClock.elapsedRealtime()
+                                runOnUiThread { if(socket===udp) waypointTab?.receive(frame,target,receivedAt) }
+                            }
                             val heartbeat = Mavlink.heartbeat(frame)
                             if (heartbeat != null && (target == 0 || target == heartbeat.system)) {
                                 val previousSystem = target
@@ -1780,6 +1812,7 @@ class MainActivity : Activity() {
         }
     }
     private fun stop(explicitDisconnect: Boolean = false) {
+        waypointTab?.disconnected()
         val udp = socket
         val remote = endpoint
         val system = target
@@ -1827,10 +1860,10 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
-    override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
-    override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
-    override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onPause() { waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onStart() { super.onStart(); started = true; waypointTab?.onStart(); routeMap?.onStart() }
+    override fun onStop() { waypointTab?.onStop(); fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
+    override fun onLowMemory() { super.onLowMemory(); waypointTab?.lowMemory(); routeMap?.onLowMemory() }
+    override fun onDestroy() { waypointTab?.close(); pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }

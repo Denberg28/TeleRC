@@ -1,3 +1,7 @@
+## 0.8.79
+
+Add isolated Waypoint map/tab, single or multi waypoint saved drafts, confirmed ArduRover DO_REPOSITION sequencing, verified HOLD/readiness/failsafe parameters and cancellation on stale telemetry/lifecycle/timeout. Existing gateway sketches remain unchanged and planning-only; compatible navigation link and physical/SITL validation pending. Preserve existing tab bodies, FPV, wallet and manual protocol.
+
 # 0.8.78 — practice worlds and accessories
 
 - Setup version is centered in its bottom footer in expanded/minimized modes; narrow layouts place it below corner actions.

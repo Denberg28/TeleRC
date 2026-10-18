@@ -1,3 +1,7 @@
+# Waypoint tab — 0.8.79
+
+An isolated Controls-style Waypoint tab adds confirmed single destinations, saved multi waypoint routes and phone-supervised ArduRover Guided sequencing with fresh navigation/parameter checks and confirmed HOLD handling. Setup/Controls/Test bodies, manual protocol, FPV and firmware stay unchanged. Existing mini/filtering gateways are planning-only: live execution requires a separately validated compatible transparent MAVLink link and FC GPS/compass/EKF. [Scope, software gates, compatibility and restrained-wheel acceptance](WAYPOINT_079.md). Physical navigation and full SITL integration remain NOT TESTED/BLOCKED; no stable promotion.
+
 # Practice worlds and accessories — 0.8.78
 
 `MazeEnvironment` maps each fixed five-level group to a palette; the deterministic Canvas renderer paints scenery below collision walls/coins/markers. `MazeVehicleRenderer` shares seven bounded top-view silhouettes and stackable accessory overlays with Market previews. Course version3 and physics are unchanged. Wallet v2 retains unique claims and existing vehicle IDs/prices, omits retired colors (returning their spent balance), validates owned accessory selections and persists the migrated snapshot on Test entry. Accessories remove without a second purchase or refund; balances remain derived from the fixed 220-coin supply. Setup uses an always-visible centered version footer, with a separate line on narrow screens. [Gates and acceptance](PRACTICE_WORLDS_078.md).

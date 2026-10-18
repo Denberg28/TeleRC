@@ -1,3 +1,7 @@
+# Waypoint tab — 0.8.79
+
+An isolated Controls-style Waypoint tab adds confirmed single destinations, saved multi waypoint routes and phone-supervised ArduRover Guided sequencing with fresh navigation/parameter checks and confirmed HOLD handling. Setup/Controls/Test bodies, manual protocol, FPV and firmware stay unchanged. Existing mini/filtering gateways are planning-only: live execution requires a separately validated compatible transparent MAVLink link and FC GPS/compass/EKF. [Scope, software gates, compatibility and restrained-wheel acceptance](docs/WAYPOINT_079.md). Physical navigation and full SITL integration remain NOT TESTED/BLOCKED; no stable promotion.
+
 # Practice worlds and accessories — 0.8.78
 
 Setup now keeps its version at lower center. Offline Test adds City/Forest/Desert/Space environments in five-level groups, land/sea/air/space vehicle silhouettes and stackable cosmetic accessories instead of purchased colors. Existing colors return their spent coins; vehicles, unique coin claims and course records remain. [Scope, validation, phone acceptance and wallet-compatible rollback](docs/PRACTICE_WORLDS_078.md). App-only test candidate; no firmware reflash.

@@ -84,6 +84,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkPracticeDialogLayouts()
             checkEnvironmentsAndVehicles()
             checkFpvReconnectLifecycle()
+            checkWaypointPlanning()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             checkThemeTransitions(photo = false)
@@ -91,7 +92,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -390,6 +391,40 @@ class ThemeImageInstrumentation : Instrumentation() {
         tapView(onMain { find(root(activity),"$label ▾")!! })
         waitUntil { windowText("Tab menu")!=null }
     }
+    private fun checkWaypointPlanning() {
+        val prefs=targetContext.getSharedPreferences("waypoint_route",0)
+        prefs.edit().clear().putString("draft","13.6218,123.1948;13.6219,123.1948").putBoolean("multiple",true).commit()
+        for(theme in listOf("LIGHT","SEPIA","DARK")) {
+            targetContext.getSharedPreferences("appearance",0).edit().putString("background",theme).commit()
+            val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            openTabMenu(activity,"Setup"); waitUntil { windowText("Waypoint")!=null }; clickWindow("Waypoint")
+            waitUntil { onMain { description(root(activity),"Confirm and start waypoint route")!=null } }
+            onMain {
+                val view=root(activity)
+                check(find(view,"Start mission")!=null && find(view,"STOP · HOLD")!=null)
+                check(description(view,"Waypoint map; tap to choose a destination")!!.width>view.width*.4f)
+                check(description(view,"Waypoint map; tap to choose a destination")!!.height>view.height*.4f)
+                check(description(view,"Waypoint 2, 13.621900, 123.194800; tap to remove")!=null)
+                check(find(view,"ARM") == null && find(view,"ENABLE CONTROL") == null)
+            }
+            checkTabMenu(activity,"Waypoint","waypoint-${theme.lowercase()}-menu.png")
+            screenshot("waypoint-${theme.lowercase()}-plan.png")
+            onMain { find(root(activity),"Start mission")!!.performClick() }
+            waitUntil { windowText("Route saved · movement locked")!=null }; clickWindow("OK")
+            waitUntil { windowText("Route saved · movement locked")==null }
+            onMain { find(root(activity),"Check link")!!.performClick() }
+            waitUntil { windowText("Navigation unavailable")!=null }; clickWindow("OK")
+            waitUntil { windowText("Navigation unavailable")==null }
+            onMain { find(root(activity),"Mission · multiple")!!.performClick() }
+            waitUntil { windowText("Use single destination?")!=null }; clickWindow("Cancel")
+            waitUntil { windowText("Use single destination?")==null }
+            check(WaypointPlan.decode(prefs.getString("draft","").orEmpty()).size==2)
+            openTabMenu(activity,"Waypoint"); waitUntil { windowText("Controls")!=null }; clickWindow("Controls")
+            waitUntil { onMain { find(root(activity),"Connect FPV")!=null } }
+            checkJoystickPanels(activity); onMain { activity.finish() }; waitForIdleSync()
+        }
+        prefs.edit().clear().commit()
+    }
     private fun checkTabMenu(activity:Activity,label:String,file:String) {
         lastTabActivity=activity
         waitUntil { onMain { activity.hasWindowFocus() && !root(activity).isLayoutRequested } }
@@ -403,7 +438,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(abs(actual.left-expected.left)<=tolerance && abs(actual.width()-expected.width())<=tolerance) { "Tab menu does not match its button: $actual vs $expected" }
         check(actual.top>=expected.bottom && actual.top-expected.bottom<=6*activity.resources.displayMetrics.density) { "Tab menu is detached from its button" }
         val density=activity.resources.displayMetrics.density
-        val expectedHeight=(3*(40*maxOf(1f,activity.resources.configuration.fontScale)).toInt()+8)*density
+        val expectedHeight=(4*(40*maxOf(1f,activity.resources.configuration.fontScale)).toInt()+8)*density
         check(abs(actual.height()-expectedHeight)<=4*density) { "Tab menu rows are not compact: $actual" }
         screenshot(file)
         clickWindow(label)

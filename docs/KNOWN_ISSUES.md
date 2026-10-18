@@ -1,3 +1,7 @@
+# Waypoint tab — 0.8.79
+
+An isolated Controls-style Waypoint tab adds confirmed single destinations, saved multi waypoint routes and phone-supervised ArduRover Guided sequencing with fresh navigation/parameter checks and confirmed HOLD handling. Setup/Controls/Test bodies, manual protocol, FPV and firmware stay unchanged. Existing mini/filtering gateways are planning-only: live execution requires a separately validated compatible transparent MAVLink link and FC GPS/compass/EKF. [Scope, software gates, compatibility and restrained-wheel acceptance](WAYPOINT_079.md). Physical navigation and full SITL integration remain NOT TESTED/BLOCKED; no stable promotion.
+
 # Practice worlds and accessories — 0.8.78
 
 Vehicle categories and Armament/accessories are offline cosmetics; all retain rover maze handling and the same collision envelope. They do not enable real sea/air/space control or firing. v2 wallet saves cannot be read by an unmodified 0.8.77 parser; rollback needs a forward-version compatibility build that preserves v2 claims and refunds unsupported cosmetics. Phone installation, OEM/font/orientation rendering and rover/receiver HIL remain BLOCKED. See [acceptance/rollback](PRACTICE_WORLDS_078.md).
