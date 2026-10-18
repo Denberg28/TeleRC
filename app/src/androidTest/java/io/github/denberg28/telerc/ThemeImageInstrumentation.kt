@@ -511,10 +511,14 @@ class ThemeImageInstrumentation : Instrumentation() {
         onMain {
             val window=dialog.window!!; val attributes=window.attributes
             check(attributes.gravity==android.view.Gravity.CENTER && attributes.x==0 && attributes.y==0 && attributes.windowAnimations==0)
-            val decor=activity.window.decorView; val xy=IntArray(2); decor.getLocationOnScreen(xy)
+            val decor=activity.window.decorView
+            val available=android.graphics.Rect().also { decor.getWindowVisibleDisplayFrame(it) }
+            check(available.width()>0 && available.height()>0) { "No visible display frame" }
             val tolerance=4*activity.resources.displayMetrics.density
-            check(abs(first.exactCenterX()-(xy[0]+decor.width/2f))<=tolerance) { "Popup is horizontally off center" }
-            check(abs(first.exactCenterY()-(xy[1]+decor.height/2f))<=tolerance) { "Popup is vertically off center" }
+            // Floating dialogs center within the system's usable frame. AOSP's
+            // side navigation bar is outside it even when the Activity draws edge to edge.
+            check(abs(first.exactCenterX()-available.exactCenterX())<=tolerance) { "Popup is horizontally off center: $first vs $available" }
+            check(abs(first.exactCenterY()-available.exactCenterY())<=tolerance) { "Popup is vertically off center: $first vs $available" }
         }
         SystemClock.sleep(350)
         check(bounds()==first) { "Popup moved after opening" }
