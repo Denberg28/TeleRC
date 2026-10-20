@@ -3,7 +3,7 @@ import socket,select,time,json,struct
 from pathlib import Path
 wire=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);wire.bind(('0.0.0.0',14550))
 control=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);control.bind(('0.0.0.0',14551))
-peer=None;armed=False;silence=False;wrong=False;seq=0;last=0;events=[];boot=123456
+peer=None;armed=False;silence=False;wrong=False;seq=0;last=0;events=[];boot=123456;passive=False
 def crc(data,extra):
  c=65535
  for b in data+bytes([extra]):
@@ -22,6 +22,8 @@ while True:
    if data==b'RESTORE':silence=False;wrong=False
    if data==b'WRONG':wrong=True
    if data==b'REBOOT':boot+=1;armed=False
+   if data==b'OBSERVER_START':passive=True;armed=True
+   if data==b'OBSERVER_END':passive=False;armed=False
    if data==b'EXIT':Path('go-fixture-events.json').write_text(json.dumps(events));raise SystemExit
    continue
   peer=addr
@@ -30,6 +32,7 @@ while True:
   extra={70:124,76:152}.get(data[5]);p=data[6:-2]
   if extra is None or crc(data[1:-2],extra)!=int.from_bytes(data[-2:],'little'):continue
   if data[3:5]!=bytes([255,190]):continue
+  if passive:raise AssertionError('Observer sent a control packet')
   if data[5]==70:
    assert p[4:16]==b'\xff'*12,'Go changed an auxiliary channel'
    s,d=struct.unpack('<HH',p[:4]);events.append({'at':time.monotonic(),'rc':[s,d]})
@@ -39,4 +42,7 @@ while True:
    armed=arm==1;events.append({'at':time.monotonic(),'arm':armed})
    if not silence:wire.sendto(frame(77,struct.pack('<HB',400,0),143),peer)
  now=time.monotonic()
- if peer and not silence and now-last>.2:wire.sendto(heartbeat(),peer);last=now
+ if peer and not silence and now-last>.2:
+  wire.sendto(heartbeat(),peer)
+  own=struct.pack('<II',int(now*1000)&0xffffffff,258 if passive else 257)+b'TELERC_OWN'
+  wire.sendto(frame(252,own,44),peer);last=now

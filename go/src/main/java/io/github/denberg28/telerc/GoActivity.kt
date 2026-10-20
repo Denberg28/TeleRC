@@ -55,12 +55,12 @@ class GoActivity:Activity(){
  private val refreshTask=Runnable{if(!isFinishing&&!isDestroyed)refresh()}
  private fun endpoint():GoEndpoint=GoEndpoint(profile,prefs.getString("${profile.name}.host",profile.host)?:profile.host,
   prefs.getInt("${profile.name}.port",profile.port),prefs.getInt("${profile.name}.local",profile.localPort),prefs.getInt("${profile.name}.system",1))
- private fun switch(tab:Tab){if(page==tab)return;showing?.dismiss();link.stop();scene?.pause();left?.reset();right?.reset();if(tab==Tab.Test)link.disconnect();page=tab;render()}
+ private fun switch(tab:Tab){if(page==tab)return;showing?.dismiss();link.stop(true);scene?.pause();left?.reset();right?.reset();if(tab==Tab.Test)link.disconnect();page=tab;render()}
  private fun render(){
   showing?.dismiss();showing=null;scene?.pause();left?.reset();right?.reset();left=null;right=null
   status=null;arm=null;enable=null;stop=null;connect=null;scene=null
   val root=LinearLayout(this).apply{
-   orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8));setBackgroundColor(AppColors.background(this@GoActivity))
+   keepScreenOn=page!=Tab.Setup;orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8));setBackgroundColor(AppColors.background(this@GoActivity))
    setOnApplyWindowInsetsListener{v,insets->val safe=if(android.os.Build.VERSION.SDK_INT>=30)insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout()) else null
     @Suppress("DEPRECATION") v.setPadding(dp(12)+(safe?.left?:insets.systemWindowInsetLeft),dp(8)+(safe?.top?:insets.systemWindowInsetTop),dp(12)+(safe?.right?:insets.systemWindowInsetRight),dp(8)+(safe?.bottom?:insets.systemWindowInsetBottom));insets}
   }
@@ -127,7 +127,7 @@ class GoActivity:Activity(){
    if(vertical)driveLabel=label else steerLabel=label
    addView(label,LinearLayout.LayoutParams(-1,-2))
    val joystick=JoystickView(this@GoActivity,vertical){channel->if(vertical)drive=channel else steer=channel;if(test){practice?.steering(steer);practice?.drive(drive);scene?.changed()}else link.axes(steer,drive);refreshLabels()}
-   if(vertical)right=joystick else left=joystick
+   if(vertical)this@GoActivity.right=joystick else this@GoActivity.left=joystick
    addView(joystick,LinearLayout.LayoutParams(-1,0,1f))
   }
   center.addView(stick(false),LinearLayout.LayoutParams(0,-1,1f))
@@ -158,17 +158,17 @@ class GoActivity:Activity(){
   if(page==Tab.Test){left?.isEnabled=true;right?.isEnabled=true;return}
   val s=link.snapshot()
   status?.text=s.text+(if(profile==GoProfile.ELRS)" · RX ${if(s.receiver) "linked" else "lost"}"else "")+if(s.fresh)" · HB ${s.age}ms · RX ${s.rx} / TX ${s.tx}"else if(s.connected)" · waiting for heartbeat"else""
-  enable?.isEnabled=s.fresh&&!s.enabled&&!s.armed&&!s.handset
+  enable?.isEnabled=s.fresh&&!s.enabled&&!s.armed&&!s.handset&&!s.stopped
   arm?.text=if(s.armed)"DISARM"else if(s.enabled&&!s.armReady)"CENTER"else"ARM"
   arm?.isEnabled=s.armed&&!s.handset || s.armReady&&!s.handset
-  stop?.isEnabled=s.connected&&!s.handset
+  stop?.isEnabled=s.connected&&s.verified&&!s.handset
   val canDrive=s.fresh&&s.enabled&&s.armed&&!s.handset
   if(left?.isEnabled!=canDrive)left?.isEnabled=canDrive
   if(right?.isEnabled!=canDrive)right?.isEnabled=canDrive
   connect?.text=if(s.connected)"Disconnect"else"Connect"
  }
  private fun dialog(title:String,content:View){
-  link.stop();left?.reset();right?.reset();scene?.pause();showing?.dismiss()
+  link.stop(true);left?.reset();right?.reset();scene?.pause();showing?.dismiss()
   val d=Dialog(this);d.requestWindowFeature(Window.FEATURE_NO_TITLE)
   val frame=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(12),dp(16),dp(12));background=shape(AppColors.surface(this@GoActivity))}
   frame.addView(text(title,18f).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,row()))
@@ -187,7 +187,7 @@ class GoActivity:Activity(){
   },LinearLayout.LayoutParams(-1,row()))
   dialog("Connection details",body)
  }
- override fun onConfigurationChanged(config:Configuration){super.onConfigurationChanged(config);link.stop();render()}
+ override fun onConfigurationChanged(config:Configuration){super.onConfigurationChanged(config);link.stop(true);render()}
  override fun onResume(){super.onResume();started=true;if(::link.isInitialized)link.foreground(true);if(page==Tab.Test)scene?.resume()}
  override fun onPause(){started=false;if(::link.isInitialized)link.foreground(false);showing?.dismiss();scene?.pause();left?.reset();right?.reset();super.onPause()}
  override fun onDestroy(){if(::link.isInitialized)link.close();ui.removeCallbacksAndMessages(null);showing?.dismiss();super.onDestroy()}
