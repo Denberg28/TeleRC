@@ -1,3 +1,10 @@
+## 0.8.89 — Balance popup only
+
+- Replace the full-page Balance form with a centered content-measured popup.
+- Equal padding, section/text spacing, scrolling body and fixed footer actions.
+- Close/Back returns to Setup; navigation/background clears the old popup.
+- App-only; retain balancer0.3.0. See docs/BALANCE_POPUP_089.md for checks and limits.
+
 ## 0.8.88 / code106
 
 - Remove duplicate Balance header button; retain dropdown navigation.

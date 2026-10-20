@@ -680,15 +680,40 @@ class ThemeImageInstrumentation : Instrumentation() {
                     checkTabMenu(activity,"Setup","review-${color.lowercase()}-${scale}-tabs.png")
                     openTabMenu(activity,"Setup")
                     waitUntil{windowText("Balance")!=null};clickWindow("Balance")
-                    waitUntil{onMain{find(root(activity),"Balance pre-test")!=null}}
+                    waitUntil{windowText("Balance pre-test")!=null}
+                    val dialog=onMain {
+                        val tab=MainActivity::class.java.getDeclaredField("balanceTab").apply{isAccessible=true}.get(activity)
+                        BalancePretestTab::class.java.getDeclaredField("popup").apply{isAccessible=true}.get(tab) as android.app.Dialog
+                    }
+                    checkPopupStable(activity,dialog)
                     onMain {
                         for(name in listOf("Calibrate & save","Left","Right","Both","Confirm directions","STOP / Disarm"))
-                            check(find(root(activity),name)?.isEnabled==false){"Offline setup action enabled: $name"}
-                        check(find(root(activity),"Controls ›")!=null)
+                            check(find(dialog.window!!.decorView,name)?.isEnabled==false){"Offline setup action enabled: $name"}
+                        val popup=description(dialog.window!!.decorView,"Balance popup")!!
+                        check(popup.paddingLeft==popup.paddingRight && popup.paddingTop==popup.paddingBottom)
+                        val scroll=description(popup,"Balance popup content") as android.widget.ScrollView
+                        check(scroll.getChildAt(0).height>scroll.height){"Long Balance form must scroll inside its compact frame"}
+                        for(name in listOf("Refresh","STOP / Disarm","Controls ›")) {
+                            val button=find(popup,name)!!
+                            val bounds=android.graphics.Rect()
+                            check(button.getGlobalVisibleRect(bounds) && bounds.height()>=button.height-1){"Clipped footer: $name"}
+                        }
+                        scroll.fullScroll(View.FOCUS_DOWN)
                     }
                     screenshot("balance-${color.lowercase()}-${if(scale=="1.0") "normal" else "large"}.png")
-                    onMain{find(root(activity),"Controls ›")!!.performClick()}
+                    onMain{find(dialog.window!!.decorView,"Controls ›")!!.performClick()}
+                    check(!onMain{dialog.isShowing}){"Balance popup survived navigation"}
                     waitUntil{onMain{find(root(activity),"Connect FPV")!=null}}
+                    openTabMenu(activity,"Controls")
+                    waitUntil{windowText("Balance")!=null};clickWindow("Balance")
+                    waitUntil{windowText("Balance pre-test")!=null}
+                    onMain {
+                        val tab=MainActivity::class.java.getDeclaredField("balanceTab").apply{isAccessible=true}.get(activity)
+                        val reopened=BalancePretestTab::class.java.getDeclaredField("popup").apply{isAccessible=true}.get(tab) as android.app.Dialog
+                        description(reopened.window!!.decorView,"Close Balance")!!.performClick()
+                    }
+                    waitUntil{onMain{description(root(activity),"Connection guide")!=null}}
+                    check(windowText("Balance pre-test")==null){"Balance popup survived Close"}
                     onMain{activity.finish()};waitForIdleSync()
                 }
             }

@@ -418,3 +418,11 @@ See [scope, acceptance, A–F gates, installation and rollback](CONSOLE_076.md).
 
 See [scope, gates, Android default/permission limits, phone acceptance and rollback](FPV_PERSISTENT_077.md). Baseline b193dda/code94; candidate code95. Required checks are rerun on the modified sources. Actual UVC detach/replug/default chooser/HIL remain BLOCKED; emulator no-device lifecycle checks do not establish physical reliability.
 
+
+## Balance popup 0.8.89
+
+Baseline `5a40f81`; only Balance layout/lifecycle changes. See
+[BALANCE_POPUP_089.md](BALANCE_POPUP_089.md) for A–F gates, local blockers,
+non-publishing CI, physical acceptance and rollback. Local motor-core sync and
+host regression passed. Android/native/signing checks await the final CI commit;
+physical phone/rover HIL remains BLOCKED.

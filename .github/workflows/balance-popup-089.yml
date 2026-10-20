@@ -1,0 +1,103 @@
+name: Balance popup layout checks
+on:
+  push:
+    branches: ['fix/balance-popup-compact-20261021']
+concurrency:
+  group: balance-popup-compact
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Host regression and balancer tests
+        run: |
+          python bridge/sync_motor_core.py --check
+          python -m unittest discover -s scripts -p test_firmware_package.py
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+          bash bridge/TT_Balancer_ESP32S3/tests/run.sh
+      - name: Retain release signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: Android unit tests, lint, signed APK and native harness
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease --no-daemon
+      - name: Reclaim before emulator
+        run: python scripts/reclaim-ui-runner.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native balance tab and complete UI regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 3072M
+          cores: 2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/check-photo-ui.sh
+      - name: Package app without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.89.apk
+          gh release download v0.8.88 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.88.apk --output "$RUNNER_TEMP/baseline.apk"
+          python - <<'PYVERIFY'
+          import os,re,subprocess
+          from pathlib import Path
+          bt=Path(os.environ['ANDROID_HOME'])/'build-tools/35.0.0'
+          def identity(path):
+              text=subprocess.check_output([str(bt/'aapt'),'dump','badging',path],text=True)
+              package=re.search(r"package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",text).groups()
+              cert=subprocess.check_output([str(bt/'apksigner'),'verify','--print-certs',path],text=True)
+              return package,re.findall(r'Signer #\d+ certificate SHA-256 digest: ([0-9a-f]+)',cert)
+          candidate,signer=identity('deliverables/TeleRC-v0.8.89.apk')
+          previous,old=identity(os.environ['RUNNER_TEMP']+'/baseline.apk')
+          assert candidate==('io.github.denberg28.telerc','107','0.8.89')
+          assert signer and signer==old and candidate[0]==previous[0] and int(candidate[1])>int(previous[1])
+          PYVERIFY
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 deliverables/TeleRC-v0.8.89.apk
+          git archive --format=zip -o deliverables/TeleRC-v0.8.89-source.zip HEAD
+          cp docs/BALANCE_POPUP_089.md deliverables/START_HERE.md
+          printf 'Source: %s\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > deliverables/BUILD_INFO.txt
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-balance-popup-089
+          path: |
+            deliverables/
+            app/build/reports/
+            app/build/test-results/
+            app/build/photo-evidence/
+          retention-days: 7
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
