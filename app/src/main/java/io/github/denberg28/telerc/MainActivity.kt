@@ -356,6 +356,7 @@ class MainActivity : Activity() {
         lateinit var anchor: Button
         anchor = button("$label ▾", true) {
             pageMenu?.dismiss()
+            prepareForDialog()
             val rows = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(4))
             }

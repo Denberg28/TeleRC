@@ -620,6 +620,11 @@ class ThemeImageInstrumentation : Instrumentation() {
                     val safety=AppDialog.Builder(activity).setTitle("Servo assignment").setNegativeButton("Close",null).show()
                     check(!gate.get()) { "Modal retained manual driving authority" }
                     safety.dismiss(); check(!gate.get()) { "Closing a modal restored driving" }
+                    check(gate.enable(1,SystemClock.elapsedRealtime(),SystemClock.elapsedRealtime()))
+                    find(root(activity),"Controls ▾")!!.performClick()
+                    check(!gate.get()) {"Tab dropdown retained manual driving authority"}
+                    val menu=MainActivity::class.java.getDeclaredField("pageMenu").apply {isAccessible=true}.get(activity) as android.widget.PopupWindow
+                    menu.dismiss();check(!gate.get()) {"Closing tab dropdown restored driving"}
                     activity.finish()
                 }
                 waitForIdleSync()

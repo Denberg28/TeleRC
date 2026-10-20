@@ -2,6 +2,8 @@
 
 Balance is now available only from the tab dropdown; the duplicate Setup header button is removed. Dropdowns stay inside the visible screen. Shared popups have equal side padding, compact widths, centered headings and equal-height actions. Setup, Controls, Test, Waypoint and Balance share consistent action styling and readable disabled states.
 
+Opening the tab dropdown now disables manual control or requests HOLD during Waypoint movement, just like a dialog; closing it never resumes driving.
+
 Balance confirmations are bound to the original connection session and robot boot. Reconnecting or restarting requires a new confirmation. Manual telemetry rejects unsupported MAVLink2 flags, incorrect source components and malformed frames; valid MAVLink2 zero-truncated ACK/position messages remain supported. APK download verification is single-flight and checks DownloadManager status before trusting a completion broadcast.
 
 Install `TeleRC-v0.8.88.apk` over the existing app without uninstalling. Settings, wallpaper, wallet and mission drafts are retained. **App-only update:** keep the firmware already working with your rover. Balancer setup continues to require balancer **v0.3.0** from the v0.8.87 release; no new reflash is required for this update.

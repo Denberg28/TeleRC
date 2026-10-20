@@ -54,7 +54,7 @@ internal class MazePracticeDialogs(private val activity:Activity) {
             setCancelable(cancelable); setCanceledOnTouchOutside(cancelable)
         }
         val root=LinearLayout(activity).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(8))
+            orientation=LinearLayout.VERTICAL; setPadding(dp(12),dp(8),dp(12),dp(8))
             background=shape(surface); contentDescription="Standard popup"
         }
         val header=LinearLayout(activity).apply { gravity=Gravity.CENTER_VERTICAL }
@@ -108,7 +108,7 @@ internal class MazePracticeDialogs(private val activity:Activity) {
         return sheet.dialog
     }
     fun market(wallet:()->MazeWallet,changed:(MazeWallet)->Unit):Dialog {
-        val sheet=sheet("Market",440)
+        val sheet=sheet("Market",420)
         val balance=label("",12f,muted)
         sheet.header.addView(balance); close(sheet)
         val tabs=LinearLayout(activity)
