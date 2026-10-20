@@ -76,3 +76,11 @@ for image in mission-functions-plan.png mission-functions-help.png; do
 done
 python -c 'import base64,pathlib; print("MISSION_FUNCTIONS_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/mission-functions-plan.png").read_bytes()).decode())'
 python -c 'import base64,pathlib; print("MISSION_HELP_UI_PNG="+base64.b64encode(pathlib.Path("app/build/photo-evidence/mission-functions-help.png").read_bytes()).decode())'
+
+grep 'PASS: balance pre-test' app/build/photo-evidence/result.txt
+for theme in light sepia dark; do
+  for size in normal large; do
+    image="balance-$theme-$size.png"
+    adb exec-out run-as "$PKG" cat "files/$image" > "app/build/photo-evidence/$image"
+  done
+done

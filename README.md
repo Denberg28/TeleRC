@@ -1,3 +1,16 @@
+# Balance pre-test source update — 0.8.87
+
+A Balance tab precedes Guide in the upper-right Setup header and is available in
+the page menu. It reads standalone balancer readiness and offers confirmed gyro
+calibration/save, separate left/right/both short motor tests, direction
+confirmation and stop/disarm. Setup never arms. This needs the paired0.3.0
+balancer firmware; unsupported peers keep actions locked. Existing ordinary
+rover/MAVLink/manual/Waypoint/game/FPV paths remain unchanged apart from tab
+lifecycle/receive hooks. [Scope, compatibility, checks and rollback](docs/BALANCE_PRETEST_087.md).
+
+Source is implemented and host-tested. APK/target/native verification awaits
+authorized public review-branch push; no APK or validated release is claimed.
+
 # Map mission functions and reinforced start — 0.8.86 test candidate
 
 Tap the map for numbered waypoints. Select F1/F2/F3, tap the map and choose ON/OFF to insert a function event; normal waypoint placement resumes afterward. Mission start rechecks the connected ArduRover, confirms the exact sequence and output mapping, initializes all used functions OFF, and verifies stationary HOLD plus command ACK and reported PWM for each action. Help text is reformatted. [Use, review, qualification, physical acceptance and rollback](docs/MISSION_FUNCTIONS_086.md). App-only; no reflash. Existing stable remains v0.8.84; live FC/actuator acceptance is pending.

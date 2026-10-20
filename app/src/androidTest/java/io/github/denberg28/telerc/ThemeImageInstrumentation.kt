@@ -89,6 +89,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             checkFpvReconnectLifecycle()
             checkWaypointPlanning()
             checkFcElrsSetup()
+            checkBalancePretest()
             ThemeImageStore.remove(app)
             check(!ThemeImageStore.exists(app))
             checkThemeTransitions(photo = false)
@@ -96,7 +97,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: map function placement, mixed sequence persistence, output settings and cancelled start; PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: balance pre-test header order, three themes and large text, offline action locks and lifecycle; PASS: map function placement, mixed sequence persistence, output settings and cancelled start; PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -625,6 +626,52 @@ class ThemeImageInstrumentation : Instrumentation() {
             }
         } finally { font("1.0"); prefs.edit().putString("background",oldTheme).commit() }
     }
+    private fun checkBalancePretest() {
+        fun font(value:String) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand("settings put system font_scale $value")).use { it.readBytes() }
+            waitUntil { if(value=="1.3") targetContext.resources.configuration.fontScale>=1.25f else targetContext.resources.configuration.fontScale<1.1f }
+        }
+        val app=targetContext
+        val link=app.getSharedPreferences("link",0)
+        val appearance=app.getSharedPreferences("appearance",0)
+        val transport=link.getString("transport","wifi")
+        val theme=appearance.getString("background","LIGHT")
+        val minimized=appearance.getBoolean("setup_minimized",false)
+        link.edit().putString("transport",MiniRoverWifi.TRANSPORT).putBoolean("auto_connect",false).commit()
+        appearance.edit().putBoolean("setup_minimized",false).commit()
+        try {
+            for(scale in listOf("1.0","1.3")) {
+                font(scale)
+                for(color in listOf("LIGHT","SEPIA","DARK")) {
+                    appearance.edit().putString("background",color).commit()
+                    val activity=startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    waitUntil{onMain{description(root(activity),"Balance pre-test tab")!=null}}
+                    onMain {
+                        val balance=description(root(activity),"Balance pre-test tab")!!
+                        val guide=description(root(activity),"Connection guide")!!
+                        val b=IntArray(2);val g=IntArray(2)
+                        balance.getLocationOnScreen(b);guide.getLocationOnScreen(g)
+                        check(b[0]+balance.width<=g[0]&&b[1]==g[1]){"Balance must precede Guide"}
+                        check(balance.getGlobalVisibleRect(android.graphics.Rect()))
+                        balance.performClick()
+                    }
+                    waitUntil{onMain{find(root(activity),"Balance pre-test")!=null}}
+                    onMain {
+                        for(name in listOf("Calibrate & save","Left","Right","Both","Confirm directions","STOP / Disarm"))
+                            check(find(root(activity),name)?.isEnabled==false){"Offline setup action enabled: $name"}
+                        check(find(root(activity),"Controls ›")!=null)
+                    }
+                    screenshot("balance-${color.lowercase()}-${if(scale=="1.0") "normal" else "large"}.png")
+                    onMain{find(root(activity),"Controls ›")!!.performClick()}
+                    waitUntil{onMain{find(root(activity),"Connect FPV")!=null}}
+                    onMain{activity.finish()};waitForIdleSync()
+                }
+            }
+        } finally {
+            font("1.0");link.edit().putString("transport",transport).commit()
+            appearance.edit().putString("background",theme).putBoolean("setup_minimized",minimized).commit()
+        }
+    }
     private fun checkFixedSetup(activity:Activity) {
         val view=root(activity)
         val pane=description(view,"Fixed setup pane")!!
@@ -788,7 +835,7 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(abs(actual.left-expected.left)<=tolerance && abs(actual.width()-expected.width())<=tolerance) { "Tab menu does not match its button: $actual vs $expected" }
         check(actual.top>=expected.bottom && actual.top-expected.bottom<=6*activity.resources.displayMetrics.density) { "Tab menu is detached from its button" }
         val density=activity.resources.displayMetrics.density
-        val expectedHeight=(4*(40*maxOf(1f,activity.resources.configuration.fontScale)).toInt()+8)*density
+        val expectedHeight=(5*(40*maxOf(1f,activity.resources.configuration.fontScale)).toInt()+8)*density
         check(abs(actual.height()-expectedHeight)<=4*density) { "Tab menu rows are not compact: $actual" }
         screenshot(file)
         clickWindow(label)

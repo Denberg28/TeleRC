@@ -1,3 +1,11 @@
+## 0.8.87
+
+- Add the upper-right Balance pre-test tab immediately before Guide, plus a tab-menu entry.
+- Show live calibration persistence, angle/rate and exact readiness blocker; calibrate/save, test left/right/both, confirm directions and stop from TeleRC.
+- Add paired standalone balancer0.3.0 Wi-Fi admin support with current-peer restriction, boot/status ordering, expiring single-use challenge, bounded request mailbox, no action retries and robot-side state/stop checks.
+- Keep motor tests at55/255 for150ms and require a completed both-wheel test plus explicit physical confirmation before arming. Setup never arms or enables control.
+- Preserve ordinary rover, mission, FPV and wallet behavior; retain saved gyro storage compatibility. Software/physical qualification remains pending as recorded in docs/BALANCE_PRETEST_087.md.
+
 # 0.8.86 / code104
 
 - Add map-based F1/F2/F3 ON/OFF events interleaved with waypoints, editable ordered rows, coordinate-bound saved actions and configurable dedicated output PWM values.

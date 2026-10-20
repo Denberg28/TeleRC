@@ -40,7 +40,23 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS, TEST, WAYPOINT }
+    private enum class Page { SETUP, CONTROLS, TEST, WAYPOINT, BALANCE }
+    private var balanceTab:BalancePretestTab?=null
+    private fun balanceSetup():BalancePretestTab = balanceTab ?: BalancePretestTab(this,
+        {connected.get() && phoneCommandsAllowed && !usbMode && !fcElrsMode && !elrsMode},
+        {bytes,safety->sendBalanceSetup(bytes,safety)}, {switchTo(Page.CONTROLS)}).also{balanceTab=it}
+    private fun sendBalanceSetup(bytes:ByteArray,safety:Boolean) {
+        val link=socket?:return;val remote=endpoint?:return
+        if(!connected.get() || !phoneCommandsAllowed || usbMode || fcElrsMode || elrsMode)return
+        val port=endpointPort;val epoch=synchronized(commandLock){commandEpoch};val at=SystemClock.elapsedRealtime()
+        txExecutor.execute {
+            try {synchronized(commandLock) {
+                if(socket!==link||!connected.get()||SystemClock.elapsedRealtime()-at>500 ||
+                    (!safety && (commandEpoch!=epoch||page!=Page.BALANCE||!resumed)))return@execute
+                link.send(DatagramPacket(bytes,bytes.size,remote,port))
+            }}catch(_:Exception){runOnUiThread{if(socket===link)balanceTab?.disconnected()}}
+        }
+    }
     @Volatile private var page = Page.SETUP
     @Volatile private var waypointTab: WaypointTab? = null
     private var mazePractice: MazePractice? = null
@@ -271,6 +287,7 @@ class MainActivity : Activity() {
         }.apply()
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
+            "BALANCE" -> Page.BALANCE
             "WAYPOINT" -> Page.WAYPOINT
             "TEST" -> Page.TEST
             "CONTROLS" -> Page.CONTROLS
@@ -317,6 +334,7 @@ class MainActivity : Activity() {
     }
     private fun switchTo(next: Page) {
         if (page == next) return
+        if (page == Page.BALANCE) balanceTab?.leave()
         if (page == Page.WAYPOINT) waypointTab?.leave()
         disableControl()
         releaseMap()
@@ -360,7 +378,7 @@ class MainActivity : Activity() {
                 inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
                 animationStyle = 0
             }
-            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST, "Waypoint" to Page.WAYPOINT)) {
+            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST, "Waypoint" to Page.WAYPOINT, "Balance" to Page.BALANCE)) {
                 rows.addView(text(name, 14f, if (destination == page) accent else ink, destination == page).apply {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     setPadding(dp(12), 0, dp(12), 0)
@@ -411,6 +429,7 @@ class MainActivity : Activity() {
         window.navigationBarColor = pale
         window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         when (page) {
+            Page.BALANCE -> { val root=shell(); balanceSetup().create(root,pageDropdown("Balance"),resumed);setContentView(root) }
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
             Page.TEST -> renderTest()
@@ -663,7 +682,8 @@ class MainActivity : Activity() {
         header.addView(button("Guide", false) { showConnectionGuide() }.apply {
             contentDescription = "Connection guide"
         }, 2, LinearLayout.LayoutParams(dp(76), -1).apply { rightMargin = dp(6) })
-        header.addView(collapse, 3, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
+        header.addView(button("Balance", false) { switchTo(Page.BALANCE) }.apply {contentDescription="Balance pre-test tab"}, 2, LinearLayout.LayoutParams(dp(82), -1).apply {rightMargin=dp(6)})
+        header.addView(collapse, 4, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
         root.addView(header, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
 
         val wide = true // Setup is landscape: keep both compact panels visible without scrolling.
@@ -1795,7 +1815,10 @@ class MainActivity : Activity() {
                     revokeExpiredControl(udp)
                     if (FcElrs.acceptsPeer(remote.hostAddress.orEmpty(),number,packet.address?.hostAddress,packet.port)) {
                         val payload = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
-                        if (usbMode && payload.size <= 280 && String(payload, Charsets.US_ASCII).startsWith("TELERC_LORA_")) {
+                        if (payload.size<=480 && String(payload,Charsets.US_ASCII).startsWith(BalanceSetup.PREFIX)) {
+                            val receivedAt=SystemClock.elapsedRealtime()
+                            runOnUiThread {if(socket===udp && page==Page.BALANCE)balanceTab?.receive(payload,receivedAt)}
+                        } else if (usbMode && payload.size <= 280 && String(payload, Charsets.US_ASCII).startsWith("TELERC_LORA_")) {
                             val reply = String(payload, Charsets.US_ASCII)
                             runOnUiThread {
                                 if (socket === udp) {
@@ -1999,6 +2022,7 @@ class MainActivity : Activity() {
         }
     }
     private fun stop(explicitDisconnect: Boolean = false) {
+        balanceTab?.disconnected()
         waypointTab?.disconnected()
         val udp = socket
         val remote = endpoint
@@ -2047,8 +2071,8 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { AppDialog.dismissAll(this); waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onPause() { balanceTab?.pause(); AppDialog.dismissAll(this); waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; if(page==Page.BALANCE)render() else balanceTab?.resume(); waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; waypointTab?.onStart(); routeMap?.onStart() }
     override fun onStop() { waypointTab?.onStop(); fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); waypointTab?.lowMemory(); routeMap?.onLowMemory() }

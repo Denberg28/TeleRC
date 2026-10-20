@@ -1,3 +1,16 @@
+# Balance pre-test qualification pending — 0.8.87
+
+A Balance tab precedes Guide in the upper-right Setup header and is available in
+the page menu. It reads standalone balancer readiness and offers confirmed gyro
+calibration/save, separate left/right/both short motor tests, direction
+confirmation and stop/disarm. Setup never arms. This needs the paired0.3.0
+balancer firmware; unsupported peers keep actions locked. Existing ordinary
+rover/MAVLink/manual/Waypoint/game/FPV paths remain unchanged apart from tab
+lifecycle/receive hooks. [Scope, compatibility, checks and rollback](BALANCE_PRETEST_087.md).
+
+Source is implemented and host-tested. APK/target/native verification awaits
+authorized public review-branch push; no APK or validated release is claimed.
+
 # Mission function limits — 0.8.86
 
 Function events are supervised Guided actions after approximate 3 m waypoint arrival, not uploaded AUTO missions or precision position triggers. Dedicated SERVOx_FUNCTION=0 plus current MIN/MAX readback is required; M5–M8 are excluded and outputs9–16 require MAVLink2 SERVO_OUTPUT_RAW extensions on port0. Reported PWM is not physical actuator feedback. Link/power loss cannot guarantee OFF; independent actuator watchdog/cutoff and restrained-wheel acceptance are required. Every used function must end OFF. Native handset-only ELRS/Mini/LoRa remain planning-only. Unsigned MAVLink cannot authenticate command/telemetry sources. [Detailed review, acceptance and rollback](MISSION_FUNCTIONS_086.md).

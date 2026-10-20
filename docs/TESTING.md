@@ -1,3 +1,24 @@
+# Balance pre-test0.8.87 / standalone firmware0.3.0 — local gates
+
+Baseline0b94da3. Scope and executable restrained-wheel procedure:
+[BALANCE_PRETEST_087.md](BALANCE_PRETEST_087.md).
+
+| Gate | Status | Evidence / limit |
+| --- | --- | --- |
+| A source / build | Reviewed; build BLOCKED | New tab/firmware source reviewed; local SDK, Gradle distribution and Arduino toolchain unavailable |
+| B behavior | PASS host; Android BLOCKED | Actual sketch admin/state, expiry, replay, stop and calibration behavior exercised under fakes; Kotlin tests added but not run |
+| C regression | PASS host; Android BLOCKED | Existing bridge/mini/sanitizer/profile suites and balancer suite pass; native/JVM gates pending |
+| D integration | PASS host; real link BLOCKED | Production network adapter parses/queues/rejects requests and formats status under platform fakes; actual Android/Wi-Fi/ESP32 link pending |
+| E HIL | BLOCKED | No attached phone/robot/driver/measurement equipment; execute the scoped procedure |
+| F delivery | Source review only; APK BLOCKED | Local review commit and source/patch/checksum package; public branch push rejected pending authorization; no APK/public release |
+
+Prepared cloud workflow `.github/workflows/balance-pretest-087.yml` must pass on
+the exact final commit: JVM, debug/release lint/build/signing continuity, actual
+ESP32-S3 core3.3.2 compilation and native three-theme/large-text header/tab locks
+plus retained UI regression. It uploads review artifacts without publishing a
+release. Local source packaging does not establish APK eligibility or hardware
+readiness. Earlier release evidence below belongs to its stated versions only.
+
 # Mission function qualification — 0.8.86
 
 Baseline v0.8.85/code103, remote 82bfbfce36d144dd3d16134b44f175b00665a1ba; candidate code104. [A–F gates, review, restrained-wheel procedures and rollback](MISSION_FUNCTIONS_086.md). Local host/default regressions and packaging tests PASS; local ASan/UBSan PASS with leak detection disabled (container ptrace restriction). Android local build BLOCKED by unavailable toolchain/network. Publication requires cloud full JVM/debug+release lint/build, default sanitizer gates, native map/sequence/settings/persistence/help/cancel tests and all existing UI tests, signer continuity and package validation. Final successful workflow and BUILD_INFO are authoritative software results. E physical FC/actuator/phone HIL remains BLOCKED; no stable promotion.
