@@ -40,20 +40,22 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
             val hash=expectedHash
             thread(name = "telerc-verify-update") {
                 // Exported completion broadcasts are hints; trust DownloadManager's record.
-                val complete=runCatching {
+                val status=runCatching {
                     downloads.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
-                        cursor.moveToFirst() && cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))==DownloadManager.STATUS_SUCCESSFUL
+                        if(cursor.moveToFirst()) cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) else null
                     }
-                }.getOrDefault(false)
-                val uri=if(complete) downloads.getUriForDownloadedFile(id) else null
+                }.getOrNull()
+                val complete=status==DownloadManager.STATUS_SUCCESSFUL
+                val finished=complete || status==DownloadManager.STATUS_FAILED
+                val uri=if(complete) runCatching {downloads.getUriForDownloadedFile(id)}.getOrNull() else null
                 val valid=complete && uri!=null && hash!=null && runCatching { verifyApk(hash) }.getOrDefault(false)
                 activity.runOnUiThread {
                     verifying.set(false)
                     if (closed || downloadId!=id || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-                    if (!complete) return@runOnUiThread // Forged/early broadcast cannot consume the real completion.
+                    if (!finished) return@runOnUiThread // Forged/early broadcast cannot consume the real completion.
                     downloadId=-1L; expectedHash=null // One completed verification per download.
                     if (valid) { pendingInstall=uri; offerInstall() }
-                    else { apk.delete(); report("Update verification failed. APK discarded.") }
+                    else { apk.delete(); report(if(complete) "Update verification failed. APK discarded." else "Update download failed. Try again.") }
                 }
             }
         }
