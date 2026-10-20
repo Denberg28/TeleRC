@@ -30,19 +30,6 @@ jobs:
       bridge/mini_wifi_tests/check_profiles.sh
       firmware/go/tests/run.sh
       SANITIZE=1 firmware/go/tests/run.sh
-   - uses: arduino/setup-arduino-cli@v2
-   - name: Actual four-wheel ESP32-S3 builds
-     run: |
-      arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      mkdir -p deliverables/firmware
-      for driver in MX1508 BTS7960; do
-       for elrs in 0 1; do
-        flags="-DTELERC_GO_ELRS=$elrs"
-        if [ "$driver" = BTS7960 ]; then flags="$flags -DTELERC_DRIVER=4 -DTELERC_SUPPLY_MAX_MV=12000 -DTELERC_MOTOR_RATED_MV=12000 -DTELERC_BTS_LOGIC_VERIFIED=1"; fi
-        arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property "compiler.cpp.extra_flags=$flags" --output-dir "deliverables/firmware/$driver-ELRS$elrs" firmware/go/TeleRC_Go_Rover
-       done
-      done
    - name: Retain signing identity
      env:
       KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
@@ -56,6 +43,23 @@ jobs:
       TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
       TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
      run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :go:testDebugUnitTest :go:lintDebug :go:lintRelease :go:assembleDebug :go:assembleDebugAndroidTest :go:assembleRelease --no-daemon
+   - name: Go Kotlin to actual four-wheel parser integration
+     run: |
+      g++ -std=c++17 -Wall -Wextra -Werror -DTELERC_HOST_TEST=1 -DTELERC_GO_ELRS=0 -Ibridge/mini_wifi_tests/stubs firmware/go/tests/test_wifi.cpp -o /tmp/go-wire-integration
+      /tmp/go-wire-integration go/build/go-interop
+   - uses: arduino/setup-arduino-cli@v2
+   - name: Actual four-wheel ESP32-S3 builds
+     run: |
+      arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      mkdir -p deliverables/firmware
+      for driver in MX1508 BTS7960; do
+       for elrs in 0 1; do
+        flags="-DTELERC_GO_ELRS=$elrs"
+        if [ "$driver" = BTS7960 ]; then flags="$flags -DTELERC_DRIVER=4 -DTELERC_SUPPLY_MAX_MV=12000 -DTELERC_MOTOR_RATED_MV=12000 -DTELERC_BTS_LOGIC_VERIFIED=1"; fi
+        arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --build-property "compiler.cpp.extra_flags=$flags" --output-dir "deliverables/firmware/$driver-ELRS$elrs" firmware/go/TeleRC_Go_Rover
+       done
+      done
    - name: Reclaim before emulator
      run: python3 scripts/reclaim-ui-runner.py
    - name: Enable KVM

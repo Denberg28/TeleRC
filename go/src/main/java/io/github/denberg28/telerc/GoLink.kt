@@ -65,7 +65,7 @@ internal class GoLink(context:Context,private val update:()->Unit):AutoCloseable
     if(desired!==config){channel.close();continue}
     synchronized(lock){connected=true;gate.disconnect();owned=false;receiver=false;ownerAt=0;takeAt=null;needStop=false;message="Waiting for rover"}
     var discover=0L;var sent=0L;var ui=0L;var networkAt=0L;var gcsAt=0L;var boot:Long?=null
-    fun send(bytes:ByteArray){channel.send(DatagramPacket(bytes,bytes.size,remote,config.port));synchronized(lock){tx++}}
+    fun send(bytes:ByteArray){if(config.profile.handsetOnly && !FcElrs.isRegistration(bytes))throw java.net.SocketException("Handset link rejects phone commands");channel.send(DatagramPacket(bytes,bytes.size,remote,config.port));synchronized(lock){tx++}}
     fun stopFrames(){if(!config.profile.handsetOnly){repeat(3){send(GoProtocol.rc(sequence++,config.system,1500,1500));send(Mavlink.armDisarm(sequence++,config.system,1,false));send(GoProtocol.rc(sequence++,config.system,0,0))}}}
     val input=ByteArray(8193)
     while(!closed && desired===config && active && socket===channel){
@@ -101,7 +101,7 @@ internal class GoLink(context:Context,private val update:()->Unit):AutoCloseable
          if(frame[offset+4].toInt()!=10 || frame[offset+5].toInt()!=(if(config.profile.standalone)0 else 3)){gate.disconnect();intent.set(null);needStop=true;message="Wrong rover profile";continue}
          if(frame[offset+4].toInt()==10){
           var mode=0L;for(i in 0..3)mode=mode or ((frame[offset+i].toLong() and 255) shl (8*i))
-          if(config.profile.standalone && mode==0L){message="Matched Go firmware required";continue}
+          if(config.profile.standalone && mode==0L){gate.disconnect();intent.set(null);takeAt=null;owned=false;needStop=true;message="Matched Go firmware required";continue}
           if(config.profile==GoProfile.FC_WIFI && mode!=0L){gate.disconnect();needStop=true;message="Select MANUAL on ArduRover";continue}
           if(config.profile.standalone){
            if(boot!=null && boot!=mode){gate.disconnect();intent.set(null);takeAt=null;owned=false;steer=1500;drive=1500;needStop=true;message="Rover restarted · Enable again"}

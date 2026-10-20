@@ -18,3 +18,11 @@ class GoElrsTest {
   assertEquals(GoElrs.Status(1,true,false),GoElrs.status(packet,1));assertNull(GoElrs.status(packet,2));packet[14]=0;assertNull(GoElrs.status(packet,1))
  }
 }
+
+class GoInteropTest {
+ @Test fun emitFramesForActualSketchDecoder(){
+  val root=java.io.File("build/go-interop");root.mkdirs()
+  val packets=mapOf("neutral" to GoProtocol.rc(1,1,1500,1500),"drive" to GoProtocol.rc(2,1,1700,1800),"release" to GoProtocol.rc(3,1,0,0),"arm" to Mavlink.armDisarm(4,1,1,true),"disarm" to Mavlink.armDisarm(5,1,1,false))
+  for((name,bytes) in packets)java.io.File(root,"$name.bin").writeBytes(bytes)
+ }
+}
