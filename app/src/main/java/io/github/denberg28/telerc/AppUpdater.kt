@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Manual update path for public GitHub releases. No credential is stored in the APK. */
 class AppUpdater(private val activity: Activity, private val report: (String) -> Unit) {
     private val checking=AtomicBoolean(false)
+    private val verifying=AtomicBoolean(false)
     @Volatile private var closed=false
     private val downloads = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     private val apk = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "telerc-update.apk")
@@ -32,16 +33,27 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
     private var receiverRegistered = false
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE ||
+            if (downloadId<0 || intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE ||
                 intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
-            val uri = downloads.getUriForDownloadedFile(downloadId)
-            if (uri == null) { report("Update download failed. Try again."); return }
+            if (closed || !verifying.compareAndSet(false,true)) return
+            val id=downloadId
+            val hash=expectedHash
             thread(name = "telerc-verify-update") {
-                val valid = runCatching { verifyApk() }.getOrDefault(false)
+                // Exported completion broadcasts are hints; trust DownloadManager's record.
+                val complete=runCatching {
+                    downloads.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                        cursor.moveToFirst() && cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))==DownloadManager.STATUS_SUCCESSFUL
+                    }
+                }.getOrDefault(false)
+                val uri=if(complete) downloads.getUriForDownloadedFile(id) else null
+                val valid=complete && uri!=null && hash!=null && runCatching { verifyApk(hash) }.getOrDefault(false)
                 activity.runOnUiThread {
-                    if (closed || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-                    if (valid) { pendingInstall = uri; offerInstall() }
-                    else report("Update verification failed. APK discarded.")
+                    verifying.set(false)
+                    if (closed || downloadId!=id || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                    if (!complete) return@runOnUiThread // Forged/early broadcast cannot consume the real completion.
+                    downloadId=-1L; expectedHash=null // One completed verification per download.
+                    if (valid) { pendingInstall=uri; offerInstall() }
+                    else { apk.delete(); report("Update verification failed. APK discarded.") }
                 }
             }
         }
@@ -105,6 +117,9 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
         }
     }
     private fun download(url: String, hash: String) {
+        if (closed) return
+        if (verifying.get()) {report("Verifying the current download. Try again shortly.");return}
+        pendingInstall=null
         val parsed = Uri.parse(url)
         if (parsed.scheme != "https" || parsed.host != "github.com" ||
             !parsed.path.orEmpty().startsWith("/Denberg28/TeleRC/releases/download/")) {
@@ -132,8 +147,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
         } catch (e: Exception) { report("Could not start the update download.") }
     }
     @Suppress("DEPRECATION")
-    private fun verifyApk(): Boolean {
-        val expected = expectedHash ?: return false
+    private fun verifyApk(expected:String): Boolean {
         if (!apk.isFile || apk.length() !in 100_000L..100_000_000L) return false
         val digest = MessageDigest.getInstance("SHA-256")
         apk.inputStream().buffered().use { input ->

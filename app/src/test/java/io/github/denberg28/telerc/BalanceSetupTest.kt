@@ -38,4 +38,16 @@ class BalanceSetupTest {
         assertTrue(BalanceSetup.allowed(s.copy(mode=4,calibrated=false),100,101,BalanceSetup.Action.CALIBRATE))
         assertFalse(BalanceSetup.allowed(s.copy(mode=4,calibrated=false),100,101,BalanceSetup.Action.LEFT))
     }
+    @Test fun consentCannotCrossReconnectBootOrReadinessChange() {
+        val status=BalanceSetup.parse(bytes(fixture))!!
+        for(action in BalanceSetup.Action.entries) {
+            val consent=BalanceSetup.Consent(status.boot,12,action)
+            assertTrue(consent.allowed(status.copy(sequence=2,challenge=456),12,100,110))
+            assertFalse(consent.allowed(status,13,100,110))
+            assertFalse(consent.allowed(status.copy(boot=556),12,100,110))
+            assertFalse(consent.allowed(null,12,100,110))
+            assertFalse(consent.allowed(status,12,100,1400))
+            assertFalse(consent.allowed(status.copy(mode=2),12,100,110))
+        }
+    }
 }

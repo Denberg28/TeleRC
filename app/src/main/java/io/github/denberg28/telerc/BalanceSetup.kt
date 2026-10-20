@@ -13,6 +13,11 @@ object BalanceSetup {
         val disarmed get()=mode==0
         val calibrationFault get()=mode==4 && !calibrated && calibration!="CAL_NOT_STARTED"
     }
+    /** Consent may follow fresh challenge refreshes, but never another boot/session. */
+    data class Consent(val boot:Long,val session:Long,val action:Action) {
+        fun allowed(status:Status?,currentSession:Long,receivedAt:Long,now:Long)=
+            status?.boot==boot && currentSession==session && BalanceSetup.allowed(status,receivedAt,now,action)
+    }
     fun parse(bytes:ByteArray):Status? {
         if(bytes.size !in 40..480 || bytes.any { (it.toInt() and 255) !in 32..126 })return null
         val p=String(bytes,Charsets.US_ASCII).split('|')

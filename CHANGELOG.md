@@ -1,3 +1,11 @@
+## 0.8.88 / code106
+
+- Remove duplicate Balance header button; retain dropdown navigation.
+- Standardize shared action appearance and compact bounded popup frames.
+- Bind Balance consent to session/boot; tighten compatible manual MAVLink validation.
+- Serialize and validate DownloadManager completion verification.
+- Full application review and remaining limits: docs/UI_SAFETY_REVIEW_088.md.
+
 ## 0.8.87
 
 - Add the upper-right Balance pre-test tab immediately before Guide, plus a tab-menu entry.

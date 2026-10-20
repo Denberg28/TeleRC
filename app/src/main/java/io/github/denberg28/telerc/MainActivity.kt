@@ -201,18 +201,8 @@ class MainActivity : Activity() {
         if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
         gravity = Gravity.CENTER
     }
-    private fun button(value: String, filled: Boolean = true, action: () -> Unit) = Button(this).apply {
-        text = value; isAllCaps = false; textSize = 15f
-        minimumWidth = 0; minimumHeight = 0
-        setPadding(dp(8), 0, dp(8), 0)
-        setTextColor(if (filled) Color.WHITE else accent)
-        stateListAnimator = null; elevation = 0f
-        background = android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf((accent and 0x00ffffff) or 0x24000000),
-            shape(if (filled) AppColors.buttonFill(this@MainActivity) else softAccent, 10),
-            shape(Color.WHITE, 10))
-        setOnClickListener { action() }
-    }
+    private fun button(value: String, filled: Boolean = true, action: () -> Unit) =
+        AppUi.button(this,value,filled,action)
     private fun barHeight() = dp((48 * maxOf(1f, resources.configuration.fontScale)).toInt())
     private fun menuRowHeight() = dp((40 * maxOf(1f, resources.configuration.fontScale)).toInt())
     private fun applyAppearanceTheme() {
@@ -370,9 +360,13 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(4))
             }
             val scroll = ScrollView(this).apply {
-                contentDescription = "Tab menu"; addView(rows)
+                contentDescription = "Tab menu"; isFillViewport=false; addView(rows)
             }
-            val popup = PopupWindow(scroll, anchor.width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            val visible=android.graphics.Rect().also { window.decorView.getWindowVisibleDisplayFrame(it) }
+            val location=IntArray(2).also { anchor.getLocationOnScreen(it) }
+            val space=maxOf(visible.bottom-location[1]-anchor.height-dp(8),location[1]-visible.top-dp(8)).coerceAtLeast(1)
+            val menuHeight=minOf(5*menuRowHeight()+dp(8),space)
+            val popup = PopupWindow(scroll, anchor.width, menuHeight, true).apply {
                 setBackgroundDrawable(shape(surface, 6))
                 elevation = dp(4).toFloat(); isOutsideTouchable = true
                 inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
@@ -381,6 +375,7 @@ class MainActivity : Activity() {
             for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST, "Waypoint" to Page.WAYPOINT, "Balance" to Page.BALANCE)) {
                 rows.addView(text(name, 14f, if (destination == page) accent else ink, destination == page).apply {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END; includeFontPadding=false
                     setPadding(dp(12), 0, dp(12), 0)
                     isClickable = true; isFocusable = true; isSelected = destination == page
                     contentDescription = "$name tab${if (destination == page) ", current" else ""}"
@@ -682,7 +677,6 @@ class MainActivity : Activity() {
         header.addView(button("Guide", false) { showConnectionGuide() }.apply {
             contentDescription = "Connection guide"
         }, 2, LinearLayout.LayoutParams(dp(76), -1).apply { rightMargin = dp(6) })
-        header.addView(button("Balance", false) { switchTo(Page.BALANCE) }.apply {contentDescription="Balance pre-test tab"}, 2, LinearLayout.LayoutParams(dp(82), -1).apply {rightMargin=dp(6)})
         header.addView(collapse, 4, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
         root.addView(header, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
 

@@ -23,6 +23,7 @@ class BalancePretestTab(private val activity:Activity,
     private var at=0L
     private var pending=0L
     private var pendingAction:BalanceSetup.Action?=null
+    private var session=0L
     private var sentAt=0L
     private var request=SystemClock.elapsedRealtime().coerceAtLeast(1) and 0xffffffffL
     private var summary:TextView?=null
@@ -46,16 +47,11 @@ class BalancePretestTab(private val activity:Activity,
     private fun text(value:String)=TextView(activity).apply {
         text=value;textSize=13f;setTextColor(AppColors.ink(activity));setPadding(dp(4),dp(4),dp(4),dp(4))
     }
-    private fun button(value:String,action:()->Unit)=Button(activity).apply {
-        text=value;isAllCaps=false;textSize=12f;minimumHeight=rowHeight();minimumWidth=0
-        setTextColor(AppColors.accent(activity));stateListAnimator=null
-        background=GradientDrawable().apply {setColor(AppColors.softAccent(activity));cornerRadius=dp(10).toFloat()}
-        setOnClickListener{action()}
-    }
+    private fun button(value:String,action:()->Unit)=AppUi.button(activity,value,false,action)
     fun create(root:LinearLayout,dropdown:View,resumed:Boolean) {
         visible=true;foreground=resumed;actions.clear()
         val header=LinearLayout(activity).apply {gravity=Gravity.CENTER_VERTICAL}
-        header.addView(dropdown,LinearLayout.LayoutParams(dp(150),rowHeight()))
+        header.addView(dropdown,LinearLayout.LayoutParams(dp(112),rowHeight()))
         header.addView(text("Balance pre-test").apply{textSize=16f;gravity=Gravity.CENTER},LinearLayout.LayoutParams(0,rowHeight(),1f))
         header.addView(button("Controls ›",controls),LinearLayout.LayoutParams(dp(112),rowHeight()))
         root.addView(header)
@@ -91,25 +87,31 @@ class BalancePretestTab(private val activity:Activity,
         send(BalanceSetup.stop,true);response="Stop requested; wait for rover confirmation."
         pending=0;pendingAction=null;refresh()
     }
+    private fun consent(action:BalanceSetup.Action):BalanceSetup.Consent? =
+        state?.let { BalanceSetup.Consent(it.boot,session,action) }
     private fun confirmCalibration() {
+        val consent=consent(BalanceSetup.Action.CALIBRATE)?:return
         AppDialog.Builder(activity).setTitle("Calibrate gyro?").setMessage("Disconnect motor power and hold the chassis upright and still. The rover will erase the saved offset, restart, recalibrate and save it. Reconnect remains disarmed.")
-            .setPositiveButton("Calibrate"){_,_->dispatchAction(BalanceSetup.Action.CALIBRATE)}.setNegativeButton("Cancel",null).show()
+            .setPositiveButton("Calibrate"){_,_->dispatchAction(consent)}.setNegativeButton("Cancel",null).show()
     }
     private fun confirmMotor(action:BalanceSetup.Action) {
         if(wheels?.isChecked!=true)return
         val s=state?:return
+        val consent=consent(action)?:return
         AppDialog.Builder(activity).setTitle("${action.name.lowercase().replaceFirstChar{it.uppercase()}} motor test?")
             .setMessage("Keep both wheels suspended and hands clear. A ${s.testMs} ms forward pulse uses ${s.testPwm}/255 PWM. Check regulated motor power and common ground. Stop if a wheel turns the wrong way.")
-            .setPositiveButton("Test"){_,_->if(wheels?.isChecked==true)dispatchAction(action)}.setNegativeButton("Cancel",null).show()
+            .setPositiveButton("Test"){_,_->if(wheels?.isChecked==true)dispatchAction(consent)}.setNegativeButton("Cancel",null).show()
     }
     private fun confirmDirections() {
+        val consent=consent(BalanceSetup.Action.VERIFY)?:return
         AppDialog.Builder(activity).setTitle("Confirm physical directions?")
             .setMessage("Confirm you observed BOTH wheels propel forward and forward/back tilt gives positive/negative angle. Software cannot verify this. This confirmation applies to the current boot and does not arm.")
-            .setPositiveButton("Directions correct"){_,_->dispatchAction(BalanceSetup.Action.VERIFY)}.setNegativeButton("Cancel",null).show()
+            .setPositiveButton("Directions correct"){_,_->dispatchAction(consent)}.setNegativeButton("Cancel",null).show()
     }
-    private fun dispatchAction(action:BalanceSetup.Action) {
+    private fun dispatchAction(consent:BalanceSetup.Consent) {
         val s=state?:return
-        if(!visible||!foreground||!connected()||pending!=0L||!BalanceSetup.allowed(s,at,now(),action)) {response="Fresh ready status required. Refresh and check the blocker.";refresh();return}
+        val action=consent.action
+        if(!visible||!foreground||!connected()||pending!=0L||!consent.allowed(s,session,at,now())) {response="Status or session changed. Refresh and confirm again.";refresh();return}
         request=(request+1) and 0xffffffffL;if(request==0L)request=1
         pending=request;pendingAction=action;sentAt=now();response="Waiting for rover confirmation…"
         send(BalanceSetup.command(s,request,action),false);refresh()
@@ -120,6 +122,7 @@ class BalancePretestTab(private val activity:Activity,
         val old=state
         if(!BalanceSetup.newer(old,s))return
         if(old!=null && old.boot!=s.boot) {
+            session++
             pending=0;pendingAction=null;wheels?.isChecked=false
             response="Rover restarted. Check calibration and repeat direction verification."
         }
@@ -147,10 +150,10 @@ class BalancePretestTab(private val activity:Activity,
         // Cancel queued UI commands before the caller increments its send epoch.
         if(pendingAction in listOf(BalanceSetup.Action.LEFT,BalanceSetup.Action.RIGHT,BalanceSetup.Action.BOTH)||state?.mode==3)
             send(BalanceSetup.stop,true)
-        visible=false;foreground=false;handler.removeCallbacks(ticker);pending=0;pendingAction=null
+        session++;visible=false;foreground=false;handler.removeCallbacks(ticker);pending=0;pendingAction=null
         wheels?.isChecked=false;state=null;at=0
     }
     fun pause(){leave()}
     fun resume(){if(visible){foreground=true;handler.removeCallbacks(ticker);handler.post(ticker)}}
-    fun disconnected(){state=null;at=0;pending=0;pendingAction=null;wheels?.isChecked=false;response="Link lost. Reconnect, refresh and repeat checks deliberately.";refresh()}
+    fun disconnected(){session++;state=null;at=0;pending=0;pendingAction=null;wheels?.isChecked=false;response="Link lost. Reconnect, refresh and repeat checks deliberately.";refresh()}
 }

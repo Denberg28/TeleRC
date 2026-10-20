@@ -65,13 +65,7 @@ class WaypointTab(private val activity: Activity,
         orientation=LinearLayout.VERTICAL; setPadding(dp(8),dp(8),dp(8),dp(8))
         background=GradientDrawable().apply { setColor(AppColors.surface(activity)); cornerRadius=dp(14).toFloat() }
     }
-    private fun button(text:String,filled:Boolean=false,action:()->Unit)=Button(activity).apply {
-        this.text=text; isAllCaps=false; textSize=12f; minWidth=0; minimumHeight=dp(48)
-        setPadding(dp(6),0,dp(6),0); stateListAnimator=null
-        setTextColor(if(filled) Color.WHITE else AppColors.accent(activity))
-        background=GradientDrawable().apply { setColor(if(filled) AppColors.buttonFill(activity) else AppColors.softAccent(activity)); cornerRadius=dp(10).toFloat() }
-        setOnClickListener { action() }
-    }
+    private fun button(text:String,filled:Boolean=false,action:()->Unit)=AppUi.button(activity,text,filled,action)
     private fun flush()=navigation.drain().forEach(send)
     fun sendIfAllowed(dispatch:WaypointNavigation.Dispatch,send:(ByteArray)->Unit)=navigation.transmit(dispatch,now(),send)
     private fun save() {

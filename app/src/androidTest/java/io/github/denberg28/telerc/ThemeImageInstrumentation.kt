@@ -44,6 +44,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             check(stored.readBytes().contentEquals(previous)) { "Oversized import replaced the old photo" }
             excessive.delete()
             checkSharedPopups()
+            checkUpdateCompletionBroadcasts()
             checkReplayRewards()
             checkMissionFunctions()
             for (theme in listOf("LIGHT", "SEPIA", "DARK")) {
@@ -97,7 +98,7 @@ class ThemeImageInstrumentation : Instrumentation() {
             waitUntil { onMain { root(activity).background !is ThemeImageDrawable } }
             screenshot("photo-removed.png")
             onMain { activity.finish() }
-            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: balance pre-test header order, three themes and large text, offline action locks and lifecycle; PASS: map function placement, mixed sequence persistence, output settings and cancelled start; PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
+            finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "PASS: dropdown-only Balance navigation, three themes and large text, offline action locks and lifecycle; PASS: map function placement, mixed sequence persistence, output settings and cancelled start; PASS: replay bonus pickup/clear/persistence and immediate neutral restart; PASS: waypoint selected-mode workflow; PASS: measured popup sizing, compact messages/forms/lists, bounded long content and stable Market categories; PASS: shared popups, flat themed sheets, fixed visible actions, list scrolling, validation retention and transition cleanup; PASS: native photo decode/import, corrupt/oversize rollback, three theme renders, Controls, persistence/removal, FPV format menu; PASS: native maze levels, three-bump restart, clear/unlock/next, progress persistence; PASS: persistent red bump pixels, pause/delay retention and reset removal; PASS: native market purchase/equip/insufficient funds, coin collection and wallet persistence; PASS: flat practice dialogs, three themes and large font, level selection/restart, market tabs/purchases and expanded console geometry; PASS: wallpaper fidelity and opacity preview/apply/cancel/endpoints/persistence, transparent joystick panels, setup collapse/restore/corners/persistence and stable centered popups; PASS: sharp joystick captions, contrast and equal alignment, button-width tab menus across themes and font sizes; PASS: live theme transitions, repeated Light/Sepia/Dark and accent round trips, no Activity/session interruption or missing wallpaper draw frames, draft preservation, native dialog palette reset and compact menu rows; PASS: environment and accessory rendering, four five-level environments, distinct bounded silhouettes, stacked accessories, removal/persistence and Setup version footer; PASS: native ELRS setup, distinct ports and transmitter authority; PASS: compact Setup and mission actions, fixed pane bounds, Guide before minimize, phone Wi-Fi switch without authority, F1-F3 assignment and mission start planning lock; PASS: ELRS recovery states, UDP-open versus fresh/stale F405 telemetry without phone authority; PASS: waypoint planning, separate map/layout, single/multiple drafts, blocked navigation, confirmation and unchanged Controls; PASS: persistent FPV lifecycle, no-device repeated connect, auto reconnect off, menu help and disposed session cleanup\n") })
         } catch (error: Throwable) {
             val frame=runCatching {
                 val bitmap=uiAutomation.takeScreenshot() ?: return@runCatching ""
@@ -626,6 +627,27 @@ class ThemeImageInstrumentation : Instrumentation() {
             }
         } finally { font("1.0"); prefs.edit().putString("background",oldTheme).commit() }
     }
+    private fun checkUpdateCompletionBroadcasts() {
+        val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val updater=onMain { AppUpdater(activity) {} }
+        val type=AppUpdater::class.java
+        val id=type.getDeclaredField("downloadId").apply {isAccessible=true}
+        val receiver=type.getDeclaredField("receiver").apply {isAccessible=true}.get(updater) as android.content.BroadcastReceiver
+        val checking=type.getDeclaredField("verifying").apply {isAccessible=true}.get(updater) as java.util.concurrent.atomic.AtomicBoolean
+        onMain {
+            id.setLong(updater,987654321L)
+            repeat(20) {receiver.onReceive(activity,Intent(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+                .putExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID,987654321L))}
+            check(checking.get()) {"Verification must be single-flight until UI completion"}
+            check(Thread.getAllStackTraces().keys.count {it.name=="telerc-verify-update"}<=1)
+        }
+        waitUntil {!checking.get()}
+        onMain {
+            check(id.getLong(updater)==987654321L) {"Forged/early completion consumed the download"}
+            updater.close();activity.finish()
+        }
+        waitForIdleSync()
+    }
     private fun checkBalancePretest() {
         fun font(value:String) {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand("settings put system font_scale $value")).use { it.readBytes() }
@@ -645,16 +667,14 @@ class ThemeImageInstrumentation : Instrumentation() {
                 for(color in listOf("LIGHT","SEPIA","DARK")) {
                     appearance.edit().putString("background",color).commit()
                     val activity=startActivitySync(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    waitUntil{onMain{description(root(activity),"Balance pre-test tab")!=null}}
+                    waitUntil{onMain{description(root(activity),"Connection guide")!=null}}
                     onMain {
-                        val balance=description(root(activity),"Balance pre-test tab")!!
-                        val guide=description(root(activity),"Connection guide")!!
-                        val b=IntArray(2);val g=IntArray(2)
-                        balance.getLocationOnScreen(b);guide.getLocationOnScreen(g)
-                        check(b[0]+balance.width<=g[0]&&b[1]==g[1]){"Balance must precede Guide"}
-                        check(balance.getGlobalVisibleRect(android.graphics.Rect()))
-                        balance.performClick()
+                        check(description(root(activity),"Balance pre-test tab")==null) {"Duplicate Balance header shortcut"}
+                        checkFixedSetup(activity)
                     }
+                    checkTabMenu(activity,"Setup","review-${color.lowercase()}-${scale}-tabs.png")
+                    openTabMenu(activity,"Setup")
+                    waitUntil{windowText("Balance")!=null};clickWindow("Balance")
                     waitUntil{onMain{find(root(activity),"Balance pre-test")!=null}}
                     onMain {
                         for(name in listOf("Calibrate & save","Left","Right","Both","Confirm directions","STOP / Disarm"))
@@ -836,7 +856,10 @@ class ThemeImageInstrumentation : Instrumentation() {
         check(actual.top>=expected.bottom && actual.top-expected.bottom<=6*activity.resources.displayMetrics.density) { "Tab menu is detached from its button" }
         val density=activity.resources.displayMetrics.density
         val expectedHeight=(5*(40*maxOf(1f,activity.resources.configuration.fontScale)).toInt()+8)*density
-        check(abs(actual.height()-expectedHeight)<=4*density) { "Tab menu rows are not compact: $actual" }
+        val frame=onMain { android.graphics.Rect().also { activity.window.decorView.getWindowVisibleDisplayFrame(it) } }
+        val space=maxOf(frame.bottom-expected.bottom-8*density,expected.top-frame.top-8*density).coerceAtLeast(1f)
+        check(abs(actual.height()-minOf(expectedHeight,space))<=4*density) { "Tab menu rows are not compact/bounded: $actual" }
+        check(actual.top>=frame.top && actual.bottom<=frame.bottom) {"Tab menu outside visible frame"}
         screenshot(file)
         clickWindow(label)
         waitUntil { windowText("Tab menu")==null }

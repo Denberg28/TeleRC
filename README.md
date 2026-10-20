@@ -1,3 +1,7 @@
+# UI and safety review — 0.8.88
+
+Balance is dropdown-only. Shared actions and compact bounded popup layouts are standardized. Session-bound Balance consent, stricter compatible MAVLink parsing and single-flight APK verification address confirmed review findings. App-only; retain balancer0.3.0. [Review, remaining gaps, gates and acceptance](docs/UI_SAFETY_REVIEW_088.md). Final CI/build result supplies qualification; physical HIL remains BLOCKED.
+
 # Balance pre-test0.8.87 — software checks passed
 
 Signed APK,159 JVM tests, debug/release lint, native three-theme/large-text UI and

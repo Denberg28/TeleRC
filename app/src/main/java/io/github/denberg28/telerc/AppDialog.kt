@@ -82,11 +82,11 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
                 setBackgroundColor(ink); alpha=.12f
             },LinearLayout.LayoutParams(-1,dp(1))) }
             val root=LinearLayout(activity).apply {
-                orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(8))
+                orientation=LinearLayout.VERTICAL; setPadding(dp(12),dp(8),dp(12),dp(8))
                 background=shape(AppColors.surface(activity),8); contentDescription="Standard popup"
             }
             val heading=label(title,16f).apply {
-                setTypeface(typeface,android.graphics.Typeface.BOLD); gravity=Gravity.CENTER_VERTICAL
+                setTypeface(typeface,android.graphics.Typeface.BOLD); gravity=Gravity.CENTER
                 minHeight=rowHeight; maxLines=2
             }
             root.addView(heading,LinearLayout.LayoutParams(-1,-2))
@@ -138,15 +138,15 @@ internal class AppDialog private constructor(private val activity:Activity):Dial
                         setOnClickListener { dialog.dismiss(); clicked?.invoke(dialog,which) }
                     }
                     dialog.actions[which]=button
-                    footer.addView(button,LinearLayout.LayoutParams(0,-2,1f))
+                    footer.addView(button,LinearLayout.LayoutParams(0,rowHeight,1f))
                 }
                 root.addView(footer,LinearLayout.LayoutParams(-1,-2))
             }
             dialog.setContentView(root)
             val width=when {
-                custom!=null -> 440
+                custom!=null -> 420
                 items!=null -> 420
-                message.orEmpty().length>240 -> 480
+                message.orEmpty().length>240 -> 420
                 else -> 360
             }
             PopupLayout.configure(activity,dialog,root,scroll,width)
