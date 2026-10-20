@@ -61,11 +61,17 @@ class GoActivity:Activity(){
   status=null;arm=null;enable=null;stop=null;connect=null;scene=null
   val root=LinearLayout(this).apply{
    keepScreenOn=page!=Tab.Setup;orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8));setBackgroundColor(AppColors.background(this@GoActivity))
-   setOnApplyWindowInsetsListener{v,insets->val safe=if(android.os.Build.VERSION.SDK_INT>=30)insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout()) else null
-    @Suppress("DEPRECATION") v.setPadding(dp(12)+(safe?.left?:insets.systemWindowInsetLeft),dp(8)+(safe?.top?:insets.systemWindowInsetTop),dp(12)+(safe?.right?:insets.systemWindowInsetRight),dp(8)+(safe?.bottom?:insets.systemWindowInsetBottom));insets}
+   setOnApplyWindowInsetsListener{v,insets->
+    if(android.os.Build.VERSION.SDK_INT>=30){
+     val safe=insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+     v.setPadding(dp(12)+safe.left,dp(8)+safe.top,dp(12)+safe.right,dp(8)+safe.bottom)
+    }else{
+     @Suppress("DEPRECATION")
+     v.setPadding(dp(12)+insets.systemWindowInsetLeft,dp(8)+insets.systemWindowInsetTop,dp(12)+insets.systemWindowInsetRight,dp(8)+insets.systemWindowInsetBottom)
+    };insets}
   }
   val tabs=LinearLayout(this).apply{isBaselineAligned=false;gravity=Gravity.CENTER_VERTICAL;contentDescription="Go tabs"}
-  tabs.addView(text("TeleRC Go",18f).apply{setTypeface(typeface,1)},LinearLayout.LayoutParams(0,-2,1f))
+  tabs.addView(text("TeleRC Go",18f).apply{setTypeface(typeface,android.graphics.Typeface.BOLD)},LinearLayout.LayoutParams(0,-2,1f))
   for(tab in Tab.entries)tabs.addView(button(tab.name,tab==page){switch(tab)}.apply{contentDescription="${tab.name} tab"},LinearLayout.LayoutParams(dp(104),row()).apply{leftMargin=dp(6)})
   root.addView(tabs,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(8)})
   when(page){Tab.Setup->setup(root);Tab.Controls->controls(root,false);Tab.Test->controls(root,true)}
@@ -115,7 +121,7 @@ class GoActivity:Activity(){
   status=text(if(test)"Offline practice" else "Connect in Setup",13f).apply{maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END}
   bar.addView(status,LinearLayout.LayoutParams(0,-2,1f))
   if(test){
-   bar.addView(button("Level $level"){val body=LinearLayout(this).apply{orientation=1};for(n in 1..20)body.addView(button("Level $n"){level=n;prefs.edit().putInt("level",n).apply();practice=null;showing?.dismiss();render()},LinearLayout.LayoutParams(-1,row()));dialog("Practice levels",body)},LinearLayout.LayoutParams(dp(110),row()))
+   bar.addView(button("Level $level"){val body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL};for(n in 1..20)body.addView(button("Level $n"){level=n;prefs.edit().putInt("level",n).apply();practice=null;showing?.dismiss();render()},LinearLayout.LayoutParams(-1,row()));dialog("Practice levels",body)},LinearLayout.LayoutParams(dp(110),row()))
   }else{
    enable=button(if(profile==GoProfile.ELRS)"Take control" else "Enable"){link.enable();refresh()};bar.addView(enable,LinearLayout.LayoutParams(dp(130),row()))
    arm=button("ARM",true){if(link.snapshot().armed)link.stop()else link.arm();refresh()};bar.addView(arm,LinearLayout.LayoutParams(dp(110),row()).apply{leftMargin=dp(6)})
@@ -123,7 +129,7 @@ class GoActivity:Activity(){
   root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(8)})
   val center=LinearLayout(this).apply{isBaselineAligned=false}
   fun stick(vertical:Boolean):LinearLayout=LinearLayout(this).apply{
-   orientation=1;val label=text(if(vertical)"DRIVE · 1500"else"STEER · 1500",13f).apply{gravity=Gravity.CENTER}
+   orientation=LinearLayout.VERTICAL;val label=text(if(vertical)"DRIVE · 1500"else"STEER · 1500",13f).apply{gravity=Gravity.CENTER}
    if(vertical)driveLabel=label else steerLabel=label
    addView(label,LinearLayout.LayoutParams(-1,-2))
    val joystick=JoystickView(this@GoActivity,vertical){channel->if(vertical)drive=channel else steer=channel;if(test){practice?.steering(steer);practice?.drive(drive);scene?.changed()}else link.axes(steer,drive);refreshLabels()}
@@ -170,7 +176,7 @@ class GoActivity:Activity(){
  private fun dialog(title:String,content:View){
   link.stop(true);left?.reset();right?.reset();scene?.pause();showing?.dismiss()
   val d=Dialog(this);d.requestWindowFeature(Window.FEATURE_NO_TITLE)
-  val frame=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(12),dp(16),dp(12));background=shape(AppColors.surface(this@GoActivity))}
+  val frame=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(12),dp(16),dp(12));background=shape(AppColors.surface(this@GoActivity))}
   frame.addView(text(title,18f).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,row()))
   val scroll=ScrollView(this).apply{addView(content)};frame.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   frame.addView(button("Done"){d.dismiss()},LinearLayout.LayoutParams(-1,row()))
@@ -179,7 +185,7 @@ class GoActivity:Activity(){
   showing=d;d.show();refresh()
  }
  private fun connectionDetails(){
-  val value=endpoint();val body=LinearLayout(this).apply{orientation=1}
+  val value=endpoint();val body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
   fun field(label:String,content:String)=EditText(this).apply{hint=label;setText(content);setSingleLine();body.addView(this,LinearLayout.LayoutParams(-1,row()))}
   val host=field("IPv4",value.host);val remote=field("Rover port",value.port.toString());val local=field("Phone port",value.localPort.toString());val id=field("System ID",value.system.toString())
   body.addView(button("Save",true){val v=GoEndpoint(profile,host.text.toString().trim(),remote.text.toString().toIntOrNull()?:0,local.text.toString().toIntOrNull()?:0,id.text.toString().toIntOrNull()?:0)
