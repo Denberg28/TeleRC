@@ -1,0 +1,22 @@
+name: Publish verified Balance 0.8.87 prerelease
+on:
+  push:
+    branches: ['codex/publish-balance-087']
+    paths: ['.github/workflows/publish-balance-087.yml', 'scripts/publish-balance-087.py']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-balance-087
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Verify qualified artifacts and publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/publish-balance-087.py
