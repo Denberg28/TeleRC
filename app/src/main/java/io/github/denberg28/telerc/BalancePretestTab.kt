@@ -1,8 +1,6 @@
 package io.github.denberg28.telerc
 
 import android.app.Activity
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -17,6 +15,7 @@ class BalancePretestTab(private val activity:Activity,
     private val send:(ByteArray,Boolean)->Unit,
     private val controls:()->Unit) {
     private val handler=Handler(Looper.getMainLooper())
+    private var popup:AppDialog?=null
     private var visible=false
     private var foreground=false
     private var state:BalanceSetup.Status?=null
@@ -45,35 +44,64 @@ class BalancePretestTab(private val activity:Activity,
     private fun dp(n:Int)=(n*activity.resources.displayMetrics.density+.5f).toInt()
     private fun rowHeight()=dp((48*maxOf(1f,activity.resources.configuration.fontScale)).toInt())
     private fun text(value:String)=TextView(activity).apply {
-        text=value;textSize=13f;setTextColor(AppColors.ink(activity));setPadding(dp(4),dp(4),dp(4),dp(4))
+        text=value;textSize=13f;setTextColor(AppColors.ink(activity));includeFontPadding=false
+        setLineSpacing(dp(2).toFloat(),1f)
     }
     private fun button(value:String,action:()->Unit)=AppUi.button(activity,value,false,action)
-    fun create(root:LinearLayout,dropdown:View,resumed:Boolean) {
+    fun create(root:LinearLayout,dropdown:View,resumed:Boolean,closed:()->Unit) {
         visible=true;foreground=resumed;actions.clear()
-        val header=LinearLayout(activity).apply {gravity=Gravity.CENTER_VERTICAL}
-        header.addView(dropdown,LinearLayout.LayoutParams(dp(112),rowHeight()))
-        header.addView(text("Balance pre-test").apply{textSize=16f;gravity=Gravity.CENTER},LinearLayout.LayoutParams(0,rowHeight(),1f))
-        header.addView(button("Controls ›",controls),LinearLayout.LayoutParams(dp(112),rowHeight()))
-        root.addView(header)
-        val body=LinearLayout(activity).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(10),dp(8),dp(10),dp(8))
-            background=GradientDrawable().apply {setColor(AppColors.surface(activity));cornerRadius=dp(12).toFloat()}}
+        dismissPopup()
+        root.addView(dropdown,LinearLayout.LayoutParams(dp(112),rowHeight()))
+        val dialog=AppDialog.sheet(activity)
+        popup=dialog
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val frame=LinearLayout(activity).apply {
+            orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8))
+            background=android.graphics.drawable.GradientDrawable().apply {
+                setColor(AppColors.surface(activity));cornerRadius=dp(8).toFloat()
+            }
+            contentDescription="Balance popup"
+        }
+        val header=LinearLayout(activity).apply {isBaselineAligned=false;gravity=Gravity.CENTER_VERTICAL}
+        header.addView(View(activity),LinearLayout.LayoutParams(rowHeight(),1))
+        header.addView(text("Balance pre-test").apply {
+            textSize=16f;gravity=Gravity.CENTER;setTypeface(typeface,android.graphics.Typeface.BOLD)
+        },LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(button("×"){dialog.cancel()}.apply {contentDescription="Close Balance"},
+            LinearLayout.LayoutParams(rowHeight(),rowHeight()))
+        frame.addView(header,LinearLayout.LayoutParams(-1,-2))
+        fun divider() {frame.addView(View(activity).apply {
+            setBackgroundColor(AppColors.ink(activity));alpha=.12f
+        },LinearLayout.LayoutParams(-1,dp(1)))}
+        divider()
+        val body=LinearLayout(activity).apply {
+            orientation=LinearLayout.VERTICAL;setPadding(dp(4),dp(8),dp(4),dp(8))
+        }
+        fun section(value:String) {
+            body.addView(text(value).apply {setTypeface(typeface,android.graphics.Typeface.BOLD)},
+                LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12);bottomMargin=dp(6)})
+        }
         summary=text("Waiting for balancer status…");detail=text("")
-        body.addView(summary);body.addView(detail)
-        body.addView(text("1 · Calibration"))
+        body.addView(summary,LinearLayout.LayoutParams(-1,-2))
+        body.addView(detail,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(6)})
+        section("1 · Calibration")
         body.addView(button("Calibrate & save") {confirmCalibration()}.also {actions[BalanceSetup.Action.CALIBRATE]=it},LinearLayout.LayoutParams(-1,rowHeight()))
-        body.addView(text("2 · Motor direction test · short forward pulse"))
+        section("2 · Motor direction test · short forward pulse")
         wheels=CheckBox(activity).apply {text="Chassis secured; both wheels off the floor";textSize=13f;setTextColor(AppColors.ink(activity));setOnCheckedChangeListener{_,_->refresh()}}
-        body.addView(wheels)
+        body.addView(wheels,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(6)})
         val motors=LinearLayout(activity)
         listOf("Left" to BalanceSetup.Action.LEFT,"Right" to BalanceSetup.Action.RIGHT,"Both" to BalanceSetup.Action.BOTH).forEachIndexed {i,(name,action)->
             motors.addView(button(name){confirmMotor(action)}.also{actions[action]=it},LinearLayout.LayoutParams(0,rowHeight(),1f).apply{if(i>0)leftMargin=dp(6)})
         }
         body.addView(motors)
-        body.addView(text("3 · Confirm: both wheels propel forward; forward tilt makes angle positive."))
+        section("3 · Confirm: both wheels propel forward; forward tilt makes angle positive.")
         body.addView(button("Confirm directions") {confirmDirections()}.also{actions[BalanceSetup.Action.VERIFY]=it},LinearLayout.LayoutParams(-1,rowHeight()))
-        body.addView(text("Setup never arms. Use Controls ›, Phone control, centered sticks, then ARM while supported upright. Reported PWM does not prove wheel movement."))
-        root.addView(ScrollView(activity).apply{addView(body)},LinearLayout.LayoutParams(-1,0,1f).apply{topMargin=dp(8);bottomMargin=dp(8)})
-        val footer=LinearLayout(activity)
+        body.addView(text("Setup never arms. Use Controls ›, Phone control, centered sticks, then ARM while supported upright. Reported PWM does not prove wheel movement."),
+            LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(12)})
+        val scroll=ScrollView(activity).apply{addView(body);isFillViewport=false;contentDescription="Balance popup content"}
+        frame.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        divider()
+        val footer=LinearLayout(activity).apply {isBaselineAligned=false;gravity=Gravity.CENTER_VERTICAL}
         footer.addView(button("Refresh") {if(connected())send(BalanceSetup.query,false)},LinearLayout.LayoutParams(0,rowHeight(),1f))
         footer.addView(button("STOP / Disarm") {
             if(state?.mode==1 || state?.mode==2) {
@@ -81,7 +109,18 @@ class BalancePretestTab(private val activity:Activity,
                     .setPositiveButton("Stop / Disarm"){_,_->stop()}.setNegativeButton("Cancel",null).show()
             } else stop()
         }.also{stopButton=it},LinearLayout.LayoutParams(0,rowHeight(),1f).apply{leftMargin=dp(8)})
-        root.addView(footer);handler.removeCallbacks(ticker);handler.post(ticker);refresh()
+        footer.addView(button("Controls ›",controls),LinearLayout.LayoutParams(0,rowHeight(),1f).apply{leftMargin=dp(8)})
+        frame.addView(footer,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(8)})
+        dialog.setContentView(frame)
+        dialog.setOnCancelListener {if(visible && popup===dialog && !activity.isFinishing && !activity.isDestroyed)closed()}
+        // Use the same content measurement and screen cap as the other popups.
+        root.post {
+            if(visible && foreground && popup===dialog) {
+                PopupLayout.configure(activity,dialog,frame,scroll,420)
+                dialog.show()
+            }
+        }
+        handler.removeCallbacks(ticker);handler.post(ticker);refresh()
     }
     private fun stop() {
         send(BalanceSetup.stop,true);response="Stop requested; wait for rover confirmation."
@@ -146,11 +185,17 @@ class BalancePretestTab(private val activity:Activity,
         actions.forEach{(action,button)->button.isEnabled=visible&&foreground&&fresh&&pending==0L&&BalanceSetup.allowed(s,at,now(),action)&&
             (action !in listOf(BalanceSetup.Action.LEFT,BalanceSetup.Action.RIGHT,BalanceSetup.Action.BOTH)||wheels?.isChecked==true)}
     }
+    fun dismissPopup() {
+        popup?.setOnCancelListener(null)
+        popup?.dismiss()
+        popup=null
+    }
     fun leave() {
         // Cancel queued UI commands before the caller increments its send epoch.
         if(pendingAction in listOf(BalanceSetup.Action.LEFT,BalanceSetup.Action.RIGHT,BalanceSetup.Action.BOTH)||state?.mode==3)
             send(BalanceSetup.stop,true)
         session++;visible=false;foreground=false;handler.removeCallbacks(ticker);pending=0;pendingAction=null
+        dismissPopup()
         wheels?.isChecked=false;state=null;at=0
     }
     fun pause(){leave()}

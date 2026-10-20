@@ -418,3 +418,36 @@ See [scope, acceptance, A–F gates, installation and rollback](CONSOLE_076.md).
 
 See [scope, gates, Android default/permission limits, phone acceptance and rollback](FPV_PERSISTENT_077.md). Baseline b193dda/code94; candidate code95. Required checks are rerun on the modified sources. Actual UVC detach/replug/default chooser/HIL remain BLOCKED; emulator no-device lifecycle checks do not establish physical reliability.
 
+
+## Balance popup 0.8.89
+
+Baseline `5a40f81`; only Balance layout/lifecycle changes. See
+[BALANCE_POPUP_089.md](BALANCE_POPUP_089.md) for A–F gates, local blockers,
+non-publishing CI, physical acceptance and rollback. Local motor-core sync and
+host regression passed. Android/native/signing checks await the final CI commit;
+physical phone/rover HIL remains BLOCKED.
+
+
+## Balance popup 0.8.89 — final qualification
+
+Published prerelease: https://github.com/Denberg28/TeleRC/releases/tag/v0.8.89
+Verified source: `912eb18b19f79bdf99f3cc22de760dee50ed5edb`.
+Successful workflow: https://github.com/Denberg28/TeleRC/actions/runs/39512477329
+
+| Gate | Final result |
+| --- | --- |
+| A — source/build | PASS — debug/release builds and lint; no affected firmware target. |
+| B — behavior | PASS — 162 JVM tests, zero failures/errors/skips. |
+| C — regression | PASS — core sync, packaging, bridge/mini/default sanitizers, profiles and balancer host tests. |
+| D — software integration | PASS — full API35 native UI suite, Balance geometry/scrolling/footer/close/reopen in Light/Sepia/Dark at normal and1.3 text. |
+| E — physical HIL | BLOCKED — no physical phone/rover attached. |
+| F — delivery | PASS — retained signer/code107 progression, alignment, APK/artifact hashes and ZIP CRCs; signed prerelease/source/evidence/checksums published. |
+
+Final footer alignment and screenshots inspected. APK SHA256:
+`83e3ee21887aa8896359cf3d752fb499d8d515e5f33ef8bc0d9e9f3161270558`.
+See [final result and next physical check](BALANCE_POPUP_089_RESULT.md).
+The initial footer clipping failure is resolved; this successful final run
+supersedes earlier pending software rows. Firmware remains0.3.0; no reflash.
+No stable promotion or main merge. Prefer a forward-code rollback preserving
+app data. Next: install on the actual phone and check the popup/display scale,
+then follow the restrained-wheel setup acceptance in BALANCE_POPUP_089.md.

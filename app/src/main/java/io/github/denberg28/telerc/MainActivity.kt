@@ -407,6 +407,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        balanceTab?.dismissPopup()
         AppDialog.dismissAll(this)
         pageMenu?.dismiss(); pageMenu = null
         wallpaperDialog?.dismiss(); wallpaperDialog = null; wallpaperOpacityButton = null
@@ -425,7 +426,7 @@ class MainActivity : Activity() {
         window.navigationBarColor = pale
         window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         when (page) {
-            Page.BALANCE -> { val root=shell(); balanceSetup().create(root,pageDropdown("Balance"),resumed);setContentView(root) }
+            Page.BALANCE -> { val root=shell(); balanceSetup().create(root,pageDropdown("Balance"),resumed){switchTo(Page.SETUP)};setContentView(root) }
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
             Page.TEST -> renderTest()
