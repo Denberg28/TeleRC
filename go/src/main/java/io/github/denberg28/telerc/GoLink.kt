@@ -67,7 +67,7 @@ internal class GoLink(context:Context,private val update:()->Unit):AutoCloseable
     synchronized(lock){connected=true;verified=false;gate.disconnect();owned=false;receiver=false;ownerAt=0;takeAt=null;needStop=false;message="Waiting for rover"}
     var discover=0L;var sent=0L;var ui=0L;var networkAt=0L;var gcsAt=0L;var boot:Long?=null;var verifiedPeer=false
     fun send(bytes:ByteArray){if(config.profile.handsetOnly && !FcElrs.isRegistration(bytes))throw java.net.SocketException("Handset link rejects phone commands");channel.send(DatagramPacket(bytes,bytes.size,remote,config.port));synchronized(lock){tx++}}
-    fun stopFrames(){if(verifiedPeer && !config.profile.handsetOnly){repeat(3){send(GoProtocol.rc(sequence++,config.system,1500,1500));send(Mavlink.armDisarm(sequence++,config.system,1,false));send(GoProtocol.rc(sequence++,config.system,0,0))}}}
+    fun stopFrames(){if(verifiedPeer && !config.profile.handsetOnly){repeat(3){send(GoProtocol.rc(sequence++,config.system,1500,1500));if(config.profile==GoProfile.FC_WIFI)send(GoProtocol.hold(sequence++,config.system));send(Mavlink.armDisarm(sequence++,config.system,1,false));if(config.profile.standalone)send(GoProtocol.rc(sequence++,config.system,0,0))}}}
     val input=ByteArray(8193)
     while(!closed && desired===config && active && socket===channel){
      val n=now()
@@ -104,7 +104,10 @@ internal class GoLink(context:Context,private val update:()->Unit):AutoCloseable
          if(frame[offset+4].toInt()==10){
           var mode=0L;for(i in 0..3)mode=mode or ((frame[offset+i].toLong() and 255) shl (8*i))
           if(config.profile.standalone && mode==0L){gate.disconnect();intent.set(null);takeAt=null;owned=false;verified=false;verifiedPeer=false;needStop=false;message="Matched Go firmware required";continue}
-          if(config.profile==GoProfile.FC_WIFI && mode!=0L){val wasControlled=gate.enabled;gate.disconnect();intent.set(null);needStop=needStop||wasControlled;message="Select MANUAL on ArduRover";continue}
+          if(config.profile==GoProfile.FC_WIFI){
+           if(mode!=0L){val wasControlled=gate.enabled;gate.receiverStop(true);gate.heartbeat(hb.armed,now());verified=true;verifiedPeer=true;intent.set(null);needStop=needStop||wasControlled;message=if(mode==4L)"HOLD confirmed · select MANUAL to operate" else "Select MANUAL on ArduRover";continue}
+           gate.receiverStop(false)
+          }
           if(config.profile.standalone){
            if(boot!=null && boot!=mode){gate.disconnect();intent.set(null);takeAt=null;owned=false;steer=1500;drive=1500;needStop=true;message="Rover restarted · Enable again"}
            boot=mode

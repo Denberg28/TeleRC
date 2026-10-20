@@ -93,11 +93,11 @@ int main(int argc,char **argv){
   // Millis wrap still expires. Direct core check avoids unrelated peer lease.
   rover::State wrap;wrap.rc(1500,1500,0xffffff00u);wrap.rc(1500,1500,0xfffffffau);assert(wrap.arm(0xfffffffau));wrap.tick(0x200u);assert(!wrap.armed);
   if(argc==2) { // Consume exact command frames emitted by Kotlin unit tests.
-    for(const char *name:{"neutral","drive","release","arm","disarm"}){
+    for(const char *name:{"neutral","drive","release","arm","disarm","hold"}){
       std::ifstream in(std::string(argv[1])+"/"+name+".bin",std::ios::binary);assert(in.good());
       std::vector<uint8_t>b{std::istreambuf_iterator<char>(in),{}};mini_mav::Message m;size_t used=0;
       assert(mini_mav::decode(b.data(),b.size(),m,used)&&used==b.size());assert(m.system==255&&m.component==190);
-      if(m.id==70)assert(overrideOK(m));else assert(m.id==76&&mini_mav::u16(m.payload+28)==400);
+      if(m.id==70)assert(overrideOK(m));else assert(m.id==76&&(mini_mav::u16(m.payload+28)==400||mini_mav::u16(m.payload+28)==176));
     }
   }
   // Exact accepted ARM -> all four outputs; a PWM write error must revoke ARM,

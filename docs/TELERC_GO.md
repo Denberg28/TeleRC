@@ -14,8 +14,9 @@ levels and the same spring-return controls.
 2. Setup → choose the link → Connect. Controls opens. Wait for the rover's
    heartbeat, then **Enable**, center both sticks until **ARM**, and tap ARM.
    Driving unlocks only after the rover reports ARMED. CH1 steers; CH2 drives.
-3. Release a joystick to center its axis. **STOP / Disarm** clears app authority,
-   sends neutral, disarm and release. Disconnect, page changes and backgrounding
+3. Release a joystick to center its axis. **STOP / Disarm** clears app authority. Standalone firmware receives neutral,
+   disarm and release; ArduRover receives neutral, HOLD and normal disarm, with no
+   immediate override release to an uncentered handset. Disconnect, page changes and backgrounding
    revoke driving. Recovery reconnects the transport; **Enable and ARM remain
    deliberate**. There is no background driving or replayed ARM command queue.
 
@@ -49,7 +50,11 @@ received; the BOOT button is the independent local stop input.
 
 For ArduRover Wi-Fi, use MANUAL mode for direct driving, CH1/CH2 mapping,
 SYSID_MYGCS/MAV_GCS_SYSID255, finite RC_OVERRIDE_TIME and measured FC RC/GCS
-failsafes. Keep the receiver override-enable switch available. For native
+failsafes. Keep the receiver override-enable switch and handset HOLD available.
+After phone STOP/HOLD, select MANUAL deliberately before re-enabling phone drive.
+HOLD/disarm delivery can be unconfirmed during loss; verify the FC response and
+use the independent handset/local cutoff. An observing ELRS phone does not
+interfere with transmitter driving when it changes tabs or disconnects. For native
 Backpack use MAVLink-capable matched ELRS TX/RX and Backpack telemetry Wi-Fi,
 default10.0.0.1, send14555/listen14550. The receiver serial mode differs from the
 standalone CRSF profile. See the full TeleRC ELRS guide for FC wiring/configuration.

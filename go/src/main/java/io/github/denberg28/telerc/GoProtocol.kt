@@ -1,6 +1,15 @@
 package io.github.denberg28.telerc
 
 internal object GoProtocol {
+ fun hold(sequence:Int,target:Int):ByteArray {
+  val f=Mavlink.armDisarm(sequence,target,1,true).copyOf(39)
+  f[10]=0;f[11]=0;f[12]=0x80.toByte();f[13]=0x40
+  f[34]=176.toByte();f[35]=0
+  var c=65535
+  for(b in f.drop(1).map{it.toInt()and 255}+152){var t=b xor(c and 255);t=(t xor(t shl 4))and 255;c=((c ushr 8)xor(t shl 8)xor(t shl 3)xor(t ushr 4))and 65535}
+  return f+byteArrayOf(c.toByte(),(c ushr 8).toByte())
+ }
+
  fun heartbeat(sequence:Int):ByteArray {
   val p=byteArrayOf(0,0,0,0,6,8,0,0,3)
   val f=byteArrayOf(254.toByte(),9,sequence.toByte(),255.toByte(),190.toByte(),0)+p

@@ -54,7 +54,13 @@ class GoInstrumentation:Instrumentation(){
   val observer=startActivitySync(Intent(targetContext,GoActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as GoActivity
   click(observer,"Connect");waitFor{observer.link.snapshot().fresh};check(observer.link.snapshot().armed);check(!observer.link.snapshot().enabled)
   click(observer,"Setup");main{observer.link.disconnect();observer.finish()};Thread.sleep(300)
-  control("OBSERVER_END");control("EXIT")
-  finish(Activity.RESULT_OK,Bundle().apply{putString("stream","PASS: Go three tabs, no mission/Balance/LoRa, three themes and normal/large text; real UDP fixture discovery, neutral ARM, movement, telemetry loss, no auto-rearm, STOP and offline Test isolation")})
+  control("OBSERVER_END");control("FC_START")
+  prefs.edit().putString("profile","FC_WIFI").putString("FC_WIFI.host","10.0.2.2").commit()
+  val fc=startActivitySync(Intent(targetContext,GoActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as GoActivity
+  click(fc,"Connect");waitFor{fc.link.snapshot().fresh};click(fc,"Enable");waitFor{fc.link.snapshot().armReady};click(fc,"ARM");waitFor{fc.link.snapshot().armed}
+  main{fc.link.axes(1700,1800);fc.link.stop()};waitFor{fc.link.snapshot().stopped};check(!fc.link.snapshot().armed);check(!fc.link.snapshot().enabled)
+  main{fc.link.enable()};check(!fc.link.snapshot().enabled){"HOLD restored phone control"}
+  main{fc.link.disconnect();fc.finish()};Thread.sleep(300);control("EXIT")
+  finish(Activity.RESULT_OK,Bundle().apply{putString("stream","PASS: Go three tabs, no mission/Balance/LoRa, three themes and normal/large text; real UDP fixture discovery, neutral ARM, movement, telemetry loss, no auto-rearm, STOP, passive ELRS observer, ArduRover HOLD and offline Test isolation")})
  }catch(t:Throwable){runCatching{shot("go-failed.png")};finish(Activity.RESULT_CANCELED,Bundle().apply{putString("stream","FAIL: "+t.stackTraceToString())})}}
 }

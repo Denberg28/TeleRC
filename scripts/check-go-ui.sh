@@ -27,5 +27,6 @@ v=json.loads(Path('go-fixture-events.json').read_text())
 assert any(x.get('arm') is True for x in v)
 assert any(x.get('arm') is False for x in v)
 assert any(x.get('rc')==[1700,1800] for x in v)
+assert any(x.get('hold') is True for x in v)
 print('Independent UDP fixture: valid sparse motion, ARM, DISARM and live telemetry recovery observed.')
 PY

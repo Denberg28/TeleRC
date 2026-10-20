@@ -3,7 +3,7 @@ import socket,select,time,json,struct
 from pathlib import Path
 wire=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);wire.bind(('0.0.0.0',14550))
 control=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);control.bind(('0.0.0.0',14551))
-peer=None;armed=False;silence=False;wrong=False;seq=0;last=0;events=[];boot=123456;passive=False
+peer=None;armed=False;silence=False;wrong=False;seq=0;last=0;events=[];boot=123456;passive=False;fc=False
 def crc(data,extra):
  c=65535
  for b in data+bytes([extra]):
@@ -13,7 +13,7 @@ def frame(msg,payload,extra):
  global seq
  b=bytes([254,len(payload),seq%256,2 if wrong else 1,1,msg])+payload;seq+=1
  return b+struct.pack('<H',crc(b[1:],extra))
-def heartbeat():return frame(0,struct.pack('<I5B',boot,10,0,64|(128 if armed else 0),4 if armed else 3,3),50)
+def heartbeat():return frame(0,struct.pack('<I5B',boot,10,3 if fc else 0,64|(128 if armed else 0),4 if armed else 3,3),50)
 while True:
  for s in select.select([wire,control],[],[],.02)[0]:
   data,addr=s.recvfrom(8192)
@@ -24,6 +24,7 @@ while True:
    if data==b'REBOOT':boot+=1;armed=False
    if data==b'OBSERVER_START':passive=True;armed=True
    if data==b'OBSERVER_END':passive=False;armed=False
+   if data==b'FC_START':fc=True;boot=0;armed=False
    if data==b'EXIT':Path('go-fixture-events.json').write_text(json.dumps(events));raise SystemExit
    continue
   peer=addr
@@ -36,7 +37,12 @@ while True:
   if data[5]==70:
    assert p[4:16]==b'\xff'*12,'Go changed an auxiliary channel'
    s,d=struct.unpack('<HH',p[:4]);events.append({'at':time.monotonic(),'rc':[s,d]})
-   if s==0 or d==0:armed=False
+   if s==0 or d==0:
+    assert not fc,'FC released overrides before disarm confirmation'
+    armed=False
+  elif int.from_bytes(p[28:30],'little')==176:
+   assert fc and struct.unpack('<ff',p[:8])==(1.,4.) and p[8:28]==bytes(20)
+   boot=4;events.append({'at':time.monotonic(),'hold':True})
   elif int.from_bytes(p[28:30],'little')==400:
    arm=struct.unpack('<f',p[:4])[0];assert p[4:28]==bytes(24)
    armed=arm==1;events.append({'at':time.monotonic(),'arm':armed})
