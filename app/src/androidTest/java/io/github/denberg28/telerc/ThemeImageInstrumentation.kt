@@ -966,7 +966,14 @@ class ThemeImageInstrumentation : Instrumentation() {
             val xy=IntArray(2); decor.getLocationOnScreen(xy)
             android.graphics.Rect(xy[0],xy[1],xy[0]+decor.width,xy[1]+decor.height)
         }
-        waitUntil { onMain { dialog.window!!.decorView.width>0 } }
+        // configure() premeasures the sheet. A nonzero width alone can precede
+        // WindowManager attachment/positioning and report the temporary (0,0).
+        waitUntil { onMain {
+            val decor=dialog.window!!.decorView
+            dialog.isShowing && decor.isAttachedToWindow && decor.hasWindowFocus() &&
+                decor.isLaidOut && !decor.isLayoutRequested && decor.width>0
+        } }
+        waitForIdleSync()
         val first=bounds()
         onMain {
             val window=dialog.window!!; val attributes=window.attributes
