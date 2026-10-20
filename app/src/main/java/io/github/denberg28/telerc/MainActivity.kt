@@ -678,7 +678,7 @@ class MainActivity : Activity() {
         header.addView(button("Guide", false) { showConnectionGuide() }.apply {
             contentDescription = "Connection guide"
         }, 2, LinearLayout.LayoutParams(dp(76), -1).apply { rightMargin = dp(6) })
-        header.addView(collapse, 4, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
+        header.addView(collapse, 3, LinearLayout.LayoutParams(dp(48), -1).apply { rightMargin = dp(8) })
         root.addView(header, LinearLayout.LayoutParams(-1, barHeight()).apply { bottomMargin = dp(8) })
 
         val wide = true // Setup is landscape: keep both compact panels visible without scrolling.
