@@ -27,10 +27,10 @@ The existing native UI harness now checks these properties for Balance.
 | --- | --- |
 | A source/build | Reviewed; local Android BLOCKED by absent SDK and Gradle download network access. Final CI runs debug/release builds and lint. |
 | B behavior | Host regression PASS. Balance protocol/firmware source unchanged. Native popup geometry/lifecycle checks pending CI. |
-| C regression | Motor-core sync and host suite PASS. Local default LeakSanitizer BLOCKED by /proc task access; final CI uses default sanitizers. |
+| C regression | Motor-core sync and host suite PASS. Local default LeakSanitizer BLOCKED by /proc task access; CI default sanitizers PASS. |
 | D integration | Native three-theme/normal+large-text full UI suite pending CI. No affected firmware target. |
 | E HIL | BLOCKED: no attached physical phone/robot. |
-| F delivery | Non-publishing CI verifies retained signer, increasing code, alignment and checksums. No stable promotion. |
+| F delivery | Release CI verifies retained signer, increasing code, alignment and checksums before publishing a prerelease. No stable promotion. |
 
 Final CI results apply only to the commit named by BUILD_INFO. A passing emulator
 suite is software UI evidence; physical phone/rover behavior remains unmeasured.
@@ -47,3 +47,14 @@ Rollback: retain signed0.8.88 and firmware0.3.0. Prefer a forward-code rollback
 reverting this UI commit while preserving app data. Android downgrade usually
 requires uninstalling and deletes local settings/data; export first. The next
 concrete check is the popup on the user's physical phone at their display scale.
+
+Initial run39509544401 passed host/default sanitizer and JVM/debug+release
+build/lint checks, then the new native footer assertion exposed horizontal
+LinearLayout baseline alignment shifting the two-line STOP label down. Header
+and footer now explicitly disable baseline alignment and center their children.
+This correction requires a final native rerun; no qualified APK is claimed from
+the initial run.
+
+Release publication authorized by the owner: proceed release,21 October2026.
+All automated and packaging gates must pass on the final source before the
+workflow publishes0.8.89 as a prerelease. Firmware is unchanged; no reflash.

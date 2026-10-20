@@ -62,7 +62,7 @@ class BalancePretestTab(private val activity:Activity,
             }
             contentDescription="Balance popup"
         }
-        val header=LinearLayout(activity).apply {gravity=Gravity.CENTER_VERTICAL}
+        val header=LinearLayout(activity).apply {isBaselineAligned=false;gravity=Gravity.CENTER_VERTICAL}
         header.addView(View(activity),LinearLayout.LayoutParams(rowHeight(),1))
         header.addView(text("Balance pre-test").apply {
             textSize=16f;gravity=Gravity.CENTER;setTypeface(typeface,android.graphics.Typeface.BOLD)
@@ -101,7 +101,7 @@ class BalancePretestTab(private val activity:Activity,
         val scroll=ScrollView(activity).apply{addView(body);isFillViewport=false;contentDescription="Balance popup content"}
         frame.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         divider()
-        val footer=LinearLayout(activity)
+        val footer=LinearLayout(activity).apply {isBaselineAligned=false;gravity=Gravity.CENTER_VERTICAL}
         footer.addView(button("Refresh") {if(connected())send(BalanceSetup.query,false)},LinearLayout.LayoutParams(0,rowHeight(),1f))
         footer.addView(button("STOP / Disarm") {
             if(state?.mode==1 || state?.mode==2) {

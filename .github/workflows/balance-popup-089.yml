@@ -1,4 +1,4 @@
-name: Balance popup layout checks
+name: TeleRC 0.8.89 Balance popup release
 on:
   push:
     branches: ['fix/balance-popup-compact-20261021']
@@ -6,7 +6,7 @@ concurrency:
   group: balance-popup-compact
   cancel-in-progress: true
 permissions:
-  contents: read
+  contents: write
   actions: read
 jobs:
   android:
@@ -61,7 +61,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash scripts/check-photo-ui.sh
-      - name: Package app without publishing
+      - name: Verify and package qualified app
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -86,9 +86,31 @@ jobs:
           git archive --format=zip -o deliverables/TeleRC-v0.8.89-source.zip HEAD
           cp docs/BALANCE_POPUP_089.md deliverables/START_HERE.md
           printf 'Source: %s\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > deliverables/BUILD_INFO.txt
+          zip -qr deliverables/TeleRC-v0.8.89-test-evidence.zip app/build/reports/ app/build/test-results/ app/build/photo-evidence/
+          python - <<'PYRESULT'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          roots=[ET.parse(p).getroot() for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml')]
+          assert roots
+          counts={k:sum(int(x.get(k,0)) for x in roots) for k in ('tests','failures','errors','skipped')}
+          assert counts['failures']==counts['errors']==counts['skipped']==0,counts
+          with Path('deliverables/BUILD_INFO.txt').open('a') as f:
+              f.write('JVM results: '+str(counts)+'\n')
+              f.write('Debug/release lint/build, host/default sanitizers, full native API35 UI suite: PASS\n')
+              f.write('Signer continuity, code107 progression and ZIP alignment: PASS\n')
+              f.write('Firmware unchanged; physical phone/rover HIL: BLOCKED\n')
+          PYRESULT
           cd deliverables
           sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
+          python -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
+      - name: Publish verified prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
+          gh release create v0.8.89 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title 'TeleRC v0.8.89 — compact Balance popup' --notes-file deliverables/START_HERE.md deliverables/*
+          gh release edit v0.8.89 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
       - uses: actions/upload-artifact@v4
         if: always()
         with:
