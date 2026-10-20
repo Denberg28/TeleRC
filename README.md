@@ -1,3 +1,13 @@
+# Balance pre-test0.8.87 — software checks passed
+
+Signed APK,159 JVM tests, debug/release lint, native three-theme/large-text UI and
+actual ESP32-S3 core3.3.2 compilation passed run39419210517 on product source
+359d10ec0facd6501119f13bd18ed8ab82776b44. The Balance entry precedes Guide.
+User-authorized review branch is published; no public release or stable promotion
+was created. Physical phone/robot HIL remains pending. This final result
+supersedes the initial build-blocked review notes below.
+[Final build result](docs/BALANCE_087_BUILD_RESULT.md).
+
 # Balance pre-test source update — 0.8.87
 
 A Balance tab precedes Guide in the upper-right Setup header and is available in
