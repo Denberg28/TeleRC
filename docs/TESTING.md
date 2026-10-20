@@ -451,3 +451,22 @@ supersedes earlier pending software rows. Firmware remains0.3.0; no reflash.
 No stable promotion or main merge. Prefer a forward-code rollback preserving
 app data. Next: install on the actual phone and check the popup/display scale,
 then follow the restrained-wheel setup acceptance in BALANCE_POPUP_089.md.
+
+## TeleRC Go 1.0.0 — new standalone edition
+
+Baseline cbfb507 / full TeleRC0.8.89. Scope: new `go` module and matched four-wheel
+Wi-Fi/CRSF firmware; full app product files unchanged. Owner requests stable
+promotion explicitly; GO notes distinguish that distribution label from physical
+qualification. See TELERC_GO.md and GO_WIRING.md for operation/rollback/next checks.
+
+| Gate | Before final CI |
+| --- | --- |
+| A source/build | Reviewed; local Android/actual targets BLOCKED by missing toolchains. CI must build both apps and four actual ESP32-S3 profiles. |
+| B behavior | Go firmware host CRC/arming/source/STOP/timeout/backlog tests PASS. Go JVM and real UDP emulator fault fixture pending. |
+| C regression | Go shared source sync PASS; local ASan/UBSan PASS with leak scan disabled due container restrictions. CI default sanitizers and existing full app/firmware tests required. |
+| D integration | Protocol/10-character ownership field corrected in Go. Native normal/large text, three themes, live UDP faults and offline Test pending. |
+| E physical HIL | BLOCKED: no phone/rover/RF/driver/power measurements. Execute raised-wheel procedure in TELERC_GO.md. |
+| F delivery | Pending: distinct signed package, source/firmware/evidence ZIPs, CRCs/checksums, owner-selected stable metadata. Full TeleRC Latest must remain unchanged. |
+
+Next concrete physical check: verify driver supply/logic and wheel mapping, then
+exercise phone/ELRS handover, CH6/BOOT, independent timeouts and no automatic rearm.

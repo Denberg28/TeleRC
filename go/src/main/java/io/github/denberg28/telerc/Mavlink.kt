@@ -1,0 +1,169 @@
+package io.github.denberg28.telerc
+
+object Mavlink {
+    data class Heartbeat(val system: Int, val armed: Boolean)
+    data class CommandAck(val system: Int, val command: Int, val result: Int) {
+        val resultText: String
+            get() = when (result) {
+                0 -> "ACCEPTED"
+                1 -> "TEMPORARILY REJECTED"
+                2 -> "DENIED"
+                3 -> "UNSUPPORTED"
+                4 -> "FAILED"
+                5 -> "IN PROGRESS"
+                6 -> "CANCELLED"
+                else -> "RESULT $result"
+            }
+    }
+    data class GlobalPosition(val system: Int, val latitude: Double, val longitude: Double, val headingDegrees: Double?)
+    fun frames(datagram: ByteArray): List<ByteArray> {
+        val result = mutableListOf<ByteArray>()
+        var cursor = 0
+        while (cursor < datagram.size) {
+            val magic = datagram[cursor].toInt() and 255
+            val header = if (magic == 0xFE) 6 else if (magic == 0xFD) 10 else 0
+            if (header == 0 || cursor + header > datagram.size) { cursor++; continue }
+            val signed = magic == 0xFD && (datagram[cursor + 2].toInt() and 1) != 0
+            val size = header + (datagram[cursor + 1].toInt() and 255) + 2 + if (signed) 13 else 0
+            if (cursor + size > datagram.size) { cursor++; continue }
+            result.add(datagram.copyOfRange(cursor, cursor + size))
+            cursor += size
+        }
+        return result
+    }
+    private const val EXTRA = 124 // RC_CHANNELS_OVERRIDE CRC extra (HEARTBEAT uses 50)
+    fun override(sequence: Int, targetSystem: Int, targetComponent: Int, roll: Int, pitch: Int, throttle: Int, yaw: Int): ByteArray {
+        require(targetSystem in 1..255 && targetComponent in 1..255)
+        val channels = intArrayOf(roll, pitch, throttle, yaw)
+        require(channels.all { it in 1000..2000 })
+        return overrideFrame(sequence, targetSystem, targetComponent, channels)
+    }
+    private fun accumulate(current: Int, value: Int): Int {
+        var tmp = (value xor (current and 255)) and 255
+        tmp = (tmp xor (tmp shl 4)) and 255
+        return ((current ushr 8) xor (tmp shl 8) xor (tmp shl 3) xor (tmp ushr 4)) and 65535
+    }
+    fun release(sequence: Int, targetSystem: Int, targetComponent: Int): ByteArray =
+        overrideFrame(sequence, targetSystem, targetComponent, intArrayOf(0, 0, 0, 0))
+
+    private fun overrideFrame(sequence: Int, targetSystem: Int, targetComponent: Int, channels: IntArray): ByteArray {
+        val payload = ByteArray(18)
+        for (i in 0..7) {
+            val value = if (i < 4) channels[i] else 65535
+            payload[i * 2] = value.toByte(); payload[i * 2 + 1] = (value ushr 8).toByte()
+        }
+        payload[16] = targetSystem.toByte(); payload[17] = targetComponent.toByte()
+        val frame = byteArrayOf(0xFE.toByte(), 18, sequence.toByte(), 255.toByte(), 190.toByte(), 70) + payload
+        var crc = 0xffff
+        for (b in frame.drop(1)) crc = accumulate(crc, b.toInt() and 255)
+        crc = accumulate(crc, EXTRA)
+        return frame + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+    }
+    fun heartbeat(packet: ByteArray): Heartbeat? {
+        if (packet.size < 17) return null
+        val v1 = (packet[0].toInt() and 255) == 0xFE
+        val v2 = (packet[0].toInt() and 255) == 0xFD
+        if (!v1 && !v2) return null
+        val offset = if (v1) 6 else 10
+        val length = packet[1].toInt() and 255
+        if (length != 9 || packet.size != offset + length + 2) return null
+        if (v1 && (packet[5].toInt() and 255) != 0) return null
+        if (v2 && packet[2] != 0.toByte()) return null // no MAVLink signature verification
+        if (v2 && (packet[7].toInt() != 0 || packet[8].toInt() != 0 || packet[9].toInt() != 0)) return null
+        if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null // autopilot component
+        var crc = 0xffff
+        for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
+        crc = accumulate(crc, 50) // HEARTBEAT CRC extra
+        if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
+            (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
+        val system = packet[if (v1) 3 else 5].toInt() and 255
+        if (system !in 1..254) return null
+        val armed = (packet[offset + 6].toInt() and 0x80) != 0
+        return Heartbeat(system, armed)
+    }
+
+    fun heartbeatSystem(packet: ByteArray): Int? = heartbeat(packet)?.system
+
+    fun armDisarm(
+        sequence: Int,
+        targetSystem: Int,
+        targetComponent: Int,
+        arm: Boolean
+    ): ByteArray {
+        require(targetSystem in 1..254 && targetComponent in 0..255)
+        val payload = ByteArray(33)
+        val armBits = java.lang.Float.floatToIntBits(if (arm) 1f else 0f)
+        for (i in 0..3) payload[i] = (armBits ushr (8 * i)).toByte()
+        // param2..param7 remain 0: normal arm/disarm, never force safety checks.
+        payload[28] = 0x90.toByte() // MAV_CMD_COMPONENT_ARM_DISARM = 400 (0x0190)
+        payload[29] = 0x01
+        payload[30] = targetSystem.toByte()
+        payload[31] = targetComponent.toByte()
+        payload[32] = 0 // COMMAND_LONG confirmation = 0
+        val frame = byteArrayOf(0xFE.toByte(), 33, sequence.toByte(), 255.toByte(), 190.toByte(), 76) + payload
+        var crc = 0xffff
+        for (b in frame.drop(1)) crc = accumulate(crc, b.toInt() and 255)
+        crc = accumulate(crc, 152)
+        return frame + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+    }
+
+    fun commandAck(packet: ByteArray): CommandAck? {
+        if (packet.size < 11) return null
+        val v1 = (packet[0].toInt() and 255) == 0xFE
+        val v2 = (packet[0].toInt() and 255) == 0xFD
+        if (!v1 && !v2) return null
+        val offset = if (v1) 6 else 10
+        val length = packet[1].toInt() and 255
+        if (length < (if(v1) 3 else 1) || packet.size != offset + length + 2) return null
+        if (v2 && packet[2] != 0.toByte()) return null
+        val id = if (v1) packet[5].toInt() and 255 else
+            (packet[7].toInt() and 255) or ((packet[8].toInt() and 255) shl 8) or ((packet[9].toInt() and 255) shl 16)
+        if (id != 77 || length !in 1..10 || v1 && length != 3) return null
+        if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null
+        var crc = 0xffff
+        for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
+        crc = accumulate(crc, 143) // COMMAND_ACK CRC extra
+        if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
+            (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
+        fun payload(i:Int)=if(i<length) packet[offset+i].toInt() and 255 else 0
+        if (payload(8) !in setOf(0,255) || payload(9) !in setOf(0,190)) return null
+        val command = payload(0) or (payload(1) shl 8)
+        val result = payload(2)
+        val system = packet[if (v1) 3 else 5].toInt() and 255
+        return CommandAck(system, command, result).takeIf { system in 1..254 }
+    }
+
+    /** Accept only complete, checksum-valid GLOBAL_POSITION_INT frames from the rover. */
+    fun globalPosition(packet: ByteArray): GlobalPosition? {
+        if (packet.size < 20) return null
+        val v1 = (packet[0].toInt() and 255) == 0xFE
+        val v2 = (packet[0].toInt() and 255) == 0xFD
+        if (!v1 && !v2) return null
+        val offset = if (v1) 6 else 10
+        val length = packet[1].toInt() and 255
+        if (length < (if(v1) 28 else 1) || packet.size != offset + length + 2) return null
+        if (v2 && packet[2] != 0.toByte()) return null // signed frames need authentication
+        val id = if (v1) packet[5].toInt() and 255 else
+            (packet[7].toInt() and 255) or ((packet[8].toInt() and 255) shl 8) or ((packet[9].toInt() and 255) shl 16)
+        if (id != 33 || length > 28 || v1 && length != 28) return null
+        if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null
+        var crc = 0xffff
+        for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
+        crc = accumulate(crc, 104) // GLOBAL_POSITION_INT CRC extra
+        if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
+            (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
+        // MAVLink2 removes trailing zero payload bytes; restore before reading fields.
+        val data=packet.copyOfRange(offset,offset+length).copyOf(28)
+        fun int32(start: Int) = (data[start].toInt() and 255) or
+            ((data[start + 1].toInt() and 255) shl 8) or
+            ((data[start + 2].toInt() and 255) shl 16) or
+            (data[start + 3].toInt() shl 24)
+        val lat = int32(4) / 1e7
+        val lon = int32(8) / 1e7
+        if (lat !in -90.0..90.0 || lon !in -180.0..180.0 || lat == 0.0 && lon == 0.0) return null
+        val centidegrees = (data[26].toInt() and 255) or ((data[27].toInt() and 255) shl 8)
+        val bearing = if (centidegrees < 36000) centidegrees / 100.0 else null
+        val system = packet[if (v1) 3 else 5].toInt() and 255
+        return GlobalPosition(system, lat, lon, bearing).takeIf { system in 1..254 }
+    }
+}
