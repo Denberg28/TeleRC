@@ -30,6 +30,11 @@ int main(int argc,char **argv){
   assert(rover::axis(1525)==0 && rover::axis(1475)==0);
   fakeTime=100;setup();assert(pwmReady&&wifiReady&&!state.armed);zero();
   command(true);assert(!state.armed); // No discovery and no neutral.
+  // A competing Android controller may own 14550; a fresh source port is valid.
+  receive({DISCOVERY,DISCOVERY+sizeof(DISCOVERY)-1},phone,49152);
+  assert(peer==phone&&peerPort==49152&&!state.armed);
+  receive({DISCONNECT,DISCONNECT+sizeof(DISCONNECT)-1},phone,49152);
+  assert(peer==ZERO_IP);
   discover();command(true);assert(!state.armed);
   rc(1900,1900);command(true);assert(!state.armed);zero();
   neutral();command(true);assert(state.armed);rc(1500,1900);advance(5);

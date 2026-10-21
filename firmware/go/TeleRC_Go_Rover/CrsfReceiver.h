@@ -21,7 +21,7 @@ class Parser {
    const unsigned bit=channel*11, index=3+bit/8, shift=bit%8;
    uint32_t packed=bytes[index];if(index+1<25)packed|=uint32_t(bytes[index+1])<<8;if(index+2<25)packed|=uint32_t(bytes[index+2])<<16;
    const uint16_t raw=(packed>>shift)&0x7ff;
-   if((channel==0||channel==1||channel==4||channel==5) && (raw<160 || raw>1840))return false;
+   if((channel==0||channel==1||channel==4||channel==5||channel==6) && (raw<160 || raw>1840))return false;
    int us=1500+(int(raw)-992)*5/8;out.us[channel]=us<1000?1000:us>2000?2000:us;
   }
   return true;
@@ -30,15 +30,20 @@ class Parser {
 struct Authority {
  enum Owner:uint8_t{STOPPED=0,PHONE=1,TRANSMITTER=2};
  Owner owner=STOPPED;
- bool stop=false,haveRF=false,low=false,previousHigh=true;
+ bool stop=false,haveRF=false,low=false,previousHigh=true,phoneBlocked=false;
  uint32_t rfAt=0,lowAt=0;
  bool fresh(uint32_t now)const{return haveRF && uint32_t(now-rfAt)<300;}
  void halt(){owner=STOPPED;low=false;previousHigh=true;}
- bool takePhone(){if(stop)return false;halt();owner=PHONE;return true;}
+ bool takePhone(){if(stop||phoneBlocked)return false;halt();owner=PHONE;return true;}
  bool observe(const Channels &c,uint32_t now){
   const bool wasFresh=fresh(now);haveRF=true;rfAt=now;
+  // CH7 high permits phone; low selects RF; middle inhibits both.
+  phoneBlocked=c.us[6]<=1800;
   stop=c.us[5]>1700;
   if(stop){halt();return false;}
+  if(c.us[6]>1800){if(owner==TRANSMITTER)halt();low=false;previousHigh=true;return false;}
+  if(c.us[6]>=1300){halt();return false;}
+  if(owner==PHONE)halt();
   const bool neutral=c.us[0]>=1475&&c.us[0]<=1525&&c.us[1]>=1475&&c.us[1]<=1525;
   const bool high=c.us[4]>1700;
   if(owner==PHONE){low=false;previousHigh=high;return false;}

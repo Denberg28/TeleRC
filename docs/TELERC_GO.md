@@ -1,109 +1,112 @@
-# TeleRC Go 1.0.1
+# TeleRC Go 1.0.2
 
-One landscape Controls screen. Wi-Fi and ELRS. A separate app named **TeleRC Go**
-(package `io.github.denberg28.telerc.go`); the full TeleRC installation and its
-settings remain intact. No missions, Balance, LoRa, maps, location services,
-camera SDKs or app installer permission. The supplied ship image sits behind transparent joystick panels. The app icon is a navy power symbol.
+Wi-Fi-only rover controller. One landscape control screen: **Phone connect**,
+**Settings**, and one **ARM / DISARM** button. No Phone control button, STOP,
+Use ELRS, setup/test tabs or transport dropdown. Settings contains only Wi-Fi
+settings, Connection details, Sensitivity and Done. The supplied ship background
+and transparent joystick panels remain; the navy power mark is inset in its icon.
 
-## Connect and operate
+## Connect and drive
 
-1. Power the matched four-wheel rover. Join **TeleRC-MiniRover** in Android Wi-Fi
-   settings (default password **telerc123**); choose stay connected without
-   internet. Use a private AP password in Config.h for deployment.
-2. Tap **Phone connect**. Wait for the rover's
-   heartbeat, then **Phone control**, center both sticks until **ARM**, and tap ARM.
-   Driving unlocks only after the rover reports ARMED. CH1 steers; CH2 drives.
-3. Release a joystick to center its axis. **STOP / Disarm** clears app authority. Standalone firmware receives neutral,
-   disarm and release; ArduRover receives neutral, HOLD and normal disarm, with no
-   immediate override release to an uncentered handset. Disconnect, opening settings and backgrounding
-   revoke driving. Recovery reconnects the transport; **Phone control and ARM remain
-   deliberate**. There is no background driving or replayed ARM command queue.
+1. Flash the matching **Go 1.0.2** standalone firmware from this release. Choose
+   your driver and ELRS0 (no receiver) or ELRS1 (optional CRSF receiver) image.
+   Standalone Go ARM requires the new ownership/capability telemetry. Older Go
+   firmware may be observed but cannot arm from this app.
+2. Join **TeleRC-MiniRover** Wi-Fi, default password **telerc123**. Tap Phone
+   connect and wait for telemetry. For ArduRover, join its existing FC Wi-Fi bridge;
+   the app detects the verified ground-rover heartbeat automatically.
+3. Center both joysticks and tap ARM once. This explicit request confirms phone
+   authority, transmits centered frames for at least 300 ms, then sends normal ARM.
+   The complete transaction expires after 2 s. It never bypasses rover/FC checks.
+   Driving unlocks only when telemetry confirms ARMED. During the transaction the
+   same button becomes Cancel arming; after confirmation it becomes DISARM.
+4. DISARM clears phone drive and sends neutral plus normal disarm/release on the
+   standalone rover. ArduRover receives neutral, HOLD and normal disarm.
+   Settings, backgrounding, disconnect, stale telemetry, reboot and radio takeover
+   cancel pending ARM. Recovery never enables, arms or resumes driving automatically.
 
-Settings → Connection details holds numeric IPv4, rover/phone ports and system ID. Normal
-four-wheel defaults are 192.168.4.1, UDP14550 both ends, system1. Only one app or
-PC may own that phone UDP port and the firmware peer lease. Close the other
-controller first. Sensitivity is independent for steering and drive.
+Connection details retains IPv4, remote/phone UDP ports and vehicle system ID.
+Default 192.168.4.1, remote 14550, phone 14550, system 1. If another controller owns
+that phone port, Go closes its failed socket and binds an independent temporary
+port. New Go firmware replies to the actual source port, while retaining one
+exclusive peer lease. This does not let two apps control one rover. Close full
+TeleRC/other controllers before operation; an existing peer lease must expire.
+Legacy FC Wi-Fi bridges may require source port 14550, so close the conflicting
+app before connecting to those bridges. No socket reuse or cellular fallback.
 
-## Wi-Fi and ELRS profiles
+## RadioMaster Pocket Switch A
 
-| Profile | What controls the rover |
+A physical switch name does not identify an RC channel. In your EdgeTX model,
+assign **SA to CH7**, using a two-position mix with endpoints near 1000/2000 µs.
+Reverse the mix if necessary to obtain these observed outputs:
+
+| CH7 / SA assignment | Authority |
 | --- | --- |
-| Wi-Fi · four-wheel rover | Phone → standalone ESP32-S3 → four motor drivers |
-| ELRS · four-wheel receiver | ELRS handset → CRSF receiver → ESP32-S3; phone uses the rover Wi-Fi to observe or deliberately take control |
-| Wi-Fi · ArduRover | Phone → existing transparent FC Wi-Fi bridge → ArduRover; configure its RC override permission and independent failsafes |
-| ELRS · TX Backpack | MAVLink telemetry via Backpack; the handset drives. Phone ARM/drive/STOP are intentionally unavailable on this handset-only link |
+| HIGH, >1800 µs | Phone permitted; tap ARM deliberately |
+| LOW, <1300 µs | Transmitter selected; phone commands blocked |
+| Middle / invalid | Standalone firmware inhibits both sources |
 
-A phone has no native ELRS RF radio. The four-wheel ELRS receiver profile uses
-normal non-inverted CRSF, receiver TX → **GPIO39**, common ground, receiver-rated
-power and 3.3V UART. GPIO39 is RX-only at420000 baud. CH1 steer, CH2 centered
-forward/reverse, CH5 ARM, CH6 STOP(high). Use100–250Hz ELRS packet rate. Bind the
-handset/receiver with matching band, firmware and private binding phrase.
+Optional standalone receiver: receiver TX → ESP32-S3 GPIO39, common ground,
+receiver-rated power and 3.3 V UART. Use normal CRSF 420000 baud and the **ELRS1**
+firmware. CH1 steer, CH2 centered forward/reverse, CH5 ARM, CH6 STOP(high), CH7 SA.
+Use matching-band/bound ELRS TX/RX; the phone always connects through rover Wi-Fi.
 
-For transmitter arming, keep CH5 LOW and sticks centered for at least0.3s, then
-switch HIGH. CH6 STOP or lost RC stops and disarms. Recovery requires fresh
-centered LOW then HIGH; a held-high ARM switch cannot restart the rover. The
-handset continues without a phone/Wi-Fi observer. Phone takeover first stops and
-disarms; then Enable/neutral/ARM is deliberate. Phone release/loss never transfers
-a moving command to the handset. CH6 STOP dominates phone and RF control while
-received; the BOOT button is the independent local stop input.
+Selecting radio stops and disarms the standalone rover before changing authority.
+Center the handset axes, hold CH5 LOW for at least 0.3 s, then switch CH5 HIGH to
+arm. A held-high ARM switch cannot restart motion at handover or after RF loss.
+CH6 STOP and the rover BOOT stop remain available although the app STOP button
+was removed. Returning SA to phone also stops/disarms; tap app ARM to return.
+Phone pause/disconnect/settings while observing RF do not send actuator commands
+that could interrupt radio operation. Delayed phone RC, TAKE, DISARM and disconnect
+packets cannot override the receiver-side SA selection. Wi-Fi loss never hands
+an old motion command to the transmitter.
 
-For ArduRover Wi-Fi, use MANUAL mode for direct driving, CH1/CH2 mapping,
-SYSID_MYGCS/MAV_GCS_SYSID255, finite RC_OVERRIDE_TIME and measured FC RC/GCS
-failsafes. Keep the receiver override-enable switch and handset HOLD available.
-After phone STOP/HOLD, select MANUAL deliberately before re-enabling phone drive.
-HOLD/disarm delivery can be unconfirmed during loss; verify the FC response and
-use the independent handset/local cutoff. An observing ELRS phone does not
-interfere with transmitter driving when it changes tabs or disconnects. For native
-Backpack use MAVLink-capable matched ELRS TX/RX and Backpack telemetry Wi-Fi,
-default10.0.0.1, send14555/listen14550. The receiver serial mode differs from the
-standalone CRSF profile. See the full TeleRC ELRS guide for FC wiring/configuration.
+## ArduRover via the same Wi-Fi screen
 
-## Reliability and limits
+The existing FC Wi-Fi bridge must transparently forward MAVLink, including
+HEARTBEAT, COMMAND_ACK and RC_CHANNELS. ArduRover must be in MANUAL for phone
+steering. Configure CH1/CH2 mapping, GCS system255, finite override timeout and
+independent RC/GCS failsafes for the installed vehicle.
 
-One socket worker owns sends, with no motion/ARM retry queue. The latest command
-slot is bounded and expires within500ms. Valid source IP/port, vehicle system,
-autopilot component, MAVLink checksum and ground-rover type are required. Wi-Fi
-socket binding avoids mobile-data routing. Retry is bounded to one attempt per
-second; stale heartbeats, changed Wi-Fi, pause and configuration changes invalidate authority.
-Neutral arming dwell counts successfully sent centered frames, not UI position.
-The paired Go firmware advertises a per-boot nonce; a changed nonce cancels app
-authority and old ARM intent. Legacy standalone firmware without this nonce
-remains locked; flash the matching four-wheel image. ArduRover phone control
-requires MANUAL and the configured ground-rover identity.
-Receiver ownership must remain fresh before phone drive on ELRS firmware.
+Map SA to CH7 and set **RC7_OPTION=46 (RC Override Enable)**: high enables GCS RC
+overrides; low disables them so the handset takes control. This is the FC's
+hardware-side arbitration. Go does not silently set flight-controller parameters
+or infer a physical SA mapping. Verify the channel and function in Mission Planner.
+Official reference: https://ardupilot.org/rover/docs/common-auxiliary-functions.html
 
-Standalone motor command loss disarms after500ms from the last accepted RC;
-ELRS RC age expires at300ms. Heartbeat freshness in the app is1500ms. These are
-software thresholds, not measured physical stopping distances or latencies.
-Discovery/diagnostics never refresh motor commands. CRC/endpoint checks are not
-cryptographic authentication: use the isolated trusted AP and bound ELRS link.
-No internet-exposed control ports or shared organization Wi-Fi are qualified.
+The app requests RC_CHANNELS at 5 Hz and requires fresh CH7 telemetry for phone
+ARM/control. Low or unknown CH7 cancels phone authority and pending ARM, without
+sending HOLD/DISARM into the observed transmitter handover. An FC source may
+already be armed; center its handset before changing SA. FC takeover behavior and
+its arming/failsafes differ from standalone firmware and must be measured on the
+actual configuration. After app DISARM/HOLD, select MANUAL deliberately before
+trying to arm again. No autonomous missions or TX Backpack phone transport.
 
-## Firmware and installation
+## Release evidence and limits
 
-Download the signed APK and the four-wheel firmware ZIP from **go-v1.0.1**.
-Install Go alongside full TeleRC. The firmware ZIP includes four actual compiled
-ESP32-S3 configurations, a sketch, binary hashes and wiring guidance. Select the
-correct driver and Wi-Fi/ELRS mode before flashing; **GO_WIRING.md** is required.
-The full app/old firmware are not overwritten automatically.
+This is the **owner-requested stable distribution channel**. Software checks,
+native emulator fault tests, firmware host/default sanitizer checks, four actual
+ESP32-S3 builds, signing continuity, increasing code 3 and package/checksum checks
+must pass before publication. Source is pinned in BUILD_INFO and the release tag.
+Stable distribution is not a claim of completed physical phone, RF, motor, power
+or field validation; those measurements remain NOT TESTED/BLOCKED.
 
-This signed release candidate updates Go 1.0.0 (same package and signing key,
-version code 2). Hardware, RF and field validation remain pending. The app-only
-update retains the Go 1.0.0 four-wheel protocol and firmware; no reflash is needed.
-Select **ELRS · four-wheel receiver** in Settings → Connection details when
-using the ELRS-enabled image. Phone connection uses Wi-Fi in both standalone
-profiles. **Take phone control** requests confirmed ownership; **Use ELRS** stops,
-disarms and releases the phone. Center the handset and cycle CH5 LOW → HIGH to
-resume transmitter driving. Handset ownership is not automatically armed.
-Fresh installs default to Wi-Fi. Existing profile and sensitivity choices persist.
-Settings popups deliberately stop phone driving; closing one never re-enables it.
+Trusted isolated Wi-Fi only. Default AP password should be personalized before
+shared deployment. MAVLink CRC/source checks are not cryptographic authentication
+or replay protection. Software timing thresholds are not measured stop distances.
+No control-source selection should be trusted before restrained-wheel testing.
 
-Before ground use: disconnect motor power for wiring; verify driver supply and
-logic levels; securely support the chassis with wheels off the floor. Check
-individual wheel directions, small drive/steer commands, neutral, STOP, Wi-Fi
-loss, transmitter loss, CH6, BOOT and no automatic rearm after recovery. Stop on
-any unexpected output. Record phone/board/driver/configuration and stop times.
+Install APK over Go 1.0.1, retaining the same package/signer and sensitivity.
+For standalone operation this is a paired app+firmware update; preserve your pin,
+driver, motor supply and inversion configuration. ArduRover keeps its existing
+firmware and requires the explicit SA/CH7 setup above. Full TeleRC is separate.
 
-Rollback: retain full TeleRC0.8.89 and the previous firmware. Go is a separate
-package, so uninstalling it does not delete full TeleRC data. Restore the previous
-matching firmware image/configuration with power removed from the motor supply.
+Before ground operation: support the chassis, use reduced sensitivity and a
+reachable independent motor-power cutoff. Verify each wheel direction, ARM,
+DISARM, cancel while arming, settings/background/reconnect, Wi-Fi loss, SA takeover
+and return, CH5 rearm dwell, CH6, BOOT and receiver loss. Confirm no auto-rearm.
+Record phone/FC/receiver/board/driver versions and actual stop times.
+
+Rollback: retain Go 1.0.1 APK and its matching standalone firmware/configuration.
+Android downgrade normally needs uninstall and loses Go data; export settings
+first. Do not erase receiver bindings or motor configuration merely to roll back.

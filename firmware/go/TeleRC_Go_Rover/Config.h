@@ -6,7 +6,7 @@
 #endif
 static_assert(TELERC_MOTOR_COUNT==4,"TeleRC Go packaged firmware requires four motors");
 namespace config {
-constexpr char VERSION[]="1.0.0-go-four-wheel";
+constexpr char VERSION[]="1.0.2-go-sa-wifi";
 constexpr char WIFI_SSID[]="TeleRC-MiniRover";
 constexpr char WIFI_PASSWORD[]="telerc123";
 constexpr uint16_t UDP_PORT=14550;

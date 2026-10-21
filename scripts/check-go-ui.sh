@@ -11,6 +11,7 @@ cleanup() {
    adb exec-out run-as "$PKG" cat "files/$name" > "go/build/ui-evidence/$name" 2>/dev/null || true
   done
  done
+ adb exec-out run-as "$PKG" cat files/go-icon.png > go/build/ui-evidence/go-icon.png 2>/dev/null || true
  adb exec-out run-as "$PKG" cat files/go-failed.png > go/build/ui-evidence/go-failed.png 2>/dev/null || true
  if [ -f go-fixture-events.json ]; then cp go-fixture-events.json go/build/ui-evidence/; fi
  kill "$fixture_pid" 2>/dev/null || true
@@ -20,7 +21,7 @@ adb install -r go/build/outputs/apk/debug/go-debug.apk
 adb install -r go/build/outputs/apk/androidTest/debug/go-debug-androidTest.apk
 adb shell am instrument -r -w "$PKG.test/io.github.denberg28.telerc.GoInstrumentation" | tee go/build/ui-evidence/result.txt
 grep 'INSTRUMENTATION_CODE: -1' go/build/ui-evidence/result.txt
-grep 'PASS: Go controls only' go/build/ui-evidence/result.txt
+grep 'PASS: Go Wi-Fi only' go/build/ui-evidence/result.txt
 for scale in 1.0 1.3; do
  for pane in controls settings; do
   name="go-$scale-$pane.png"

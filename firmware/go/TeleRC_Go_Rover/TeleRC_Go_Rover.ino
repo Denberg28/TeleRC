@@ -68,11 +68,9 @@ void heartbeat() {
   payload[6]=64 | (state.armed ? 128 : 0); // manual input, armed bit
   payload[7]=state.armed ? 4 : 3; payload[8]=3;
   sendMessage(0,payload,9,50,true); lastHeartbeat=millis();
-#if TELERC_GO_ELRS
   uint8_t own[18]={};mini_mav::put32(own,millis());
-  mini_mav::put32(own+4,uint32_t(authority.owner)|(authority.fresh(millis())?256:0)|(authority.stop?512:0));
+  mini_mav::put32(own+4,uint32_t(authority.owner)|(authority.fresh(millis())?256:0)|(authority.stop?512:0)|(authority.phoneBlocked?1024:0)|2048);
   memcpy(own+8,"TELERC_OWN",10);sendMessage(252,own,18,44,true);
-#endif
 }
 void commandAck(uint16_t command,uint8_t result) {
   uint8_t payload[3]; mini_mav::put16(payload,command); payload[2]=result;
@@ -111,13 +109,11 @@ bool dispatch(const mini_mav::Message &m,uint32_t now) {
   if(m.id==76) {
     if(!targetOK(m.payload[30],m.payload[31])) return false;
     const uint16_t command=mini_mav::u16(m.payload+28);
-#if TELERC_GO_ELRS
     if(command==31010) {
       float take;memcpy(&take,m.payload,4);bool plain=true;for(int i=4;i<28;i++)if(m.payload[i]!=0)plain=false;
-      if(take!=1.0f||!plain||authority.stop||bootHeld||!pwmReady){commandAck(command,2);return true;}
+      if(take!=1.0f||!plain||authority.stop||authority.phoneBlocked||bootHeld||!pwmReady){commandAck(command,2);return true;}
       stopRover(true,"PHONE_TAKE");authority.takePhone();commandAck(command,0);heartbeat();return true;
     }
-#endif
     if(command!=400) { commandAck(command,3); return true; } // unsupported
     float param1; memcpy(&param1,m.payload,sizeof(param1));
     bool plain=true;
@@ -125,7 +121,11 @@ bool dispatch(const mini_mav::Message &m,uint32_t now) {
     if(!plain || !isfinite(param1) || (param1!=0.0f && param1!=1.0f)) {
       commandAck(command,2); return true;
     }
-    if(param1==0) { stopRover(true,"DISARM"); commandAck(command,0); }
+    if(param1==0) {
+      // A delayed phone DISARM must not interrupt a transmitter after SA takeover.
+      if(authority.owner!=go_rf::Authority::PHONE || authority.phoneBlocked){commandAck(command,authority.owner==go_rf::Authority::STOPPED&&!state.armed&&!authority.phoneBlocked ? 0 : 2);return true;}
+      stopRover(true,"DISARM"); commandAck(command,0);
+    }
     else if(authority.owner==go_rf::Authority::PHONE && !bootHeld && pwmReady && motorBank.ready && state.arm(now)) {
       lastStop="ARMED"; commandAck(command,0);
     }
@@ -160,7 +160,7 @@ void receiveOne() {
   const IPAddress source=udp.remoteIP(); const uint16_t port=udp.remotePort();
   uint8_t data[256]; const int count=udp.read(data,sizeof(data));
   while(udp.available()) udp.read();
-  if(size!=count || !localIP(source) || port!=config::UDP_PORT) { ++rejected; return; }
+  if(size!=count || !localIP(source) || port<1024) { ++rejected; return; }
   const uint32_t now=millis();
   // Discovery never grants ARM or refreshes motion commands.
   if(size==int(sizeof(DISCOVERY)-1) && !memcmp(data,DISCOVERY,sizeof(DISCOVERY)-1)) {
@@ -189,7 +189,7 @@ void receiveOne() {
   }
   if(!isPeer(source,port)) { ++rejected; return; }
   if(size==int(sizeof(DISCONNECT)-1) && !memcmp(data,DISCONNECT,sizeof(DISCONNECT)-1)) {
-    stopRover(true,"DISCONNECT");
+    if(authority.owner==go_rf::Authority::PHONE)stopRover(true,"DISCONNECT");
     heartbeat(); peer=ZERO_IP; peerPort=0; ++accepted; return;
   }
   // Validate the complete datagram before any command side effects.
@@ -291,9 +291,15 @@ void serviceReceiver(uint32_t now) {
   while(budget-- && rfSerial.available()){
     const int value=rfSerial.read();if(value<0)break;
     if(!rfParser.feed(uint8_t(value),now,rfChannels))continue;
+    const auto previousOwner=authority.owner;
     const bool request=authority.observe(rfChannels,now);
+    if(previousOwner!=authority.owner){
+      stopRover(true,"SA_HANDOVER");heartbeat();
+      // The next fresh RF frames establish neutral dwell; never reuse an old ARM edge.
+      continue;
+    }
     if(authority.stop){stopRover(true,"ELRS_STOP");continue;}
-    if(authority.owner==go_rf::Authority::PHONE)continue;
+    if(authority.owner==go_rf::Authority::PHONE || rfChannels.us[6]>=1300)continue;
     const bool low=rfChannels.us[4]<1300;
     if(low && state.armed)stopRover(true,"ELRS_DISARM");
     if(authority.owner==go_rf::Authority::TRANSMITTER || low || request)state.rc(rfChannels.us[0],rfChannels.us[1],now);

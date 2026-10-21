@@ -1,21 +1,22 @@
 package io.github.denberg28.telerc
 
-internal enum class GoProfile(val label:String,val host:String,val port:Int=14550,val localPort:Int=14550) {
- WIFI("Wi-Fi · four-wheel rover","192.168.4.1"),
- ELRS("ELRS · four-wheel receiver","192.168.4.1"),
- FC_WIFI("Wi-Fi · ArduRover","192.168.4.1"),
- BACKPACK("ELRS · TX Backpack","10.0.0.1",14555);
- val handsetOnly get()=this==BACKPACK
- val standalone get()=this==WIFI || this==ELRS
-}
-internal data class GoEndpoint(val profile:GoProfile,val host:String=profile.host,val port:Int=profile.port,val localPort:Int=profile.localPort,val system:Int=1) {
+internal enum class GoProfile(val host:String="192.168.4.1",val port:Int=14550,val localPort:Int=14550) { WIFI }
+internal data class GoEndpoint(val profile:GoProfile=GoProfile.WIFI,val host:String=profile.host,val port:Int=profile.port,val localPort:Int=profile.localPort,val system:Int=1) {
  fun valid():Boolean {
   val octets=host.split('.')
   return octets.size==4 && octets.all { it.toIntOrNull() in 0..255 && it.isNotEmpty() && it.length<=3 } &&
    octets[0].toInt() in 1..223 && octets[0]!="127" && octets.last().toInt() in 1..254 &&
-   port in 1..65535 && localPort in 1024..65535 && system in 1..254 &&
-   (!profile.standalone || port==14550 && localPort==14550 && system==1)
+   port in 1..65535 && (localPort==0 || localPort in 1024..65535) && system in 1..254
  }
+}
+/** One explicit tap authorizes ownership + neutral dwell for at most two seconds. */
+internal class GoArmRequest {
+ private var requestedAt:Long?=null
+ private var capturedEpoch=0L
+ fun begin(epoch:Long,now:Long){capturedEpoch=epoch;requestedAt=now}
+ fun active()=requestedAt!=null
+ fun valid(epoch:Long,now:Long)=requestedAt?.let{capturedEpoch==epoch&&now>=it&&now-it<2000}==true
+ fun cancel(){requestedAt=null}
 }
 /** A recovered heartbeat never restores authority or an old ARM intention. */
 internal class GoControl {

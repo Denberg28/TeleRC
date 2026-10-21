@@ -1,3 +1,14 @@
+## Go 1.0.2
+
+- Wi-Fi-only screen with Phone connect, Settings and one ARM/DISARM toggle.
+- Remove Phone control, STOP, Use ELRS and settings footer text/profile dropdown.
+- Bound the explicit ARM transaction to ownership confirmation and sent neutral dwell; cancel it on popup, pause, loss, reboot or radio takeover.
+- Recover a busy phone UDP port using a separately bound socket; Go firmware returns telemetry to its actual source port.
+- Add receiver-side SA/CH7 authority selection and reject stale phone actuator commands after RF handover. New Go firmware is required for standalone operation.
+- Keep ArduRover over Wi-Fi through verified automatic detection and fresh CH7 telemetry; its own RC Override Enable must be configured.
+- Inset the navy power mark within the adaptive launcher icon.
+- Owner-requested stable distribution; physical phone/RF/rover measurements remain pending.
+
 ## Go 1.0.1
 
 - Launch directly into one landscape control screen; remove Setup and Test tabs.

@@ -526,3 +526,21 @@ Go 1.0.1 release update: software gates passed on source
 Capture-only run 39607405776 passed without product-source changes and supersedes
 launch-transition screenshots. Gate E and installed-device/physical integration
 remain BLOCKED. See [Go controls release evidence](GO_CONTROLS_101_RELEASE.md).
+
+## Go 1.0.2 Wi-Fi-only stable distribution
+
+Baseline9822710 (Go1.0.1). User requested owner-selected stable distribution and
+one ARM/DISARM control, Wi-Fi only, radio SA takeover and inset launcher mark.
+Scope: Go app, paired standalone source-port/SA firmware, native/host tests and
+packaging. Full TeleRC source and legacy firmware remain unchanged.
+
+A build / B behavior / C regression / D software integration / F packaging:
+NOT TESTED until the final Go1.0.2 workflow passes. Required: both-app JVM/debug,
+Go debug/release lint and signing, bridge/mini/Go host/default sanitizers, Kotlin
+to actual decoder, four ESP32-S3 builds and native UI/UDP fault checks. Cover a
+busy14550 bind, merged ARM cancel/expiry, receiver ownership, stale command
+rejection, popup transitions, no automatic recovery/rearm, automatic FC detection
+and RC7 low/high handover. Visual captures must wait for completed app surfaces.
+E HIL / installation / RF and driver timing: BLOCKED; execute the restrained-wheel
+sequence in TELERC_GO.md. Stable publication is the user's explicit channel
+request and does not satisfy these unmeasured physical qualification gates.
