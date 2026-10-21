@@ -32,6 +32,7 @@ internal class GoUpdater(private val activity:Activity,private val report:(Strin
  private var downloadId=-1L
  private var expected:GoUpdateCandidate?=null
  private var pendingInstall:Uri?=null
+ private var permissionRequested=false
  private var registered=false
  private fun ui(action:()->Unit){activity.runOnUiThread{if(!closed&&!activity.isFinishing&&!activity.isDestroyed)action()}}
  private val receiver=object:BroadcastReceiver(){
@@ -55,6 +56,7 @@ internal class GoUpdater(private val activity:Activity,private val report:(Strin
  }
  fun check(){
   if(closed)return
+  if(pendingInstall!=null){permissionRequested=false;offerInstall();return}
   if(downloadId>=0||verifying.get()){report("An update is downloading or being verified.");return}
   if(!checking.compareAndSet(false,true)){report("Checking for updates…");return}
   report("Checking for updates…")
@@ -94,7 +96,7 @@ internal class GoUpdater(private val activity:Activity,private val report:(Strin
   // Revalidate the approved asset immediately before giving it to DownloadManager.
   if(GoUpdateRules.candidate("go-v${candidate.version}",BuildConfig.VERSION_NAME,false,false,"TeleRC-Go-v${candidate.version}.apk",candidate.url,"sha256:${candidate.sha256}",candidate.bytes)==null){report("Update was rejected.");return}
   try{
-   pendingInstall=null;apk.delete();expected=candidate
+   pendingInstall=null;permissionRequested=false;apk.delete();expected=candidate
    if(!registered){activity.registerReceiver(receiver,IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),Context.RECEIVER_EXPORTED);registered=true}
    val request=DownloadManager.Request(Uri.parse(candidate.url)).setTitle("TeleRC Go update").setDescription("Downloading TeleRC Go v${candidate.version}")
     .setMimeType("application/vnd.android.package-archive").setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
@@ -102,11 +104,13 @@ internal class GoUpdater(private val activity:Activity,private val report:(Strin
    downloadId=downloads.enqueue(request);report("Downloading TeleRC Go v${candidate.version}…")
   }catch(_:Exception){downloadId=-1;expected=null;report("Could not start download. Check internet and try again.")}
  }
- fun resumePendingInstall(){if(pendingInstall!=null&&activity.packageManager.canRequestPackageInstalls())offerInstall()}
+ fun resumePendingInstall(){if(pendingInstall!=null&&(activity.packageManager.canRequestPackageInstalls()||!permissionRequested))offerInstall()}
  private fun offerInstall(){
   val uri=pendingInstall?:return
   if(!activity.hasWindowFocus()){report("Update verified. Return to TeleRC Go to install.");return}
   if(!activity.packageManager.canRequestPackageInstalls()){
+   if(permissionRequested){report("Install permission is off. Tap the version text to retry.");return}
+   permissionRequested=true
    report("Allow TeleRC Go to install updates, then return here.")
    runCatching{activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${activity.packageName}")))}
     .onFailure{report("Open Android settings to allow TeleRC Go updates.")}
