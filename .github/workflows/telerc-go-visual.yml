@@ -1,7 +1,7 @@
-name: TeleRC Go 1.0.0 visual verification
+name: TeleRC Go 1.0.1 visual verification
 on:
  push:
-  branches: ['verify/telerc-go-ui-100']
+  branches: ['verify/telerc-go-controls-101']
 permissions:
  contents: write
 jobs:
@@ -12,7 +12,7 @@ jobs:
    - uses: actions/checkout@v4
      with: {fetch-depth: 0}
    - name: Preserve released product source
-     run: git diff --exit-code 941bda900cf35e49c5d604fdfe79b8bf8c741438 HEAD -- go/src/main go/build.gradle.kts firmware/go
+     run: git diff --exit-code e64b34e3e06c77cda95192d5c1d9e29b2fad9001 HEAD -- go/src/main go/build.gradle.kts firmware/go
    - uses: actions/setup-java@v4
      with: {distribution: temurin, java-version: '17'}
    - uses: gradle/actions/setup-gradle@v4
@@ -43,13 +43,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
      run: |
       mkdir -p deliverables
-      printf 'Product source: 941bda900cf35e49c5d604fdfe79b8bf8c741438\nCapture test source: %s\nRun: %s/%s/actions/runs/%s\nOnly capture synchronization changed; APK and firmware release assets are retained.\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > go/build/ui-evidence/CAPTURE_INFO.txt
-      zip -qr deliverables/TeleRC-Go-v1.0.0-visual-evidence.zip go/build/ui-evidence/ go/build/reports/tests/ go/build/test-results/
-      gh release upload go-v1.0.0 deliverables/TeleRC-Go-v1.0.0-visual-evidence.zip --repo "$GITHUB_REPOSITORY"
+      printf 'Product source: e64b34e3e06c77cda95192d5c1d9e29b2fad9001\nCapture test source: %s\nRun: %s/%s/actions/runs/%s\nOnly capture synchronization changed; APK and firmware release assets are retained.\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > go/build/ui-evidence/CAPTURE_INFO.txt
+      zip -qr deliverables/TeleRC-Go-v1.0.1-visual-evidence.zip go/build/ui-evidence/ go/build/reports/tests/ go/build/test-results/
+      gh release upload go-v1.0.1 deliverables/TeleRC-Go-v1.0.1-visual-evidence.zip --repo "$GITHUB_REPOSITORY"
    - uses: actions/upload-artifact@v4
      if: always()
      with:
-      name: TeleRC-Go-1.0.0-visual
+      name: TeleRC-Go-1.0.1-visual
       path: |
        deliverables/
        go/build/ui-evidence/

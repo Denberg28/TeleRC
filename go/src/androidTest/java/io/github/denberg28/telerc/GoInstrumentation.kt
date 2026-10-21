@@ -16,7 +16,24 @@ class GoInstrumentation:Instrumentation(){
  private fun waitFor(test:()->Boolean){val until=SystemClock.elapsedRealtime()+10000;while(SystemClock.elapsedRealtime()<until){if(test())return;Thread.sleep(30)};error("Timed out waiting for Go UI")}
  private fun find(v:View,text:String):View?{if(v is android.widget.Button&&v.text.toString()==text)return v;if(v is ViewGroup)for(i in 0 until v.childCount)find(v.getChildAt(i),text)?.let{return it};return null}
  private fun click(a:Activity,text:String){waitFor{main{find(a.window.decorView,text)?.isEnabled==true}};main{check(find(a.window.decorView,text)?.performClick()==true){"Missing $text"}}}
- private fun shot(name:String){waitForIdleSync();Thread.sleep(300);val b=uiAutomation.takeScreenshot();File(targetContext.filesDir,name).outputStream().use{b.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};b.recycle()}
+ private fun shot(name:String){
+  val until=SystemClock.elapsedRealtime()+10000
+  while(true){
+   waitForIdleSync();Thread.sleep(500)
+   val b=uiAutomation.takeScreenshot()
+   // Starting/rotation windows can obscure a rendered View hierarchy. Require
+   // the navy app surface in every quadrant before recording visual evidence.
+   val ready=(0..1).all{qx->(0..1).all{qy->
+    var blue=0;var total=0
+    for(x in qx*b.width/2 until (qx+1)*b.width/2 step 24)for(y in qy*b.height/2 until (qy+1)*b.height/2 step 24){
+     val c=b.getPixel(x,y);if(android.graphics.Color.blue(c)-android.graphics.Color.red(c)>=12)blue++;total++
+    }
+    blue>total/10
+   }}
+   if(ready){File(targetContext.filesDir,name).outputStream().use{b.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};b.recycle();return}
+   b.recycle();check(SystemClock.elapsedRealtime()<until){"Launch surface still obscures $name"}
+  }
+ }
  private fun visible(a:Activity,label:String){val v=find(a.window.decorView,label)?:error("Missing $label");val r=android.graphics.Rect();check(v.getGlobalVisibleRect(r)&&r.height()>=v.height-1){"Clipped $label"}}
  private fun control(value:String){DatagramSocket().use{s->val b=value.toByteArray();s.send(DatagramPacket(b,b.size,InetAddress.getByName("10.0.2.2"),14551))}}
  override fun onStart(){try{
