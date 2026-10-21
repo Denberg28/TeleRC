@@ -36,7 +36,8 @@ int main(){
   input("?X");check(!strcmp(serialResult,"STOP_RECEIVED"));off();
   boot();input("\r\n\t ");check(serialBytes==4&&!strcmp(serialResult,"IDLE"));off();
   input("Z\r\n");check(serialLastCommand=='z'&&!strcmp(serialResult,"UNKNOWN_SEND_?_T_V_A_X_C"));off();
-  input("A");check(!strcmp(serialResult,"ARM_NEEDS_DIRECTION_CHECK"));off();
+  input("A");check(!strcmp(serialResult,REQUIRE_DIRECTION_CONFIRMATION?"ARM_NEEDS_DIRECTION_CHECK":"ARM_REQUESTED"));
+   if(!REQUIRE_DIRECTION_CONFIRMATION){check(mode==Mode::ARMING);input("X");}off();
   input("V");check(!strcmp(serialResult,"VERIFY_NEEDS_COMPLETED_TEST"));off();
   boot();testInput.linked=true;input("T");
   check(!strcmp(serialResult,"REJECTED_DISCONNECT_TELERC")&&mode==Mode::DISARMED);off();
