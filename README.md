@@ -1,6 +1,7 @@
 # TeleRC Go — separate streamlined edition
 
-New `go` module: Setup, Controls, Test; Wi-Fi/ELRS; four-wheel firmware.
+[TeleRC Go 1.0.0 stable](https://github.com/Denberg28/TeleRC/releases/tag/go-v1.0.0) is available: Setup, Controls, Test; Wi-Fi/ELRS; four-wheel firmware.
+[Final software qualification and physical-test limits](docs/TELERC_GO_RESULT.md).
 [Operation, qualification and stable-channel limits](docs/TELERC_GO.md).
 The full TeleRC app remains intact.
 

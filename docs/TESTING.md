@@ -470,3 +470,26 @@ qualification. See TELERC_GO.md and GO_WIRING.md for operation/rollback/next che
 
 Next concrete physical check: verify driver supply/logic and wheel mapping, then
 exercise phone/ELRS handover, CH6/BOOT, independent timeouts and no automatic rearm.
+
+
+## TeleRC Go 1.0.0 — final software qualification
+
+Stable release: https://github.com/Denberg28/TeleRC/releases/tag/go-v1.0.0
+Product source `941bda900cf35e49c5d604fdfe79b8bf8c741438`; successful build run
+[39518099111](https://github.com/Denberg28/TeleRC/actions/runs/39518099111).
+A/B/C/D/F PASS: both-app regression, eight Go JVM tests, Go debug/release lint and
+signing, actual four-profile ESP32-S3 builds, default sanitizers, live UDP native
+fault/authority checks and release digests/archives. E physical HIL remains BLOCKED.
+
+Initial screenshots could race Android frame presentation. A test-only capture
+fix, source `4bc9fb5c156250711399be614e6caffb29d8c614`, passed follow-up run
+[39519487836](https://github.com/Denberg28/TeleRC/actions/runs/39519487836).
+The corrected visual-evidence ZIP contains eighteen rendered screens across three
+themes and two text sizes. Representative screens were reviewed, with visible
+Connect/STOP actions and offline Test maze. App and firmware product sources did
+not change; original published binaries/signatures/hashes remain retained.
+
+APK SHA256 `76f86824a2d6061e2321499d44cacff6e52c5f3f15e0960a4f8954a8c5f7ef21`.
+See [complete results, hashes and next restrained-wheel check](TELERC_GO_RESULT.md).
+Stable is the owner's requested distribution channel, not physical/field
+qualification. The separate full-app Latest tag remains v0.8.84.
