@@ -49,3 +49,10 @@ For ArduRover use its Wi-Fi profile and verify MANUAL/HOLD and independent fails
 Keep Go 1.0.0 APK and configuration backups. Android downgrade normally needs
 uninstalling code 2 and loses Go data. Full TeleRC is a separate package. No
 firmware or radio provisioning rollback is needed for this app-only update.
+
+Visual inspection: the normal-font Controls screen shows the full supplied image
+and transparent square joystick panels with all actions visible. At font scale
+1.3, actions remain visible; the long disconnected/profile message can crop its
+last line in the fixed center status area. This is a cosmetic candidate limitation;
+verify larger-text status wrapping in a later UI update. No motor-control or
+telemetry-recovery behavior was changed for the capture correction.
