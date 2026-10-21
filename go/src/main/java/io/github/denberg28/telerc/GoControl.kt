@@ -39,7 +39,9 @@ internal class GoControl {
   sentNeutralAt?.let{now>=it&&now-it<200}==true && firstNeutral?.let{now-it>=300}==true
  fun maySendArm(capturedEpoch:Long,requestedAt:Long,now:Long)=capturedEpoch==epoch && now>=requestedAt && now-requestedAt<500 && armReady(now)
  fun expire(now:Long):Boolean {if(enabled && !fresh(now)){stop();return true};return false}
- fun stop() {epoch++;enabled=false;firstNeutral=null;sentNeutralAt=null;armed=false}
- fun disconnect(){stop();heartbeatAt=null;stopped=false}
+ // Revoking phone authority must not overwrite the receiver's observed ARM state.
+ // In particular, an independently armed handset remains visible during takeover.
+ fun stop() {epoch++;enabled=false;firstNeutral=null;sentNeutralAt=null}
+ fun disconnect(){stop();armed=false;heartbeatAt=null;stopped=false}
  fun receiverStop(value:Boolean){if(value)stop();stopped=value}
 }
