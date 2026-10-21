@@ -9,7 +9,7 @@ for verified in 0 1; do
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -DTELERC_HOST_TEST -DBALANCER_DIRECTIONS_VERIFIED="$verified" -DBALANCER_REQUIRE_DIRECTION_CONFIRMATION="$required" -Istubs \
     host_tests.cpp -o "$build_dir/tests-$required-$verified"
-  ASAN_OPTIONS=detect_leaks=0 "$build_dir/tests-$verified"
+  ASAN_OPTIONS=detect_leaks=0 "$build_dir/tests-$required-$verified"
 done
 done
 g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
