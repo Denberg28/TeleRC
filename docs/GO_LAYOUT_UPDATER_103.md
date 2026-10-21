@@ -36,3 +36,33 @@ Physical download/permission/installer and HIL gates remain NOT TESTED/BLOCKED.
 Rollback: retain Go 1.0.2 APK and existing firmware; Android downgrade normally
 requires uninstall and loses app settings. Prefer a forward-code corrective APK
 when retaining settings matters. The full TeleRC Latest release is not replaced.
+
+
+## Final release result — 22 October 2026
+
+Stable: https://github.com/Denberg28/TeleRC/releases/tag/go-v1.0.3
+Product/package source: e209341c47273e8fccce90dbd8d8daafdcf7a390.
+Successful run: https://github.com/Denberg28/TeleRC/actions/runs/39660238824
+
+A/B/C/D/F PASS: both-app Android regression; 17 Go JVM tests with zero failures,
+errors or skips; Go debug/release lint/build; retained signer and code4; all host
+and default cloud sanitizer gates; actual four-profile ESP32-S3 compilation;
+Kotlin/firmware parser integration; native popup-fit/non-overlap/no-scroll tests,
+normal and large text including 640x360dp landscape; lower-center ARM/status and
+clickable upper-left version; connection Save/Cancel; actual newer same-package
+APK verification and wrong hash/version/current/full-app rejection; stable Go
+metadata selection; all prior live UDP, reboot, port conflict, RF observer,
+SA takeover/return and FC HOLD checks. Final screenshots were visually reviewed.
+All downloaded artifact/release SHA-256 values and ZIP integrity were verified.
+
+APK SHA-256:
+56c122fdfadb564c92118e04c802949d9fc59cf2f98b22b0fd3594b550a6daa0.
+The final successful native run supersedes the earlier fixture-transfer issue
+and metadata-test timeout. Selection and archive rejection assertions remain
+required in the passing final suite. Stable metadata is public, draft=false and
+prerelease=false; full TeleRC Latest remains unchanged.
+
+E remains NOT TESTED/BLOCKED: physical phone installation/permission/installer
+acceptance and rover/RF/power/field validation. No silent installation is claimed.
+Retain existing Go 1.0.2 firmware; this update does not require reflashing.
+Next: install this APK on the actual phone and follow the acceptance above.

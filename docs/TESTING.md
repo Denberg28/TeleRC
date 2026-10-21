@@ -562,3 +562,15 @@ source/firmware/evidence/checksum packaging. Firmware is unchanged but the four
 pinned target builds remain in the release pipeline. E physical HIL/phone install
 and permission/installer confirmation BLOCKED; follow TELERC_GO.md. Stable is the
 owner's continuing distribution-channel request, not physical qualification.
+
+
+Go 1.0.3 final result: A/B/C/D/F PASS on product source
+`e209341c47273e8fccce90dbd8d8daafdcf7a390`, successful run39660238824.
+17 Go JVM tests, both-app regression, release lint/signing/code4, host/default
+sanitizers, four actual ESP32-S3 builds, real updater APK/metadata acceptance and
+rejection, native no-scroll geometry at normal/large text and short landscape,
+all prior UDP/SA/reconnect faults, and package/source/evidence/checksums passed.
+Final captures were visually reviewed. E physical phone permission/installer and
+rover HIL remains BLOCKED/NOT TESTED. Stable distribution was published under the
+owner's continuing authorization. See GO_LAYOUT_UPDATER_103.md for final hashes,
+installation, unchanged 1.0.2 firmware, rollback and the next physical check.
