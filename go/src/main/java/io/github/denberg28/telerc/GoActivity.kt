@@ -96,7 +96,7 @@ class GoActivity:Activity(){
    val joystick=JoystickView(this@GoActivity,vertical){value->
     if(vertical)drive=value else steer=value;link.axes(steer,drive);refreshLabels()
    }
-   if(vertical)right=joystick else left=joystick
+   if(vertical)this@GoActivity.right=joystick else this@GoActivity.left=joystick
    addView(joystick,LinearLayout.LayoutParams(-1,0,1f))
   }
   controls.addView(stick(false),LinearLayout.LayoutParams(0,-1,1.25f))
