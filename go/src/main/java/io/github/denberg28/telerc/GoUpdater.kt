@@ -117,7 +117,14 @@ internal class GoUpdater(private val activity:Activity,private val report:(Strin
    pendingInstall=null
   }catch(_:Exception){report("Android could not open the APK installer.")}
  }
- fun close(){closed=true;if(registered){runCatching{activity.unregisterReceiver(receiver)};registered=false};if(downloadId>=0)runCatching{downloads.remove(downloadId)};downloadId=-1;expected=null;pendingInstall=null;apk.delete()}
+ fun close(){
+  closed=true
+  if(registered){runCatching{activity.unregisterReceiver(receiver)};registered=false}
+  if(downloadId>=0){runCatching{downloads.remove(downloadId)};apk.delete()}
+  // Android's installer can still be reading a verified APK after this Activity
+  // is destroyed. Retain completed files until the next explicit download.
+  downloadId=-1;expected=null;pendingInstall=null
+ }
 }
 
 internal object GoApkVerifier {
