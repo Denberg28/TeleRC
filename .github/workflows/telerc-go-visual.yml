@@ -1,0 +1,57 @@
+name: TeleRC Go 1.0.0 visual verification
+on:
+ push:
+  branches: ['verify/telerc-go-ui-100']
+permissions:
+ contents: write
+jobs:
+ visual:
+  runs-on: ubuntu-latest
+  timeout-minutes: 20
+  steps:
+   - uses: actions/checkout@v4
+     with: {fetch-depth: 0}
+   - name: Preserve released product source
+     run: git diff --exit-code 941bda900cf35e49c5d604fdfe79b8bf8c741438 HEAD -- go/src/main go/build.gradle.kts firmware/go
+   - uses: actions/setup-java@v4
+     with: {distribution: temurin, java-version: '17'}
+   - uses: gradle/actions/setup-gradle@v4
+   - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+   - name: Build unchanged Go with synchronized capture tests
+     run: ./gradlew :go:testDebugUnitTest :go:assembleDebug :go:assembleDebugAndroidTest --no-daemon
+   - name: Reclaim before emulator
+     run: python3 scripts/reclaim-ui-runner.py
+   - name: Enable KVM
+     run: |
+      echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+      sudo udevadm control --reload-rules
+      sudo udevadm trigger --name-match=kvm
+   - name: Capture rendered tabs and rerun UDP fault checks
+     uses: reactivecircus/android-emulator-runner@v2
+     with:
+      api-level: 35
+      target: default
+      arch: x86_64
+      profile: pixel_2
+      ram-size: 3072M
+      cores: 2
+      disable-animations: true
+      emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+      script: bash scripts/check-go-ui.sh
+   - name: Attach corrected visual evidence
+     env:
+      GH_TOKEN: ${{ github.token }}
+     run: |
+      mkdir -p deliverables
+      printf 'Product source: 941bda900cf35e49c5d604fdfe79b8bf8c741438\nCapture test source: %s\nRun: %s/%s/actions/runs/%s\nOnly capture synchronization changed; APK and firmware release assets are retained.\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > go/build/ui-evidence/CAPTURE_INFO.txt
+      zip -qr deliverables/TeleRC-Go-v1.0.0-visual-evidence.zip go/build/ui-evidence/ go/build/reports/tests/ go/build/test-results/
+      gh release upload go-v1.0.0 deliverables/TeleRC-Go-v1.0.0-visual-evidence.zip --repo "$GITHUB_REPOSITORY"
+   - uses: actions/upload-artifact@v4
+     if: always()
+     with:
+      name: TeleRC-Go-1.0.0-visual
+      path: |
+       deliverables/
+       go/build/ui-evidence/
+       go/build/test-results/
+      retention-days: 7
