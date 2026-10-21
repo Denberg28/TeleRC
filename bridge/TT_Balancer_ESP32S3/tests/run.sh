@@ -3,12 +3,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 build_dir="$(mktemp -d)"
 trap 'rm -rf "$build_dir"' EXIT
+for required in 0 1; do
 for verified in 0 1; do
   g++ -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -DTELERC_HOST_TEST -DBALANCER_DIRECTIONS_VERIFIED="$verified" -Istubs \
-    host_tests.cpp -o "$build_dir/tests-$verified"
+    -DTELERC_HOST_TEST -DBALANCER_DIRECTIONS_VERIFIED="$verified" -DBALANCER_REQUIRE_DIRECTION_CONFIRMATION="$required" -Istubs \
+    host_tests.cpp -o "$build_dir/tests-$required-$verified"
   ASAN_OPTIONS=detect_leaks=0 "$build_dir/tests-$verified"
+done
 done
 g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
   -fno-omit-frame-pointer -DTELERC_HOST_TEST -Istubs admin_tests.cpp -o "$build_dir/admin-tests"
