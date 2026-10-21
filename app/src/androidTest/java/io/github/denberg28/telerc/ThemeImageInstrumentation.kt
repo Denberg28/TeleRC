@@ -209,6 +209,15 @@ class ThemeImageInstrumentation : Instrumentation() {
         screenshot("fpv-default-help.png"); clickWindow("Done")
         onMain { view.setAutoReconnect(false); view.connectCamera(allowPermissionRequest=false) }
         check(onMain { !policy.wanted && !view.autoReconnect() && helperField.get(view)==null })
+        onMain {
+            // Android's fresh attach/default launch requests connection even
+            // after a prior manual disconnect. No device means no prompt/helper.
+            view.connectCamera(allowPermissionRequest=false, attachmentLaunch=true)
+            check(policy.wanted && policy.pendingPermission==null && helperField.get(view)==null)
+            repeat(3) { view.pause(); view.suspendCamera(); view.resume() }
+            check(policy.wanted && helperField.get(view)==null)
+            view.setAutoReconnect(false)
+        }
         openTabMenu(activity,"Controls")
         waitUntil { windowText("Setup")!=null }; clickWindow("Setup")
         val registeredField=UsbFpvView::class.java.getDeclaredField("receiverRegistered").apply { isAccessible=true }

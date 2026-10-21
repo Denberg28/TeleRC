@@ -20,4 +20,11 @@ class FpvStreamPolicyTest {
         assertEquals(listOf(1000L,2000L,4000L), (0..2).map { FpvStreamPolicy.retryDelay(it) })
         assertNull(FpvStreamPolicy.retryDelay(3)); assertNull(FpvStreamPolicy.retryDelay(100))
     }
+    @Test fun provenReceiverFormatComesFirstOnlyWhileItIsStillAdvertisedAndAllowed() {
+        val good = p(5, 720, 576, 25)
+        val advertised = listOf(p(7),good)
+        assertEquals(good,FpvStreamPolicy.profiles(advertised,FpvStreamPolicy.Mode.AUTO,good).first())
+        assertEquals(listOf(p(7)),FpvStreamPolicy.profiles(advertised,FpvStreamPolicy.Mode.MJPEG,good))
+        assertEquals(listOf(p(7)),FpvStreamPolicy.profiles(listOf(p(7)),FpvStreamPolicy.Mode.AUTO,good))
+    }
 }

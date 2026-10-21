@@ -1,3 +1,12 @@
+# External USB FPV reliability — 0.8.91 candidate
+
+Keep USB access during advertised-mode negotiation, restart a stalled preview
+before reopening USB, and remember a format after sustained frames. Fresh
+Android attachment/default launches can reconnect after manual disconnect.
+Android still owns default/grant decisions; physical phone/UVC/RF acceptance
+remains BLOCKED. Firmware0.3.1 remains compatible; no reflash. See
+[scope, A–F gates, installation and acceptance](docs/FPV_RELIABILITY_091.md).
+
 # UI and safety review — 0.8.88
 
 Balance is dropdown-only. Shared actions and compact bounded popup layouts are standardized. Session-bound Balance consent, stricter compatible MAVLink parsing and single-flight APK verification address confirmed review findings. App-only; retain balancer0.3.0. [Review, remaining gaps, gates and acceptance](docs/UI_SAFETY_REVIEW_088.md). Final CI/build result supplies qualification; physical HIL remains BLOCKED.

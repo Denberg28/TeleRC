@@ -151,6 +151,7 @@ class MainActivity : Activity() {
     private var pendingFpvPermission = false
     private var connectFpvOnResume = false
     private var fpvResumeMayRequestPermission = false
+    private var fpvResumeFromAttachment = false
     private var controlsPlaceholder: View? = null
     private var controlsLocate: Button? = null
     private var controlsEstimate: TextView? = null
@@ -313,7 +314,7 @@ class MainActivity : Activity() {
         switchTo(Page.CONTROLS)
         showingCamera = true
         updateControlsScene()
-        if (resumed) connectFpv(false) else { connectFpvOnResume = true; fpvResumeMayRequestPermission = false }
+        if (resumed) connectFpv(false, attachmentLaunch = true) else { connectFpvOnResume = true; fpvResumeMayRequestPermission = false; fpvResumeFromAttachment = true }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1304,7 +1305,7 @@ class MainActivity : Activity() {
                     camera.setAutoReconnect(!camera.autoReconnect())
                 } else if (index == modeCount + 2) {
                     AppDialog.Builder(this).setTitle("Use TeleRC for this receiver")
-                        .setMessage("When Android offers an app chooser on receiver attachment, select TeleRC and Always / Use by default. Android controls that choice. TeleRC reuses existing USB access on reconnect; if Android removes the grant, tap Connect FPV to approve access again. To change an existing choice, clear the other camera app's defaults in Android Settings, then reconnect the receiver.")
+                        .setMessage("On receiver attachment, select TeleRC and Always / Use by default if Android offers it. Then grant Camera access while using the app. TeleRC remembers the receiver, keeps Auto reconnect on and reuses access without another app prompt. Android owns USB defaults; physical detach, revoked permission or another default app may require approval again. Clear the other camera app's defaults in Android Settings if it opens instead.")
                         .setPositiveButton("Done", null).show()
                 } else {
                     showingCamera = true; updateControlsScene()
@@ -1315,7 +1316,7 @@ class MainActivity : Activity() {
             }.setNegativeButton("Cancel", null).show()
     }
 
-    private fun connectFpv(allowPermissionRequest: Boolean = true) {
+    private fun connectFpv(allowPermissionRequest: Boolean = true, attachmentLaunch: Boolean = false) {
         if (page != Page.CONTROLS || !resumed || pendingFpvPermission) return
         // Runtime and USB permission dialogs can take focus. Neutralize before either.
         disableControl()
@@ -1328,7 +1329,7 @@ class MainActivity : Activity() {
             }
             pendingFpvPermission = true
             requestPermissions(arrayOf(Manifest.permission.CAMERA), 44)
-        } else fpvCamera?.connectCamera(allowPermissionRequest)
+        } else fpvCamera?.connectCamera(allowPermissionRequest, attachmentLaunch)
     }
 
     private fun setControlsMapVisible(visible: Boolean) {
@@ -1474,7 +1475,7 @@ class MainActivity : Activity() {
     }
     private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
     private fun releaseMap() {
-        pendingFpvPermission = false; connectFpvOnResume = false; fpvResumeMayRequestPermission = false
+        pendingFpvPermission = false; connectFpvOnResume = false; fpvResumeMayRequestPermission = false; fpvResumeFromAttachment = false
         fpvCamera?.close(); fpvCamera = null; fpvSwap = null; fpvConnect = null
         showingCamera = false
         pendingPhoneLocate = false
@@ -2068,7 +2069,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onPause() { balanceTab?.pause(); AppDialog.dismissAll(this); waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; if(page==Page.BALANCE)render() else balanceTab?.resume(); waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; fpvResumeMayRequestPermission = false; connectFpv(mayRequest) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onResume() { super.onResume(); resumed = true; if(page==Page.BALANCE)render() else balanceTab?.resume(); waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; val fromAttachment = fpvResumeFromAttachment; fpvResumeMayRequestPermission = false; fpvResumeFromAttachment = false; connectFpv(mayRequest, fromAttachment) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; waypointTab?.onStart(); routeMap?.onStart() }
     override fun onStop() { waypointTab?.onStop(); fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); waypointTab?.lowMemory(); routeMap?.onLowMemory() }

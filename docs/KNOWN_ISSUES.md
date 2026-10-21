@@ -1,3 +1,12 @@
+# External USB FPV reliability — 0.8.91 candidate
+
+Keep USB access during advertised-mode negotiation, restart a stalled preview
+before reopening USB, and remember a format after sustained frames. Fresh
+Android attachment/default launches can reconnect after manual disconnect.
+Android still owns default/grant decisions; physical phone/UVC/RF acceptance
+remains BLOCKED. Firmware0.3.1 remains compatible; no reflash. See
+[scope, A–F gates, installation and acceptance](FPV_RELIABILITY_091.md).
+
 # Balancer no-movement report — 0.8.90 / firmware0.3.1
 
 The weak55/255 ×150ms diagnostic is replaced by140/255 ×300ms; physical motion

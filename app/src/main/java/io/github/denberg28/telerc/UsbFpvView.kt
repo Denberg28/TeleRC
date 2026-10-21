@@ -48,10 +48,15 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private var previewing = false
     private var surface: SurfaceTexture? = null
     private var lastFrameAt = 0L
-    private var previewAt = 0L
+    private val health = FpvHealthPolicy()
+    private var previewRestarts = 0
+    private var usbReopens = 0
+    private var profileRemembered = false
     private var connectingAt = 0L
     private var profileIndex = 0
-    private var negotiated = false
+    private var negotiating: FpvStreamPolicy.Profile? = null
+    private var negotiatingAt = 0L
+    private var activeProfile: FpvStreamPolicy.Profile? = null
     private var sessionMode: FpvStreamPolicy.Mode? = null
     private val permissionAction = context.packageName + ".FPV_USB_PERMISSION." + UUID.randomUUID()
     private var permissionIntent: PendingIntent? = null
@@ -86,10 +91,18 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
             if (foreground && visiblePreview) {
                 val now = SystemClock.elapsedRealtime()
                 driveConnection()
-                if (helper != null && connectingAt > 0 && now - connectingAt > 15000)
-                    recover("USB camera open timed out")
-                else if (previewing && ((lastFrameAt > 0 && !FpvPreviewPolicy.frameFresh(lastFrameAt, now)) ||
-                    (lastFrameAt == 0L && now - previewAt > 8000))) recover("USB frames stalled")
+                settleVideoMode()
+                if (negotiating != null && now - negotiatingAt > 5000)
+                    recover("Receiver rejected video mode", changeProfile = true)
+                else if (helper != null && connectingAt > 0 && now - connectingAt > 15000)
+                    recover("USB camera open timed out", changeProfile = connection.failures >= 1)
+                else if (previewing) when (health.check(now)) {
+                    FpvHealthPolicy.Action.RESTART_PREVIEW -> {
+                        beforeRecovery(); previewRestarts++; stopPreview(); startPreview()
+                    }
+                    FpvHealthPolicy.Action.REOPEN_USB -> recover("USB frames stalled", changeProfile = true)
+                    else -> Unit
+                }
             }
             if (wanted) handler.postDelayed(this, 500)
         }
@@ -117,6 +130,8 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                 if (!previewing || !foreground || !visiblePreview) return
                 lastFrameAt = SystemClock.elapsedRealtime()
                 connection.frame(lastFrameAt)
+                health.frame(lastFrameAt)
+                if (health.stable && !profileRemembered) rememberProfile()
                 val caption = "USB FPV · $profileText"
                 if (status.text != caption) {
                     status.text = caption; status.gravity = Gravity.TOP or Gravity.START
@@ -147,6 +162,21 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         prefs.edit().putInt("receiver_vendor", device.vendorId).putInt("receiver_product", device.productId)
             .putBoolean("auto_connect", true).apply()
     }
+    private fun stableProfile(): FpvStreamPolicy.Profile? {
+        val d = selected ?: return null
+        if (prefs.getInt("stable_vendor", -1) != d.vendorId || prefs.getInt("stable_product", -1) != d.productId) return null
+        return FpvStreamPolicy.Profile(prefs.getInt("stable_type", 0), prefs.getInt("stable_width", 0),
+            prefs.getInt("stable_height", 0), prefs.getInt("stable_fps", 0))
+    }
+    private fun plans() = FpvStreamPolicy.profiles(supported, mode(), stableProfile())
+    private fun rememberProfile() {
+        val d = selected ?: return
+        val p = activeProfile ?: return
+        profileRemembered = true; profileIndex = 0
+        prefs.edit().putInt("stable_vendor", d.vendorId).putInt("stable_product", d.productId)
+            .putInt("stable_type", p.type).putInt("stable_width", p.width)
+            .putInt("stable_height", p.height).putInt("stable_fps", p.fps).apply()
+    }
     fun autoReconnect() = prefs.getBoolean("auto_connect", false)
     fun handles(device: UsbDevice) = !disposed && wanted && helper != null &&
         selected?.let(::attachment) == attachment(device) && cameraPermission() && manager.hasPermission(device)
@@ -160,9 +190,11 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         showMessage("FPV disconnected · tap Connect FPV")
     }
     /** Explicit requests may ask once. Repeated Connect never tears down a healthy session. */
-    fun connectCamera(allowPermissionRequest: Boolean = true) {
+    fun connectCamera(allowPermissionRequest: Boolean = true, attachmentLaunch: Boolean = false) {
         if (disposed || !foreground || !cameraPermission()) return
-        if (!allowPermissionRequest && prefs.contains("auto_connect") && !autoReconnect()) return
+        // A fresh Android attach/default launch is a new connection request,
+        // including after Auto reconnect was previously turned off. It cannot prompt.
+        if (!allowPermissionRequest && !attachmentLaunch && prefs.contains("auto_connect") && !autoReconnect()) return
         val devices = manager.deviceList.values.filter(::isVideoDevice)
         val chosen = devices.singleOrNull()
         if (chosen != null) remember(chosen)
@@ -205,7 +237,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                     (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                 permissionIntent = PendingIntent.getBroadcast(context, 0,
                     Intent(permissionAction).setPackage(context.packageName), flags)
-                showMessage("Allow USB access · choose Always / use by default if Android offers it")
+                showMessage("Allow USB access once · TeleRC reuses access while this receiver stays attached")
                 try { manager.requestPermission(device, permissionIntent!!) }
                 catch (_: RuntimeException) {
                     connection.permissionResult(attachment(device), false); clearPermission()
@@ -223,9 +255,9 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private fun openSession(device: UsbDevice) {
         if (!foreground || !visiblePreview || !wanted || helper != null || SystemClock.elapsedRealtime() < releaseUntil) return
         if (!cameraPermission() || !manager.hasPermission(device)) return
-        selected = device; negotiated = false; sessionMode = mode()
+        selected = device; sessionMode = mode(); profileRemembered = false
         beforeRecovery()
-        val plansBeforeOpen = FpvStreamPolicy.profiles(supported, mode())
+        val plansBeforeOpen = plans()
         val requested = plansBeforeOpen.getOrNull(if (plansBeforeOpen.isEmpty()) 0 else profileIndex % plansBeforeOpen.size)
         requestedSize = requested?.let { Size(it.type, it.width, it.height, it.fps, listOf(it.fps)) }
         val token = ++generation
@@ -244,30 +276,18 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                 }
                 override fun onCameraOpen(d: UsbDevice) = current(d) {
                     if (!foreground || !wanted) { closeSession(); return@current }
-                    val actual = camera.previewSize
-                    if (!negotiated) {
-                        negotiated = true
-                        supported = (camera.supportedSizeList ?: emptyList()).take(64).flatMap { size ->
-                            val rates = size.fpsList?.takeIf { it.isNotEmpty() } ?: listOf(size.fps)
-                            rates.take(16).map { FpvStreamPolicy.Profile(size.type, size.width, size.height, it) }
-                        }
-                        val plans = FpvStreamPolicy.profiles(supported, mode())
-                        if (plans.isEmpty()) { connection.stop(); closeSession(); showMessage("Requested video mode unavailable · hold Connect FPV and choose Auto"); return@current }
-                        val chosen = plans[profileIndex % plans.size]
-                        if (actual == null || actual.type != chosen.type || actual.width != chosen.width || actual.height != chosen.height || actual.fps != chosen.fps) {
-                            if (requested == chosen) { recover("Receiver rejected requested video mode"); return@current }
-                            // A full generation change discards the library's USB-close callbacks.
-                            closeSession(); connection.defer(SystemClock.elapsedRealtime() + 700)
-                            showMessage("Negotiating ${mode().label} · controls disabled")
-                            return@current
-                        }
+                    supported = (camera.supportedSizeList ?: emptyList()).take(64).flatMap { size ->
+                        val rates = size.fpsList?.takeIf { it.isNotEmpty() } ?: listOf(size.fps)
+                        rates.take(16).map { FpvStreamPolicy.Profile(size.type, size.width, size.height, it) }
                     }
-                    cameraOpen = true; connectingAt = 0
-                    actual?.let {
-                        widthVideo = it.width; heightVideo = it.height
-                        profileText = "${it.width}×${it.height} · ${if (it.type == FpvStreamPolicy.YUYV) "YUYV" else "MJPEG"} ${it.fps} fps"
-                    }
-                    fitPreview(); startPreview()
+                    val candidates = plans()
+                    if (candidates.isEmpty()) { connection.stop(); closeSession(); showMessage("Requested video mode unavailable · hold Connect FPV and choose Auto"); return@current }
+                    val chosen = candidates[profileIndex % candidates.size]
+                    negotiating = chosen; negotiatingAt = SystemClock.elapsedRealtime()
+                    // CameraHelper serializes this before preview start. Keep USB
+                    // access/control block instead of releasing the whole receiver.
+                    if (!matches(camera.previewSize, chosen)) camera.setPreviewSize(videoSize(chosen))
+                    settleVideoMode()
                 }
                 override fun onCameraClose(d: UsbDevice) = current(d) {
                     cameraOpen = false; previewing = false; surface = null; lastFrameAt = 0
@@ -284,7 +304,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                     recover("USB access changed · waiting for Android access")
                 }
                 override fun onError(d: UsbDevice, error: CameraException) = current(d) {
-                    recover("Camera error ${error.code} · close other USB camera apps")
+                    recover("Camera error ${error.code} · close other USB camera apps", changeProfile = connection.failures >= 1)
                 }
             })
             camera.selectDevice(device)
@@ -296,10 +316,23 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
         if (!foreground || !wanted || !deviceOpen) return
         requestedSize?.let { camera.openCamera(it) } ?: camera.openCamera()
     }
-    private fun recover(reason: String) {
+    private fun videoSize(p: FpvStreamPolicy.Profile) = Size(p.type, p.width, p.height, p.fps, listOf(p.fps))
+    private fun matches(size: Size?, p: FpvStreamPolicy.Profile) = size != null &&
+        size.type == p.type && size.width == p.width && size.height == p.height && size.fps == p.fps
+    private fun settleVideoMode() {
+        val p = negotiating ?: return
+        if (!matches(helper?.previewSize, p)) return
+        negotiating = null; negotiatingAt = 0; activeProfile = p
+        cameraOpen = true; connectingAt = 0
+        widthVideo = p.width; heightVideo = p.height
+        profileText = "${p.width}×${p.height} · ${if (p.type == FpvStreamPolicy.YUYV) "YUYV" else "MJPEG"} ${p.fps} fps"
+        fitPreview(); startPreview()
+    }
+    private fun recover(reason: String, changeProfile: Boolean = false) {
         lastError = reason; beforeRecovery(); closeSession()
+        usbReopens++
         val delay = connection.failed(SystemClock.elapsedRealtime())
-        profileIndex = (profileIndex + 1) % 1024
+        if (changeProfile) profileIndex = (profileIndex + 1) % 1024
         showMessage(if (delay >= 30000) "$reason · waiting 30 s before retry · controls disabled"
             else "$reason · retry ${connection.failures}/3 · controls disabled")
     }
@@ -313,13 +346,13 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
             helper?.addSurface(texture, false); surface = texture
         }
         if (!previewing) {
-            previewing = true; previewAt = SystemClock.elapsedRealtime(); lastFrameAt = 0
+            previewing = true; health.started(SystemClock.elapsedRealtime()); lastFrameAt = 0
             showMessage("Waiting for FPV frames · $profileText"); helper?.startPreview()
         }
     }
     private fun stopPreview() {
         surface?.let { helper?.removeSurface(it) }; surface = null
-        helper?.stopPreview(); previewing = false; lastFrameAt = 0; previewAt = 0; connection.resetFrames()
+        helper?.stopPreview(); previewing = false; lastFrameAt = 0; connection.resetFrames()
     }
     fun setVisiblePreview(visible: Boolean) {
         if (visiblePreview == visible) return
@@ -345,10 +378,11 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private fun closeSession() {
         generation++; val old = helper; helper = null
         sessionMode = null; connection.resetFrames()
+        health.reset(); negotiating = null; negotiatingAt = 0; activeProfile = null
         if (old != null) releaseUntil = SystemClock.elapsedRealtime() + 700
         surface?.let { old?.removeSurface(it) }; surface = null
         old?.stopPreview(); old?.release(); selected = null; deviceOpen = false; requestedSize = null; cameraOpen = false; previewing = false
-        connectingAt = 0; lastFrameAt = 0; previewAt = 0
+        connectingAt = 0; lastFrameAt = 0
     }
     fun close() {
         if (disposed) return
@@ -361,7 +395,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private fun fitPreview() { FpvPreviewPolicy.fit(width, height, widthVideo, heightVideo)?.let {
         preview.layoutParams = LayoutParams(it.first, it.second, Gravity.CENTER)
     } }
-    fun diagnosis(): String = usbDiagnosis(context) + "\n\nMode: ${mode().label}\nActive: $profileText\nRecovery: ${connection.failures}/3 · auto ${autoReconnect()}\nLast error: ${lastError.ifEmpty { "none" }}\nAdvertised: " +
+    fun diagnosis(): String = usbDiagnosis(context) + "\n\nMode: ${mode().label}\nActive: $profileText\nRecovery: ${connection.failures}/3 · auto ${autoReconnect()}\nPreview restarts: $previewRestarts · USB reopens: $usbReopens\nLast frame age: ${if (lastFrameAt > 0) "${SystemClock.elapsedRealtime()-lastFrameAt} ms" else "none"}\nStable format saved: $profileRemembered\nLast error: ${lastError.ifEmpty { "none" }}\nAdvertised: " +
         supported.take(24).joinToString { "${it.width}x${it.height}/${it.type}@${it.fps}" } +
         "\n\nUSB frames do not prove a clean RF picture. For colored lines, try YUYV; also check FPV channel, PAL/NTSC and camera power."
     companion object {
