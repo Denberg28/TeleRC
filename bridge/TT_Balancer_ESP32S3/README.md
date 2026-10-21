@@ -1,3 +1,9 @@
+# v0.3.2 direct-arm candidate
+
+The previous v0.3.1 motor-direction `t` then `v` step is OPTIONAL by default (`BALANCER_REQUIRE_DIRECTION_CONFIRMATION=0` in `Config.h`). The firmware will still show `verified=0` until you perform the actual wheel test and confirm. If you want the former mandatory lock, set the macro to `1` and rebuild.
+
+**This is not an automatic arming mode.** After startup the motor output remains zero until explicit serial `a` (unpaired) or TeleRC ARM (paired). Valid calibrated IMU, fresh samples, acceptable upright angle/rate, real STOP, valid PWM, centered/fresh TeleRC controls, arm hold, and fault cutoffs remain enforced. Failure of any blocks arming. Verify motor and sensor polarity before applying motor power; incorrect feedback can cause immediate violent acceleration. The user's static -8.8-degree reading is beyond ±4-degree upright gate; fix mount/physical upright rather than relaxing it. Wi-Fi password is a demonstration default and must be changed for real use.
+
 # TeleRC balancer motor-test update — v0.3.1
 
 Pair with TeleRC **0.8.90/code108**. Open the dropdown → Balance.

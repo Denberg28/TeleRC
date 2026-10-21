@@ -29,7 +29,7 @@ void arm(){
 int main(){
   boot();
   command('a');
-  if(!DIRECTIONS_VERIFIED){
+  if(!DIRECTIONS_VERIFIED && REQUIRE_DIRECTION_CONFIRMATION){
     check(mode==Mode::DISARMED);off();
     command('t');check(mode==Mode::MOTOR_TEST);check(motorCommand==TEST_PWM);
     command('x');check(mode==Mode::DISARMED);off();
@@ -173,14 +173,15 @@ int main(){
   // Specific physical and transport gates, rather than a generic centered-stick error.
   using B=telerc::ArmBlock;
   boot();directionsVerified=false;publishStatus();
-  check(!testStatus.ready&&testStatus.physicalBlock==B::VERIFY_DIRECTIONS);
+  check(testStatus.ready==!REQUIRE_DIRECTION_CONFIRMATION);
+   check(testStatus.physicalBlock==(REQUIRE_DIRECTION_CONFIRMATION?B::VERIFY_DIRECTIONS:B::NONE));
   testInput.linked=true;command('v');check(!directionsVerified); // Remote peer owns authority.
   boot();angle=8;publishStatus();check(testStatus.physicalBlock==B::HOLD_UPRIGHT);
   angle=0;rate=20;publishStatus();check(testStatus.physicalBlock==B::HOLD_STILL);
   rate=0;fakeUs+=NO_SAMPLE_US+1;publishStatus();check(testStatus.physicalBlock==B::SENSOR_STALE);
   boot();testInput.linked=testInput.fresh=testInput.armPending=true;
   testInput.armToken=1;testInput.armAt=testInput.lastRC=millis();
-  directionsVerified=false;loop();check(completedBlock==B::VERIFY_DIRECTIONS);off();
+  directionsVerified=false;loop();check(completedBlock==(REQUIRE_DIRECTION_CONFIRMATION?B::VERIFY_DIRECTIONS:B::NONE));off();
   boot();testInput.linked=testInput.fresh=testInput.armPending=true;
   testInput.armToken=1;testInput.armAt=millis()-501;testInput.lastRC=millis();
   loop();check(completedBlock==B::ARM_EXPIRED);off();
@@ -201,7 +202,7 @@ int main(){
   check(Wire.regs[0x1D]==3&&Wire.writes[0x1D]==1);
   check(Wire.regs[0x1B]==0&&Wire.regs[0x1C]==0&&Wire.regs[0x19]==0);
   Sample mpu6500Sample;check(readSample(mpu6500Sample)==1&&mpu6500Sample.az==1);
-  directionsVerified=false;check(physicalArmBlock()==B::VERIFY_DIRECTIONS);off();
+  directionsVerified=false;check(physicalArmBlock()==(REQUIRE_DIRECTION_CONFIRMATION?B::VERIFY_DIRECTIONS:B::NONE));off();
   directionsVerified=true;arm();Wire.busOK=false;tick();check(mode==Mode::FAULT);off();
   boot();Wire.ack68=false;Wire.ack69=true;Wire.who69=0x70;
   check(initMPU()&&mpuAddress==0x69&&mpuDiag.chipID==0x70);off();

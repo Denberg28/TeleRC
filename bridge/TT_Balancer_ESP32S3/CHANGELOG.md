@@ -1,3 +1,11 @@
+# v0.3.2 — optional direction-confirmation gate (development candidate)
+
+- `BALANCER_REQUIRE_DIRECTION_CONFIRMATION=0` by default: optional `t`/`v` bench commissioning, not an arming prerequisite.
+- `verified=0` remains truthful until an actual confirmation; skipping the gate never marks the motors verified.
+- `=1` restores v0.3.1's strict T-then-V arming lock.
+- Explicit arming, sensor freshness/calibration, upright/still, hardware STOP, PWM faults, link freshness, centered controls, motor output bounds, and fault latching remain unchanged.
+- Physical wheel directions, sensor sign, actual balance stability and safe operation are NOT established by these edits. Test with a tether and accessible kill switch; the observed -8.8 degree standing offset remains a separate blocker.
+
 # v0.3.1 — 21 October 2026 — motor-test output and workflow
 
 - Increase explicit left/right/both tests from 55/255 ×150ms to 140/255 ×300ms.
