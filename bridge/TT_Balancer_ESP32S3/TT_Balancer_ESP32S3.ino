@@ -1,4 +1,4 @@
-/* TT Balancer 0.3.1 -- TeleRC Wi-Fi bench firmware, Arduino-ESP32 3.x.
+/* TT Balancer 0.3.2 -- TeleRC Wi-Fi bench firmware, Arduino-ESP32 3.x.
  * No external MPU library. Wire + LEDC are supplied by the ESP32 board package.
  * READ README.md BEFORE CONNECTING MOTOR POWER. Defaults forbid arming.
  */
@@ -304,7 +304,7 @@ telerc::ArmBlock physicalArmBlock() {
   if(!calibrated) return B::IMU_NOT_READY;
   if(!pwmReady) return B::PWM_NOT_READY;
   if(mode==Mode::MOTOR_TEST) return B::MOTOR_TEST;
-  if(!directionsVerified) return B::VERIFY_DIRECTIONS;
+  if(REQUIRE_DIRECTION_CONFIRMATION && !directionsVerified) return B::VERIFY_DIRECTIONS;
   if(uint32_t(micros()-sampleUs)>NO_SAMPLE_US) return B::SENSOR_STALE;
   if(mode==Mode::BALANCING) return B::NONE;
   if(fabsf(angle-TRIM_DEG)>ARM_DEG) return B::HOLD_UPRIGHT;
@@ -391,7 +391,7 @@ void serialCommands() {
     return;
   }
   if (command == 'a' && mode == Mode::DISARMED && !linkInput.linked) {
-    if (!directionsVerified) { serialOutcome("ARM_NEEDS_DIRECTION_CHECK"); reason = "suspend wheels: t, check directions/axes, then v"; return; }
+    if (REQUIRE_DIRECTION_CONFIRMATION && !directionsVerified) { serialOutcome("ARM_NEEDS_DIRECTION_CHECK"); reason = "suspend wheels: t, check directions/axes, then v"; return; }
     if ((uint32_t)(micros() - sampleUs) > NO_SAMPLE_US ||
         fabsf(angle - TRIM_DEG) > ARM_DEG || fabsf(rate) > ARM_RATE_DPS) {
       serialOutcome("ARM_NEEDS_UPRIGHT_STILL_FRESH");
@@ -685,7 +685,7 @@ void controlStep() {
         (unsigned)mpuDiag.probe[1].ack,(unsigned)mpuDiag.probe[1].read,mpuDiag.probe[1].who,mpuDiag.probe[1].error,
         mpuDiag.reg,mpuDiag.expected,mpuDiag.actual,mpuDiag.error,mpuDiag.wanted,mpuDiag.got);
     } else n = snprintf(telemetry, sizeof(telemetry),
-                     "v0.3.1 %s wifi=%s prearm=%s last=%s verified=%u CH1=%u CH2=%u age=%lu rx=%lu reject=%lu angle=%.2f rate=%.2f pwm=%d | %s\n",
+                     "v0.3.2 %s wifi=%s prearm=%s last=%s verified=%u CH1=%u CH2=%u age=%lu rx=%lu reject=%lu angle=%.2f rate=%.2f pwm=%d | %s\n",
                      modeName(), telerc::wifiName(linkInput.wifi), telerc::armName(remoteArmBlock()),
                      telerc::armName(linkInput.lastArmBlock), (unsigned)directionsVerified,
                      linkInput.observedSteer,linkInput.observedDrive,
