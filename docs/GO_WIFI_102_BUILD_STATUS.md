@@ -1,29 +1,44 @@
-# TeleRC Go 1.0.2 build status — 22 October 2026
+# TeleRC Go 1.0.2 stable — 22 October 2026
 
-Product source: `5ec2119` on isolated local branch
-`release/telerc-go-wifi-102-build`, based on Go 1.0.1 `9822710`.
+Published stable: https://github.com/Denberg28/TeleRC/releases/tag/go-v1.0.2
 
-The requested Wi-Fi controls-only interface, combined ARM/DISARM, removed
-settings footer/Phone control/STOP, inset navy launcher mark, paired standalone
-ownership telemetry and SA/CH7 receiver arbitration are prepared.
+Product/package source: `482f0a79d9b022fd24797584de2088a9de6449e1`.
+Successful qualification: https://github.com/Denberg28/TeleRC/actions/runs/39650910673
+This final result supersedes earlier pending/blocked software status for 1.0.2.
 
-| Gate | Observed result |
+One Wi-Fi control screen contains Phone connect, Settings and a combined
+ARM/DISARM action. Settings footer, central Phone control and app STOP are
+removed. The supplied background, transparent joystick panels and inset navy
+power icon are retained. SA/CH7 selects optional receiver authority. Revoking
+phone control preserves the actual armed state reported by receiver telemetry.
+
+| Gate | Final observed result |
 | --- | --- |
-| A source | Reviewed; shared Go and bridge motor core synchronization PASS; diff whitespace check PASS. |
-| B/C host regression | Bridge, mini Wi-Fi and Go host tests PASS; 20 driver/count/API host combinations PASS. ASan/UBSan PASS with `ASAN_OPTIONS=detect_leaks=0`; default leak scan cannot inspect this container's process threads. |
-| A/D Android and ESP32 targets | BLOCKED locally: Android SDK/Arduino toolchains absent; Gradle bootstrap fails with network unreachable. No new APK or actual ESP32 binary is claimed. |
-| D native integration | NOT TESTED: the prepared cloud workflow must exercise UI, port conflict, cancel/re-arm, telemetry recovery, reboot, passive radio observation and ArduRover handover. |
-| E physical | BLOCKED: no attached phone/rover/receiver; follow TELERC_GO.md restrained-wheel procedure. |
-| F release | BLOCKED: automatic approval review rejected the release-branch push, interpreting the current trusted request as build-only. Retrieved prior stable-promotion authorization was checked and the reviewer still rejected it. No push/build/publication success is claimed. |
+| A build | PASS: both-app Android regression/build, Go debug/release lint and signed release APK. |
+| B behavior | PASS: 12 Go JVM tests, zero failures/errors/skips; merged ARM cancellation/expiry and observed ARM state regression. |
+| C regression | PASS: shared-core sync, bridge/mini/Go host suites, default cloud ASan/UBSan and driver/profile checks. |
+| D software integration | PASS: Kotlin packets to actual firmware parser, four actual ESP32-S3 core 3.3.2 builds, native normal/large-text UI and independent live UDP fixture. |
+| E physical | BLOCKED / NOT TESTED: physical phone upgrade, rover/RF/driver/power and field timing. Execute TELERC_GO.md restrained-wheel acceptance. |
+| F package | PASS: retained signer, distinct Go identity, version code 3, alignment/CRC, all release checksums, source/firmware/evidence archives and public non-prerelease metadata. |
 
-The owner explicitly authorized building and promoting stable in the current
-conversation on 22 October 2026. The earlier publication-authorization block
-is resolved. Direct git push lacks credentials in this host; the connected
-GitHub API will publish the same reviewed source tree and start qualification.
-Publish only after software gates pass; inspect screenshot evidence and verify
-APK identity, signer and checksums. Physical qualification remains separate.
+Native coverage includes busy UDP port recovery, ARM cancellation, normal
+ARM/DISARM, telemetry loss/recovery, reboot, repeated popup transitions,
+standalone SA takeover/return, passive armed radio observation, automatic
+ArduRover detection and FC HOLD. Screenshots were visually inspected: both text
+scales keep main controls and labels readable; enlarged settings uses its bounded
+scrolling body with Done visible. The inset power launcher was inspected.
 
-The earlier working tree was preserved unchanged. No changes to full TeleRC
-product code or legacy firmware were made. Installation/paired-firmware and
-rollback instructions are in TELERC_GO.md; do not substitute Go 1.0.1 binaries
-for this unbuilt 1.0.2 source.
+APK SHA-256:
+`991043838e7cb31aa90ed02040333c4a944f25acb3aef49ab4a85ebea56c867f`.
+Four-wheel firmware archive SHA-256:
+`4311197618e14083ba9f49eec7ae7c37b600c98240ff77737ea88c6e7d1e328f`.
+
+Install the signed APK over Go 1.0.1. Standalone rovers require the paired 1.0.2
+firmware; retain motor/driver/pin/inversion settings. ArduRover retains its FC
+firmware and needs explicit SA-to-CH7/RC7_OPTION=46 setup. Full TeleRC remains a
+separate installation and its Latest release is unchanged. Operation, wiring,
+rollback and the next physical checks are in TELERC_GO.md and GO_WIRING.md.
+
+Stable is the owner's requested distribution channel, not physical or field
+qualification. Release binaries and tag remain pinned to the product source
+above; this documentation-only result does not change those binaries.
