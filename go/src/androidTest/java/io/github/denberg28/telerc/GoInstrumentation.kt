@@ -85,7 +85,9 @@ class GoInstrumentation:Instrumentation(){
     """{"tag_name":"go-v$v","draft":false,"prerelease":${v=="1.0.5"},"assets":[{"name":"TeleRC-Go-v$v.apk","browser_download_url":"https://github.com/Denberg28/TeleRC/releases/download/go-v$v/TeleRC-Go-v$v.apk","digest":"sha256:$digest","size":${candidate.length()}}]}"""
    }
   })
-  main{fake.check()};waitFor{offered.get()!=null};check(offered.get()!!.version=="1.0.4")
+  main{fake.check()}
+  try{waitFor{offered.get()!=null||messages.any{it!="Checking for updates…"}}}catch(t:Throwable){error("Update callback timed out: calls=$calls messages=$messages finishing=${a.isFinishing} destroyed=${a.isDestroyed} fixtureBytes=${candidate.length()}")}
+  check(offered.get()?.version=="1.0.4"){"Stable Go selection failed: calls=$calls messages=$messages fixtureBytes=${candidate.length()}"}
   check(calls.none{it.endsWith("releases/latest")||it.endsWith("v9.9.9")});main{fake.close()}
  }
  private fun await(a:GoActivity,phase:String,test:()->Boolean){try{waitFor(test)}catch(t:Throwable){error("$phase: ${a.link.snapshot()}")}}
