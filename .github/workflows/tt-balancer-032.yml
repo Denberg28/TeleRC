@@ -5,7 +5,7 @@ on:
       - feature/tt-balancer-v0.3.2-direct-arm
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   balancer:
     runs-on: ubuntu-latest
@@ -24,3 +24,43 @@ jobs:
           arduino-cli compile --fqbn esp32:esp32:esp32s3 \
             --build-property compiler.cpp.extra_flags="-DBALANCER_REQUIRE_DIRECTION_CONFIRMATION=0" \
             bridge/TT_Balancer_ESP32S3
+
+  package:
+    needs: balancer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package standalone Arduino sketch
+        run: |
+          mkdir -p dist
+          cp -a bridge/TT_Balancer_ESP32S3 dist/TT_Balancer_ESP32S3
+          cd dist/TT_Balancer_ESP32S3
+          rm -f SHA256SUMS.txt
+          sha256sum TT_Balancer_ESP32S3.ino *.h > SHA256SUMS.txt
+          cd ..
+          zip -qr9 TT-Balancer-ESP32S3-TeleRC-v0.3.2.zip TT_Balancer_ESP32S3
+          sha256sum TT-Balancer-ESP32S3-TeleRC-v0.3.2.zip > SHA256SUMS.txt
+          unzip -t TT-Balancer-ESP32S3-TeleRC-v0.3.2.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TT-Balancer-ESP32S3-TeleRC-v0.3.2-zip
+          path: |
+            dist/TT-Balancer-ESP32S3-TeleRC-v0.3.2.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish downloadable prerelease ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="tt-balancer-v0.3.2-direct-arm-rc1"
+          zipfile="dist/TT-Balancer-ESP32S3-TeleRC-v0.3.2.zip"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$zipfile" dist/SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" "$zipfile" dist/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "TT Balancer v0.3.2 Direct Arm (test candidate)" \
+              --notes "Standalone Arduino ESP32-S3 firmware package. Skips only mandatory T->V direction confirmation by default; all IMU/tilt/STOP/explicit-arm and link guards retained. Physically verify wheel and IMU direction before operating. Not hardware validated." \
+              --prerelease
+          fi
