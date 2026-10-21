@@ -11,6 +11,14 @@ constexpr bool MPU_AUTO_ADDRESS = true; // Probe 0x68/0x69; MPU6050 ID=0x68, MPU
 constexpr uint32_t MPU_I2C_HZ = 400000; // Try 100000 only for a measured wiring/bus problem.
 static_assert(MPU_ADDRESS==0x68 || MPU_ADDRESS==0x69, "MPU address must be 0x68/0x69");
 
+// Direction confirmation is optional for commissioning, but wheel/IMU polarity MUST be physically checked before powered balancing.
+// 0 skips only the manual t->v arming prerequisite; all physical/link/fault checks remain.
+#ifndef BALANCER_REQUIRE_DIRECTION_CONFIRMATION
+#define BALANCER_REQUIRE_DIRECTION_CONFIRMATION 0
+#endif
+static_assert(BALANCER_REQUIRE_DIRECTION_CONFIRMATION == 0 || BALANCER_REQUIRE_DIRECTION_CONFIRMATION == 1, "Invalid direction confirmation policy");
+constexpr bool REQUIRE_DIRECTION_CONFIRMATION = BALANCER_REQUIRE_DIRECTION_CONFIRMATION == 1;
+
 // Set to 1 ONLY after suspended-wheel direction/axis checks.
 // Or leave 0 and use Serial t -> inspect directions -> v to confirm for this boot.
 #ifndef BALANCER_DIRECTIONS_VERIFIED
