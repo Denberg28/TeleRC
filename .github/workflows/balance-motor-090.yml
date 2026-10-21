@@ -1,0 +1,196 @@
+name: TeleRC 0.8.90 and balancer 0.3.1 release
+on:
+  push:
+    branches: ['release/balance-pair-090']
+concurrency:
+  group: balance-pair-090
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Host regression and balancer tests
+        run: |
+          python bridge/sync_motor_core.py --check
+          python -m unittest discover -s scripts -p test_firmware_package.py
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+          bash bridge/TT_Balancer_ESP32S3/tests/run.sh
+      - name: Retain release signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: Android unit tests, lint, signed APK and native harness
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease --no-daemon
+      - name: Reclaim before emulator
+        run: python scripts/reclaim-ui-runner.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native balance tab and complete UI regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 3072M
+          cores: 2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/check-photo-ui.sh
+      - name: Verify and package qualified app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.90.apk
+          gh release download v0.8.89 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.89.apk --output "$RUNNER_TEMP/baseline.apk"
+          python - <<'PYVERIFY'
+          import os,re,subprocess
+          from pathlib import Path
+          bt=Path(os.environ['ANDROID_HOME'])/'build-tools/35.0.0'
+          def identity(path):
+              text=subprocess.check_output([str(bt/'aapt'),'dump','badging',path],text=True)
+              package=re.search(r"package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'",text).groups()
+              cert=subprocess.check_output([str(bt/'apksigner'),'verify','--print-certs',path],text=True)
+              return package,re.findall(r'Signer #\d+ certificate SHA-256 digest: ([0-9a-f]+)',cert)
+          candidate,signer=identity('deliverables/TeleRC-v0.8.90.apk')
+          previous,old=identity(os.environ['RUNNER_TEMP']+'/baseline.apk')
+          assert candidate==('io.github.denberg28.telerc','108','0.8.90')
+          assert signer and signer==old and candidate[0]==previous[0] and int(candidate[1])>int(previous[1])
+          PYVERIFY
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 deliverables/TeleRC-v0.8.90.apk
+          git archive --format=zip -o deliverables/TeleRC-v0.8.90-source.zip HEAD
+          cp docs/RELEASE_090.md deliverables/START_HERE.md
+          printf 'Source: %s\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > deliverables/BUILD_INFO.txt
+          zip -qr deliverables/TeleRC-v0.8.90-test-evidence.zip app/build/reports/ app/build/test-results/ app/build/photo-evidence/
+          python - <<'PYRESULT'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          roots=[ET.parse(p).getroot() for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml')]
+          assert roots
+          counts={k:sum(int(x.get(k,0)) for x in roots) for k in ('tests','failures','errors','skipped')}
+          assert counts['failures']==counts['errors']==counts['skipped']==0,counts
+          with Path('deliverables/BUILD_INFO.txt').open('a') as f:
+              f.write('JVM results: '+str(counts)+'\n')
+              f.write('Debug/release lint/build, host/default sanitizers, full native API35 UI suite: PASS\n')
+              f.write('Signer continuity, code108 progression and ZIP alignment: PASS\n')
+              f.write('Paired balancer0.3.1 is built in the firmware job; physical phone/rover HIL: BLOCKED\n')
+          PYRESULT
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          python -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
+      - uses: actions/upload-artifact@v4
+        with: { name: TeleRC-090-release-files, path: deliverables/, retention-days: 7 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-balance-pair-090
+          path: |
+            deliverables/
+            app/build/reports/
+            app/build/test-results/
+            app/build/photo-evidence/
+          retention-days: 7
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
+
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Compile both ESP32-S3 mounting profiles
+        run: |
+          set -euo pipefail
+          arduino-cli version
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          mkdir -p firmware-stage/compiled deliverables
+          for mount in 0 1; do
+            arduino-cli compile --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=cdc,USBMode=hwcdc,FlashSize=4M,PartitionScheme=default,PSRAM=disabled,FlashMode=dio' --build-property "compiler.cpp.extra_flags=-DBALANCER_IMU_MOUNT=$mount" --output-dir "firmware-stage/compiled/mount-$mount" bridge/TT_Balancer_ESP32S3 | tee "firmware-stage/compiled/mount-$mount.log"
+          done
+      - name: Package complete sketch and target-build evidence
+        run: |
+          cp -a bridge/TT_Balancer_ESP32S3 firmware-stage/
+          cp docs/RELEASE_090.md firmware-stage/START_HERE.md
+          python - <<'PYFW'
+          import os,hashlib,zipfile,subprocess
+          from pathlib import Path
+          root=Path('firmware-stage')
+          for mount in (0,1):
+              for name in ('TT_Balancer_ESP32S3.ino.bin','TT_Balancer_ESP32S3.ino.bootloader.bin','TT_Balancer_ESP32S3.ino.partitions.bin'):
+                  p=root/'compiled'/f'mount-{mount}'/name
+                  assert p.is_file() and p.stat().st_size>0,p
+          for p in root.rglob('*'):
+              if p.suffix in ('.elf','.map') or p.name.endswith('.merged.bin'):p.unlink()
+          info='Source: '+os.environ['GITHUB_SHA']+'\nBalancer0.3.1; ESP32 Arduino3.3.2; mount0/mount1 actual compiles PASS.\n'+subprocess.check_output(['arduino-cli','version'],text=True)+'\nGeneric4MB/default partitions, CDC USB, PSRAM disabled, DIO. Prefer Arduino source upload using the actual board settings. No erase-all required; saved gyro storage remains compatible.\nPhysical motor/phone/UDP, torque/current/stop timing and balancing/PID HIL NOT TESTED.\n'
+          (root/'BUILD_INFO-firmware.txt').write_text(info)
+          files=sorted(p for p in root.rglob('*') if p.is_file())
+          (root/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.relative_to(root).as_posix()+'\n' for p in files))
+          out=Path('deliverables/TT-Balancer-ESP32S3-TeleRC-v0.3.1.zip')
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(root.rglob('*')):
+                  if p.is_file():z.write(p,p.relative_to(root))
+          with zipfile.ZipFile(out) as z:assert z.testzip() is None
+          Path('deliverables/BUILD_INFO-firmware.txt').write_text(info)
+          PYFW
+      - uses: actions/upload-artifact@v4
+        with: { name: TeleRC-090-firmware-files, path: deliverables/, retention-days: 7 }
+  publish:
+    needs: [android, firmware]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/download-artifact@v4
+        with: { pattern: TeleRC-090-*-files, path: deliverables, merge-multiple: true }
+      - name: Final archive and digest validation
+        run: |
+          test -f deliverables/TeleRC-v0.8.90.apk
+          test -f deliverables/TT-Balancer-ESP32S3-TeleRC-v0.3.1.zip
+          cat deliverables/BUILD_INFO-firmware.txt >> deliverables/BUILD_INFO.txt
+          python - <<'PYCRC'
+          from pathlib import Path
+          import zipfile
+          for p in Path('deliverables').iterdir():
+              if p.suffix in ('.zip','.apk'):
+                  with zipfile.ZipFile(p) as z:assert z.testzip() is None,p
+          PYCRC
+          cd deliverables
+          rm -f SHA256SUMS.txt
+          sha256sum *.apk *.zip *.md *.txt > SHA256SUMS.new
+          mv SHA256SUMS.new SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+      - name: Publish owner-authorized paired prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
+          gh release create v0.8.90 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title 'TeleRC v0.8.90 + Balancer v0.3.1' --notes-file deliverables/START_HERE.md deliverables/*
+          gh release edit v0.8.90 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
