@@ -49,3 +49,14 @@ The current stable channel remains as previously selected.
 Rollback: with motor power removed, upload firmware0.3.0; the new app supports
 it. Keep saved app data and gyro storage. Prefer a forward-code app rollback
 rather than uninstalling to downgrade, which can lose local data.
+
+## Release qualification correction
+
+Initial run39535542355 passed host/default sanitizers, JVM/debug+release
+build/lint and both actual firmware targets. Native UI timed out in the existing
+replay reward test before Balance: the route helper could hand off neutral drive
+while still outside END. The helper now stops simulated inertia, aligns in place
+and explicitly supplies forward drive for the production View frame to finish.
+Game code, END threshold, onClear/wallet behavior and all reward assertions remain
+unchanged. The complete native suite and release gates must pass on the corrected
+source before publication; final BUILD_INFO identifies that run.

@@ -1318,6 +1318,25 @@ class ThemeImageInstrumentation : Instrumentation() {
             }
         }
         check(p.state==MazePractice.State.RUNNING)
+        if(target==null) {
+            // The helper stops outside END so the real View frame must clear it.
+            // The final route iteration may be a neutral pivot (or the remaining
+            // route may be empty). Do not depend on its incidental last input.
+            p.pause(); p.start() // Remove simulated inertia before final alignment.
+            var frames=0
+            while(true) {
+                val angle=atan2(maze.endX-p.pose.x,-(maze.endY-p.pose.y))-p.pose.heading
+                val error=atan2(sin(angle),cos(angle))
+                if(abs(error)<.08f)break // Above the joystick deadband.
+                check(frames++<1500 && p.state==MazePractice.State.RUNNING) { "Finish handoff could not align" }
+                p.drive(1500)
+                p.steering((1500+error.coerceIn(-1f,1f)*400).roundToInt())
+                check(!p.advance(20)) { "Alignment unexpectedly cleared END before View callback" }
+            }
+            p.steering(1500); p.drive(1740)
+            // scene.changed() resumes real frames; onClear/reward assertions
+            // stay unchanged and must still pass through the production callback.
+        }
     }
     private fun findMaze(view:View):MazePracticeView? {
         if(view is MazePracticeView) return view
