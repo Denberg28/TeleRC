@@ -18,6 +18,7 @@ while True:
  for s in select.select([wire,control],[],[],.02)[0]:
   data,addr=s.recvfrom(8192)
   if s is control:
+   print('CONTROL',data.decode(),flush=True)
    if data==b'SILENCE':silence=True
    if data==b'RESTORE':silence=False;wrong=False
    if data==b'WRONG':wrong=True
@@ -52,6 +53,7 @@ while True:
    arm=struct.unpack('<f',p[:4])[0];assert p[4:28]==bytes(24)
    armed=arm==1;events.append({'at':time.monotonic(),'arm':armed})
    if not silence:wire.sendto(frame(77,struct.pack('<HB',400,0),143),peer)
+ Path('go-fixture-events.json').write_text(json.dumps(events))
  now=time.monotonic()
  if peer and not silence and now-last>.2:
   wire.sendto(heartbeat(),peer)

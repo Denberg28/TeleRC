@@ -59,7 +59,12 @@ class GoInstrumentation:Instrumentation(){
   main{elrs.link.disconnect();elrs.finish()};Thread.sleep(300);control("FC_START")
   prefs.edit().putString("profile","FC_WIFI").putString("FC_WIFI.host","10.0.2.2").commit()
   val fc=startActivitySync(Intent(targetContext,GoActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as GoActivity
-  click(fc,"Phone connect");waitFor{fc.link.snapshot().fresh};click(fc,"Phone control");waitFor{fc.link.snapshot().armReady};click(fc,"ARM");waitFor{fc.link.snapshot().armed}
+  click(fc,"Phone connect")
+  try{waitFor{fc.link.snapshot().fresh}}catch(t:Throwable){error("FC fresh: ${fc.link.snapshot()}")}
+  click(fc,"Phone control")
+  try{waitFor{fc.link.snapshot().armReady}}catch(t:Throwable){error("FC neutral dwell: ${fc.link.snapshot()}")}
+  click(fc,"ARM")
+  try{waitFor{fc.link.snapshot().armed}}catch(t:Throwable){error("FC ARM confirmation: ${fc.link.snapshot()}")}
   main{fc.link.axes(1700,1800);fc.link.stop()};waitFor{fc.link.snapshot().stopped};check(!fc.link.snapshot().armed);check(!fc.link.snapshot().enabled)
   main{fc.link.enable()};check(!fc.link.snapshot().enabled){"HOLD restored phone control"}
   main{fc.link.disconnect();fc.finish()};Thread.sleep(300);control("EXIT")
