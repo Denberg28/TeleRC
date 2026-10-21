@@ -6,7 +6,7 @@ python3 scripts/go-udp-fixture.py > go/build/ui-evidence/udp.log 2>&1 &
 fixture_pid=$!
 cleanup() {
  for scale in 1.0 1.3; do
-  for pane in controls settings; do
+  for pane in controls settings connection sensitivity updates; do
    name="go-$scale-$pane.png"
    adb exec-out run-as "$PKG" cat "files/$name" > "go/build/ui-evidence/$name" 2>/dev/null || true
   done
@@ -19,11 +19,14 @@ cleanup() {
 trap cleanup EXIT
 adb install -r go/build/outputs/apk/debug/go-debug.apk
 adb install -r go/build/outputs/apk/androidTest/debug/go-debug-androidTest.apk
+adb shell run-as "$PKG" mkdir -p files
+adb exec-out run-as "$PKG" tee files/update-candidate.apk < /tmp/go-update-candidate.apk > /dev/null
+adb exec-out run-as "$PKG" tee files/update-wrong-package.apk < app/build/outputs/apk/debug/app-debug.apk > /dev/null
 adb shell am instrument -r -w "$PKG.test/io.github.denberg28.telerc.GoInstrumentation" | tee go/build/ui-evidence/result.txt
 grep 'INSTRUMENTATION_CODE: -1' go/build/ui-evidence/result.txt
 grep 'PASS: Go Wi-Fi only' go/build/ui-evidence/result.txt
 for scale in 1.0 1.3; do
- for pane in controls settings; do
+ for pane in controls settings connection sensitivity updates; do
   name="go-$scale-$pane.png"
   adb exec-out run-as "$PKG" cat "files/$name" > "go/build/ui-evidence/$name"
  done

@@ -544,3 +544,21 @@ and RC7 low/high handover. Visual captures must wait for completed app surfaces.
 E HIL / installation / RF and driver timing: BLOCKED; execute the restrained-wheel
 sequence in TELERC_GO.md. Stable publication is the user's explicit channel
 request and does not satisfy these unmeasured physical qualification gates.
+
+
+## Go 1.0.3 compact layout and manual updater
+
+Baseline: Go 1.0.2 product 482f0a79d9b022fd24797584de2088a9de6449e1 and final
+result documentation. Scope: Go UI/updater only; retain Go 1.0.2 firmware and
+full TeleRC unchanged. User corrected the version-label location to upper left.
+A/B/C/D/F NOT TESTED until the release workflow succeeds. Required: both-app
+regressions; Go debug/release lint/build and retained signing/code4; bounded
+Go-only stable release selection tests; real newer debug APK archive verification,
+wrong digest/version/current APK/full-app rejection; popup bounds/non-overlap
+and zero ScrollViews at normal/large text including a short 640x360dp landscape;
+connection fields, Save/Cancel, sensitivity and upper-left version touch;
+lower-center ARM/status geometry; all prior live UDP/SA/reconnect fault tests;
+source/firmware/evidence/checksum packaging. Firmware is unchanged but the four
+pinned target builds remain in the release pipeline. E physical HIL/phone install
+and permission/installer confirmation BLOCKED; follow TELERC_GO.md. Stable is the
+owner's continuing distribution-channel request, not physical qualification.

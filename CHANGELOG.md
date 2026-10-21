@@ -1,3 +1,12 @@
+# TeleRC Go 1.0.3
+
+- Fit settings, connection and sensitivity sheets without scroll containers;
+  consistent padding, separated footers, two-column labeled connection fields.
+- Place status and ARM/DISARM at the lower center.
+- Make upper-left TeleRC Go version text a manual Go-only stable updater;
+  opt-in download, digest/package/version/signer checks and Android installer.
+- Retain standalone Go 1.0.2 firmware, Wi-Fi/SA arbitration and full TeleRC.
+
 ## Go 1.0.2
 
 - Wi-Fi-only screen with Phone connect, Settings and one ARM/DISARM toggle.

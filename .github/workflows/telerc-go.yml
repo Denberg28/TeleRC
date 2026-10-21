@@ -1,9 +1,9 @@
-name: TeleRC Go 1.0.2 Wi-Fi stable release
+name: TeleRC Go 1.0.3 Wi-Fi stable release
 on:
  push:
-  branches: ['release/telerc-go-wifi-102']
+  branches: ['release/telerc-go-layout-103']
 concurrency:
- group: telerc-go-wifi-102
+ group: telerc-go-layout-103
  cancel-in-progress: true
 permissions:
  contents: write
@@ -43,6 +43,12 @@ jobs:
       TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
       TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
      run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :go:testDebugUnitTest :go:lintDebug :go:lintRelease :go:assembleDebug :go:assembleDebugAndroidTest :go:assembleRelease --no-daemon
+   - name: Build actual signed updater verification fixture
+     run: |
+      cp go/build/outputs/apk/debug/go-debug.apk /tmp/go-current-debug.apk
+      ./gradlew :go:assembleDebug -PgoUpdateFixture=true --no-daemon
+      cp go/build/outputs/apk/debug/go-debug.apk /tmp/go-update-candidate.apk
+      cp /tmp/go-current-debug.apk go/build/outputs/apk/debug/go-debug.apk
    - name: Go Kotlin to actual four-wheel parser integration
      run: |
       g++ -std=c++17 -Wall -Wextra -Werror -DTELERC_HOST_TEST=1 -DTELERC_GO_ELRS=0 -Ibridge/mini_wifi_tests/stubs firmware/go/tests/test_wifi.cpp -o /tmp/go-wire-integration
@@ -83,15 +89,15 @@ jobs:
      env:
       GH_TOKEN: ${{ github.token }}
      run: |
-      cp go/build/outputs/apk/release/go-release.apk deliverables/TeleRC-Go-v1.0.2.apk
+      cp go/build/outputs/apk/release/go-release.apk deliverables/TeleRC-Go-v1.0.3.apk
       gh release download v0.8.89 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.89.apk --output "$RUNNER_TEMP/baseline.apk"
-      python3 scripts/verify-go-release.py deliverables/TeleRC-Go-v1.0.2.apk "$RUNNER_TEMP/baseline.apk" > deliverables/BUILD_INFO.txt
-      git archive --format=zip -o deliverables/TeleRC-Go-v1.0.2-source.zip HEAD
+      python3 scripts/verify-go-release.py deliverables/TeleRC-Go-v1.0.3.apk "$RUNNER_TEMP/baseline.apk" > deliverables/BUILD_INFO.txt
+      git archive --format=zip -o deliverables/TeleRC-Go-v1.0.3-source.zip HEAD
       cp docs/TELERC_GO.md deliverables/START_HERE.md
       cp -R firmware/go/TeleRC_Go_Rover deliverables/
       cp docs/GO_WIRING.md deliverables/
-      (cd deliverables && zip -qr TeleRC-Go-v1.0.2-four-wheel-firmware.zip firmware TeleRC_Go_Rover GO_WIRING.md START_HERE.md BUILD_INFO.txt)
-      zip -qr deliverables/TeleRC-Go-v1.0.2-test-evidence.zip go/build/reports/ go/build/test-results/ go/build/ui-evidence/
+      (cd deliverables && zip -qr TeleRC-Go-v1.0.3-four-wheel-firmware.zip firmware TeleRC_Go_Rover GO_WIRING.md START_HERE.md BUILD_INFO.txt)
+      zip -qr deliverables/TeleRC-Go-v1.0.3-test-evidence.zip go/build/reports/ go/build/test-results/ go/build/ui-evidence/
       cd deliverables
       sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
       sha256sum -c SHA256SUMS.txt
@@ -101,12 +107,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
      run: |
       test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
-      gh release create go-v1.0.2 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --latest=false --title 'TeleRC Go v1.0.2 — stable Wi-Fi, ARM/DISARM and Switch A takeover' --notes-file deliverables/START_HERE.md deliverables/*.apk deliverables/*.zip deliverables/*.md deliverables/BUILD_INFO.txt deliverables/SHA256SUMS.txt
-      gh release edit go-v1.0.2 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest=false
+      gh release create go-v1.0.3 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --latest=false --title 'TeleRC Go v1.0.3 — stable compact controls and in-app Go updates' --notes-file deliverables/START_HERE.md deliverables/*.apk deliverables/*.zip deliverables/*.md deliverables/BUILD_INFO.txt deliverables/SHA256SUMS.txt
+      gh release edit go-v1.0.3 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest=false
    - uses: actions/upload-artifact@v4
      if: always()
      with:
-      name: TeleRC-Go-1.0.2
+      name: TeleRC-Go-1.0.3
       path: |
        deliverables/
        go/build/outputs/apk/

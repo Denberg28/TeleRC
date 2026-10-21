@@ -9,12 +9,13 @@ def identity(path):
  signer=re.findall(r'Signer #\d+ certificate SHA-256 digest: ([0-9a-f]+)',run(bt/'apksigner','verify','--print-certs',path))
  return p,signer
 apk,baseline=map(Path,sys.argv[1:]);a,sa=identity(apk);b,sb=identity(baseline)
-assert a==('io.github.denberg28.telerc.go','3','1.0.2')
+assert a==('io.github.denberg28.telerc.go','4','1.0.3')
 assert b[0]=='io.github.denberg28.telerc' and sa and sa==sb
 run(bt/'zipalign','-c','-P','16','4',apk)
 permissions=run(bt/'aapt','dump','permissions',apk)
-for removed in ['CAMERA','ACCESS_FINE_LOCATION','ACCESS_COARSE_LOCATION','REQUEST_INSTALL_PACKAGES','RECORD_AUDIO']:
+for removed in ['CAMERA','ACCESS_FINE_LOCATION','ACCESS_COARSE_LOCATION','RECORD_AUDIO']:
  assert f'android.permission.{removed}' not in permissions
+assert 'android.permission.REQUEST_INSTALL_PACKAGES' in permissions
 with zipfile.ZipFile(apk) as z:
  assert z.testzip() is None
  names=z.namelist();assert not any(x.startswith('lib/') for x in names)
@@ -25,10 +26,10 @@ reports=list(Path('go/build/test-results/testDebugUnitTest').glob('TEST-*.xml'))
 roots=[ET.parse(p).getroot() for p in reports]
 counts={k:sum(int(x.get(k,0)) for x in roots) for k in ('tests','failures','errors','skipped')}
 assert counts['failures']==counts['errors']==counts['skipped']==0
-print('TeleRC Go 1.0.2/code3; standalone package; source',os.environ['GITHUB_SHA'])
+print('TeleRC Go 1.0.3/code4; standalone package; source',os.environ['GITHUB_SHA'])
 print('Run:',os.environ['GITHUB_SERVER_URL']+'/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/'+os.environ['GITHUB_RUN_ID'])
 print('JVM:',counts)
-print('Both-app regression; Go debug/release lint/build; native UI/UDP fault recovery; host/default sanitizers: PASS')
+print('Both-app regression; Go debug/release lint/build; fitted native UI/UDP recovery; verified updater archives/metadata; host/default sanitizers: PASS')
 print('Four actual ESP32-S3 core3.3.2 targets (MX1508/BTS7960 x Wi-Fi/ELRS): PASS')
 print('Retained signer, distinct identity, alignment/CRC, removed permissions/native SDKs: PASS')
 print('Owner-requested stable channel; physical phone/rover HIL: NOT TESTED/BLOCKED')

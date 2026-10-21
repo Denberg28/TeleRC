@@ -1,8 +1,11 @@
-# TeleRC Go 1.0.2
+# TeleRC Go 1.0.3
 
 Wi-Fi-only rover controller. One landscape control screen: **Phone connect**,
 **Settings**, and one **ARM / DISARM** button. No Phone control button, STOP,
-Use ELRS, setup/test tabs or transport dropdown. Settings contains only Wi-Fi
+Use ELRS, setup/test tabs or transport dropdown. The upper-left **TeleRC Go v1.0.3** text checks for stable Go updates when tapped.
+Status and ARM/DISARM sit at the lower center. Content-sized popups use equal
+spacing, a two-column connection form and separate footer actions, with no scroll
+containers. Settings contains only Wi-Fi
 settings, Connection details, Sensitivity and Done. The supplied ship background
 and transparent joystick panels remain; the navy power mark is inset in its icon.
 
@@ -82,11 +85,30 @@ its arming/failsafes differ from standalone firmware and must be measured on the
 actual configuration. After app DISARM/HOLD, select MANUAL deliberately before
 trying to arm again. No autonomous missions or TX Backpack phone transport.
 
+## Manual Go updates
+
+Tap the version text at the upper left while the phone has internet access.
+Opening the update sheet stops phone control and cancels pending ARM. The check
+reads only `go-vX.Y.Z` tags, skips draft/prerelease releases and matches the exact
+TeleRC Go APK asset; the full TeleRC Latest release is never used. A newer
+verified release offers Download or Cancel. Download disconnects phone control.
+The app checks the SHA-256 digest, declared size, Go package identity, increasing
+version code, matching version name and installed signing certificate before
+opening Android's installer. Android requires install-from-this-source permission
+and its normal installation confirmation. No silent installation or auto-rearm.
+
+If rover Wi-Fi has no internet, connect the phone to an internet-capable network
+and tap the version again. A check does not send rover commands over cellular.
+Closing the sheet does not authorize a later download prompt. Keep TeleRC Go open
+for the download/verification/installer flow; closing the activity cancels an
+unfinished download. Physical phone permission/installer acceptance remains to
+be checked on the actual device.
+
 ## Release evidence and limits
 
 This is the **owner-requested stable distribution channel**. Software checks,
 native emulator fault tests, firmware host/default sanitizer checks, four actual
-ESP32-S3 builds, signing continuity, increasing code 3 and package/checksum checks
+ESP32-S3 builds, signing continuity, increasing code 4 and package/checksum checks
 must pass before publication. Source is pinned in BUILD_INFO and the release tag.
 Stable distribution is not a claim of completed physical phone, RF, motor, power
 or field validation; those measurements remain NOT TESTED/BLOCKED.
@@ -96,9 +118,10 @@ shared deployment. MAVLink CRC/source checks are not cryptographic authenticatio
 or replay protection. Software timing thresholds are not measured stop distances.
 No control-source selection should be trusted before restrained-wheel testing.
 
-Install APK over Go 1.0.1, retaining the same package/signer and sensitivity.
-For standalone operation this is a paired app+firmware update; preserve your pin,
-driver, motor supply and inversion configuration. ArduRover keeps its existing
+Install APK over Go 1.0.2, retaining the same package/signer and sensitivity.
+This app-only update retains standalone Go 1.0.2 firmware unchanged. When
+upgrading older standalone firmware, use the paired Go 1.0.2 firmware first;
+preserve pin, driver, motor supply and inversion configuration. ArduRover keeps its existing
 firmware and requires the explicit SA/CH7 setup above. Full TeleRC is separate.
 
 Before ground operation: support the chassis, use reduced sensitivity and a
@@ -107,6 +130,6 @@ DISARM, cancel while arming, settings/background/reconnect, Wi-Fi loss, SA takeo
 and return, CH5 rearm dwell, CH6, BOOT and receiver loss. Confirm no auto-rearm.
 Record phone/FC/receiver/board/driver versions and actual stop times.
 
-Rollback: retain Go 1.0.1 APK and its matching standalone firmware/configuration.
+Rollback: retain Go 1.0.2 APK and its matching standalone firmware/configuration.
 Android downgrade normally needs uninstall and loses Go data; export settings
 first. Do not erase receiver bindings or motor configuration merely to roll back.
