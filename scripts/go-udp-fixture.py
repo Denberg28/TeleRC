@@ -3,7 +3,7 @@ import socket,select,time,json,struct
 from pathlib import Path
 wire=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);wire.bind(('0.0.0.0',14550))
 control=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);control.bind(('0.0.0.0',14551))
-peer=None;armed=False;silence=False;wrong=False;seq=0;last=0;events=[];boot=123456;passive=False;fc=False
+peer=None;armed=False;silence=False;wrong=False;seq=0;last=0;events=[];boot=123456;passive=False;fc=False;owner=1;elrs=False
 def crc(data,extra):
  c=65535
  for b in data+bytes([extra]):
@@ -24,7 +24,8 @@ while True:
    if data==b'REBOOT':boot+=1;armed=False
    if data==b'OBSERVER_START':passive=True;armed=True
    if data==b'OBSERVER_END':passive=False;armed=False
-   if data==b'FC_START':fc=True;boot=0;armed=False
+   if data==b'ELRS_START':fc=False;boot=123456;armed=False;owner=2;elrs=True
+   if data==b'FC_START':fc=True;boot=0;armed=False;elrs=False;owner=1
    if data==b'EXIT':Path('go-fixture-events.json').write_text(json.dumps(events));raise SystemExit
    continue
   peer=addr
@@ -40,9 +41,13 @@ while True:
    if s==0 or d==0:
     assert not fc,'FC released overrides before disarm confirmation'
     armed=False
+    if elrs:owner=0
   elif int.from_bytes(p[28:30],'little')==176:
    assert fc and struct.unpack('<ff',p[:8])==(1.,4.) and p[8:28]==bytes(20)
    boot=4;events.append({'at':time.monotonic(),'hold':True})
+  elif int.from_bytes(p[28:30],'little')==31010:
+   assert elrs and struct.unpack('<f',p[:4])[0]==1.
+   owner=1;armed=False;events.append({'at':time.monotonic(),'take':True})
   elif int.from_bytes(p[28:30],'little')==400:
    arm=struct.unpack('<f',p[:4])[0];assert p[4:28]==bytes(24)
    armed=arm==1;events.append({'at':time.monotonic(),'arm':armed})
@@ -50,5 +55,5 @@ while True:
  now=time.monotonic()
  if peer and not silence and now-last>.2:
   wire.sendto(heartbeat(),peer)
-  own=struct.pack('<II',int(now*1000)&0xffffffff,258 if passive else 257)+b'TELERC_OWN'
+  own=struct.pack('<II',int(now*1000)&0xffffffff,258 if passive else 256+owner)+b'TELERC_OWN'
   wire.sendto(frame(252,own,44),peer);last=now

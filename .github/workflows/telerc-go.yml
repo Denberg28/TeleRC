@@ -1,9 +1,9 @@
-name: TeleRC Go 1.0.0 stable
+name: TeleRC Go 1.0.1 controls release
 on:
  push:
-  branches: ['release/telerc-go-100']
+  branches: ['release/telerc-go-controls-101']
 concurrency:
- group: telerc-go-100
+ group: telerc-go-controls-101
  cancel-in-progress: true
 permissions:
  contents: write
@@ -79,34 +79,34 @@ jobs:
       disable-animations: true
       emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
       script: bash scripts/check-go-ui.sh
-   - name: Package qualified stable edition
+   - name: Package verified release candidate
      env:
       GH_TOKEN: ${{ github.token }}
      run: |
-      cp go/build/outputs/apk/release/go-release.apk deliverables/TeleRC-Go-v1.0.0.apk
+      cp go/build/outputs/apk/release/go-release.apk deliverables/TeleRC-Go-v1.0.1.apk
       gh release download v0.8.89 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.89.apk --output "$RUNNER_TEMP/baseline.apk"
-      python3 scripts/verify-go-release.py deliverables/TeleRC-Go-v1.0.0.apk "$RUNNER_TEMP/baseline.apk" > deliverables/BUILD_INFO.txt
-      git archive --format=zip -o deliverables/TeleRC-Go-v1.0.0-source.zip HEAD
+      python3 scripts/verify-go-release.py deliverables/TeleRC-Go-v1.0.1.apk "$RUNNER_TEMP/baseline.apk" > deliverables/BUILD_INFO.txt
+      git archive --format=zip -o deliverables/TeleRC-Go-v1.0.1-source.zip HEAD
       cp docs/TELERC_GO.md deliverables/START_HERE.md
       cp -R firmware/go/TeleRC_Go_Rover deliverables/
       cp docs/GO_WIRING.md deliverables/
-      (cd deliverables && zip -qr TeleRC-Go-v1.0.0-four-wheel-firmware.zip firmware TeleRC_Go_Rover GO_WIRING.md START_HERE.md BUILD_INFO.txt)
-      zip -qr deliverables/TeleRC-Go-v1.0.0-test-evidence.zip go/build/reports/ go/build/test-results/ go/build/ui-evidence/
+      (cd deliverables && zip -qr TeleRC-Go-v1.0.1-four-wheel-firmware.zip firmware TeleRC_Go_Rover GO_WIRING.md START_HERE.md BUILD_INFO.txt)
+      zip -qr deliverables/TeleRC-Go-v1.0.1-test-evidence.zip go/build/reports/ go/build/test-results/ go/build/ui-evidence/
       cd deliverables
       sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
       sha256sum -c SHA256SUMS.txt
       python3 -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
-   - name: Publish owner-selected stable Go release
+   - name: Publish signed Go release candidate
      env:
       GH_TOKEN: ${{ github.token }}
      run: |
       test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
-      gh release create go-v1.0.0 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --latest=false --title 'TeleRC Go v1.0.0 — stable, Wi-Fi and ELRS four-wheel' --notes-file deliverables/START_HERE.md deliverables/*.apk deliverables/*.zip deliverables/*.md deliverables/BUILD_INFO.txt deliverables/SHA256SUMS.txt
-      gh release edit go-v1.0.0 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest=false
+      gh release create go-v1.0.1 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --latest=false --title 'TeleRC Go v1.0.1 — controls only, Wi-Fi and ELRS' --notes-file deliverables/START_HERE.md deliverables/*.apk deliverables/*.zip deliverables/*.md deliverables/BUILD_INFO.txt deliverables/SHA256SUMS.txt
+      gh release edit go-v1.0.1 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=true --latest=false
    - uses: actions/upload-artifact@v4
      if: always()
      with:
-      name: TeleRC-Go-1.0.0
+      name: TeleRC-Go-1.0.1
       path: |
        deliverables/
        go/build/reports/

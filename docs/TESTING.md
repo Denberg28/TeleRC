@@ -493,3 +493,30 @@ APK SHA256 `76f86824a2d6061e2321499d44cacff6e52c5f3f15e0960a4f8954a8c5f7ef21`.
 See [complete results, hashes and next restrained-wheel check](TELERC_GO_RESULT.md).
 Stable is the owner's requested distribution channel, not physical/field
 qualification. The separate full-app Latest tag remains v0.8.84.
+
+
+## Go 1.0.1 controls-only release — 21 October 2026
+
+Baseline: Go 1.0.0 source `9a65363a56e399f25365e669cecd86893dad5f84`.
+App-only change: remove navigation/Setup/Test screens; add supplied image,
+navy power launcher, phone connection and compact settings. GoLink and firmware
+are unchanged. Profiles, CH1/CH2, neutral/ARM/ownership gates and signer persist.
+Acceptance: controls launch directly; fresh install Wi-Fi default; explicit enable
+and ARM; ELRS Take phone control/Use ELRS stop-release; no authority after popup,
+reboot, loss or reconnect; readable controls at font scales 1.0/1.3.
+
+| Gate | Status before workflow | Required final evidence |
+| --- | --- | --- |
+| A source/build | Reviewed; build NOT TESTED | Both-app Android regressions; Go debug/release lint/build |
+| B behavior | NOT TESTED | Native controls-only UI + independent UDP fault fixture |
+| C regression | NOT TESTED | Shared-core sync, host and sanitizer checks, Go JVM |
+| D integration | NOT TESTED | Kotlin packets to actual sketch parser; four unchanged target builds |
+| E hardware | BLOCKED | Physical phone installation, ELRS RF and restrained four-wheel checks |
+| F delivery | NOT TESTED | Retained signer/code 2, ZIP/CRC/alignment/checksums, source commit |
+
+Workflow output BUILD_INFO records final software results. After install over
+Go 1.0.0, verify background/transparent pads, compact settings at large font,
+Wi-Fi Connect → Phone control → ARM, STOP, app background, heartbeat loss, and
+ELRS takeover/release with wheels restrained. Confirm no automatic rearm.
+Rollback: retain Go 1.0.0 APK; downgrade normally requires uninstall/data loss.
+Full TeleRC is a separate app. Firmware/provisioning rollback is unnecessary.

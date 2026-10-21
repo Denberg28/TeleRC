@@ -1,26 +1,25 @@
-# TeleRC Go 1.0.0
+# TeleRC Go 1.0.1
 
-Setup, Controls and Test. Wi-Fi and ELRS. A separate app named **TeleRC Go**
+One landscape Controls screen. Wi-Fi and ELRS. A separate app named **TeleRC Go**
 (package `io.github.denberg28.telerc.go`); the full TeleRC installation and its
 settings remain intact. No missions, Balance, LoRa, maps, location services,
-camera SDKs or app installer permission. Offline Test retains twenty practice
-levels and the same spring-return controls.
+camera SDKs or app installer permission. The supplied ship image sits behind transparent joystick panels. The app icon is a navy power symbol.
 
 ## Connect and operate
 
 1. Power the matched four-wheel rover. Join **TeleRC-MiniRover** in Android Wi-Fi
    settings (default password **telerc123**); choose stay connected without
    internet. Use a private AP password in Config.h for deployment.
-2. Setup → choose the link → Connect. Controls opens. Wait for the rover's
-   heartbeat, then **Enable**, center both sticks until **ARM**, and tap ARM.
+2. Tap **Phone connect**. Wait for the rover's
+   heartbeat, then **Phone control**, center both sticks until **ARM**, and tap ARM.
    Driving unlocks only after the rover reports ARMED. CH1 steers; CH2 drives.
 3. Release a joystick to center its axis. **STOP / Disarm** clears app authority. Standalone firmware receives neutral,
    disarm and release; ArduRover receives neutral, HOLD and normal disarm, with no
-   immediate override release to an uncentered handset. Disconnect, page changes and backgrounding
-   revoke driving. Recovery reconnects the transport; **Enable and ARM remain
+   immediate override release to an uncentered handset. Disconnect, opening settings and backgrounding
+   revoke driving. Recovery reconnects the transport; **Phone control and ARM remain
    deliberate**. There is no background driving or replayed ARM command queue.
 
-Connection details holds numeric IPv4, rover/phone ports and system ID. Normal
+Settings → Connection details holds numeric IPv4, rover/phone ports and system ID. Normal
 four-wheel defaults are 192.168.4.1, UDP14550 both ends, system1. Only one app or
 PC may own that phone UDP port and the firmware peer lease. Close the other
 controller first. Sensitivity is independent for steering and drive.
@@ -65,7 +64,7 @@ One socket worker owns sends, with no motion/ARM retry queue. The latest command
 slot is bounded and expires within500ms. Valid source IP/port, vehicle system,
 autopilot component, MAVLink checksum and ground-rover type are required. Wi-Fi
 socket binding avoids mobile-data routing. Retry is bounded to one attempt per
-second; stale heartbeats, changed Wi-Fi, pause and Test invalidate authority.
+second; stale heartbeats, changed Wi-Fi, pause and configuration changes invalidate authority.
 Neutral arming dwell counts successfully sent centered frames, not UI position.
 The paired Go firmware advertises a per-boot nonce; a changed nonce cancels app
 authority and old ARM intent. Legacy standalone firmware without this nonce
@@ -82,17 +81,22 @@ No internet-exposed control ports or shared organization Wi-Fi are qualified.
 
 ## Firmware and installation
 
-Download the signed APK and the four-wheel firmware ZIP from **go-v1.0.0**.
+Download the signed APK and the four-wheel firmware ZIP from **go-v1.0.1**.
 Install Go alongside full TeleRC. The firmware ZIP includes four actual compiled
 ESP32-S3 configurations, a sketch, binary hashes and wiring guidance. Select the
 correct driver and Wi-Fi/ELRS mode before flashing; **GO_WIRING.md** is required.
 The full app/old firmware are not overwritten automatically.
 
-This release is **owner-selected stable distribution**, requested21 October2026.
-Publication requires software/native/actual-target checks on the final source.
-Physical phone, RF, driver power, motor direction and ground/field operation are
-not tested here. Gate E remains BLOCKED; “stable” is the requested release
-channel, not a claim of measured physical reliability or security certification.
+This signed release candidate updates Go 1.0.0 (same package and signing key,
+version code 2). Hardware, RF and field validation remain pending. The app-only
+update retains the Go 1.0.0 four-wheel protocol and firmware; no reflash is needed.
+Select **ELRS · four-wheel receiver** in Settings → Connection details when
+using the ELRS-enabled image. Phone connection uses Wi-Fi in both standalone
+profiles. **Take phone control** requests confirmed ownership; **Use ELRS** stops,
+disarms and releases the phone. Center the handset and cycle CH5 LOW → HIGH to
+resume transmitter driving. Handset ownership is not automatically armed.
+Fresh installs default to Wi-Fi. Existing profile and sensitivity choices persist.
+Settings popups deliberately stop phone driving; closing one never re-enables it.
 
 Before ground use: disconnect motor power for wiring; verify driver supply and
 logic levels; securely support the chassis with wheels off the floor. Check

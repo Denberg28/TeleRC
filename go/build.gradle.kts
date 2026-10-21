@@ -3,7 +3,7 @@ android {
  namespace = "io.github.denberg28.telerc.go"
  compileSdk = 35
  buildFeatures { buildConfig = true }
- defaultConfig { applicationId = "io.github.denberg28.telerc.go"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "1.0.0"; testInstrumentationRunner = "io.github.denberg28.telerc.GoInstrumentation" }
+ defaultConfig { applicationId = "io.github.denberg28.telerc.go"; minSdk = 26; targetSdk = 35; versionCode = 2; versionName = "1.0.1"; testInstrumentationRunner = "io.github.denberg28.telerc.GoInstrumentation" }
  sourceSets.getByName("main").res.srcDir("../app/src/main/res")
  signingConfigs { create("releaseKey") {
   System.getenv("TELERC_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }?.let {

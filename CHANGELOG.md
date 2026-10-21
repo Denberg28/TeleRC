@@ -1,3 +1,12 @@
+## Go 1.0.1
+
+- Launch directly into one landscape control screen; remove Setup and Test tabs.
+- Add supplied ship background behind transparent joystick panels and navy power icon.
+- Add Phone connect, explicit Phone control/ARM, STOP and ELRS release.
+- Keep link details and separate steering/drive sensitivity in compact stopped popups.
+- Preserve Go 1.0.0 protocol, firmware, signer and no-auto-rearm behavior.
+- Signed candidate; installed hardware and field checks pending.
+
 ## 0.8.89 — Balance popup only
 
 - Replace the full-page Balance form with a centered content-measured popup.
