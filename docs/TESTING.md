@@ -520,3 +520,9 @@ Wi-Fi Connect → Phone control → ARM, STOP, app background, heartbeat loss, a
 ELRS takeover/release with wheels restrained. Confirm no automatic rearm.
 Rollback: retain Go 1.0.0 APK; downgrade normally requires uninstall/data loss.
 Full TeleRC is a separate app. Firmware/provisioning rollback is unnecessary.
+
+Go 1.0.1 release update: software gates passed on source
+`e64b34e3e06c77cda95192d5c1d9e29b2fad9001`, release run 39605441833.
+Capture-only run 39607405776 passed without product-source changes and supersedes
+launch-transition screenshots. Gate E and installed-device/physical integration
+remain BLOCKED. See [Go controls release evidence](GO_CONTROLS_101_RELEASE.md).
