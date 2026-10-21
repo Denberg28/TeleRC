@@ -16,6 +16,7 @@ class FpvHealthPolicy {
         stable = healthySince > 0 && now - healthySince >= 3000
         if (stable) restarted = false
     }
+    fun controlStale(now: Long) = lastFrame > 0 && !FpvPreviewPolicy.frameFresh(lastFrame, now)
     fun check(now: Long): Action {
         if (startedAt <= 0 || now < startedAt) return Action.WAIT
         val stalled = if (lastFrame > 0) now - lastFrame >= 3000 else now - startedAt >= 8000

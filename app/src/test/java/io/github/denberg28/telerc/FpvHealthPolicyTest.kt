@@ -5,6 +5,16 @@ import org.junit.Test
 import io.github.denberg28.telerc.FpvHealthPolicy.Action.*
 
 class FpvHealthPolicyTest {
+    @Test fun controlFreshnessKeepsTheExistingTwoSecondBoundaryBeforeUsbRecovery() {
+        val p = FpvHealthPolicy(); p.started(100)
+        assertFalse(p.controlStale(9000)) // Initial opening already disables control.
+        p.frame(10000)
+        assertFalse(p.controlStale(12000))
+        assertTrue(p.controlStale(12001))
+        assertEquals(WAIT,p.check(12001)) // Disable control without resetting USB.
+        p.frame(12500)
+        assertFalse(p.controlStale(12500)) // No automatic vehicle re-enable.
+    }
     @Test fun briefFrameGapsKeepTheUsbSession() {
         val p = FpvHealthPolicy(); p.started(100)
         p.frame(500)

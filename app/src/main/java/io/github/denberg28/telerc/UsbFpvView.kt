@@ -49,6 +49,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private var surface: SurfaceTexture? = null
     private var lastFrameAt = 0L
     private val health = FpvHealthPolicy()
+    private var stalePreview = false
     private var previewRestarts = 0
     private var usbReopens = 0
     private var profileRemembered = false
@@ -96,12 +97,20 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
                     recover("Receiver rejected video mode", changeProfile = true)
                 else if (helper != null && connectingAt > 0 && now - connectingAt > 15000)
                     recover("USB camera open timed out", changeProfile = connection.failures >= 1)
-                else if (previewing) when (health.check(now)) {
-                    FpvHealthPolicy.Action.RESTART_PREVIEW -> {
-                        beforeRecovery(); previewRestarts++; stopPreview(); startPreview()
+                else if (previewing) {
+                    // Preserve the existing 2s vehicle-control interlock while
+                    // giving preview/USB recovery its separate grace period.
+                    if (health.controlStale(now) && !stalePreview) {
+                        stalePreview = true; beforeRecovery()
+                        showMessage("FPV frames delayed · controls disabled")
                     }
-                    FpvHealthPolicy.Action.REOPEN_USB -> recover("USB frames stalled", changeProfile = true)
-                    else -> Unit
+                    when (health.check(now)) {
+                        FpvHealthPolicy.Action.RESTART_PREVIEW -> {
+                            beforeRecovery(); previewRestarts++; stopPreview(); startPreview()
+                        }
+                        FpvHealthPolicy.Action.REOPEN_USB -> recover("USB frames stalled", changeProfile = true)
+                        else -> Unit
+                    }
                 }
             }
             if (wanted) handler.postDelayed(this, 500)
@@ -129,6 +138,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
             override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
                 if (!previewing || !foreground || !visiblePreview) return
                 lastFrameAt = SystemClock.elapsedRealtime()
+                stalePreview = false
                 connection.frame(lastFrameAt)
                 health.frame(lastFrameAt)
                 if (health.stable && !profileRemembered) rememberProfile()
@@ -352,7 +362,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     }
     private fun stopPreview() {
         surface?.let { helper?.removeSurface(it) }; surface = null
-        helper?.stopPreview(); previewing = false; lastFrameAt = 0; connection.resetFrames()
+        helper?.stopPreview(); previewing = false; lastFrameAt = 0; stalePreview = false; connection.resetFrames()
     }
     fun setVisiblePreview(visible: Boolean) {
         if (visiblePreview == visible) return
@@ -378,7 +388,7 @@ class UsbFpvView(context: Context, private val beforeRecovery: () -> Unit = {}) 
     private fun closeSession() {
         generation++; val old = helper; helper = null
         sessionMode = null; connection.resetFrames()
-        health.reset(); negotiating = null; negotiatingAt = 0; activeProfile = null
+        health.reset(); stalePreview = false; negotiating = null; negotiatingAt = 0; activeProfile = null
         if (old != null) releaseUntil = SystemClock.elapsedRealtime() + 700
         surface?.let { old?.removeSurface(it) }; surface = null
         old?.stopPreview(); old?.release(); selected = null; deviceOpen = false; requestedSize = null; cameraOpen = false; previewing = false

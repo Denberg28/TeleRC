@@ -18,7 +18,8 @@ preview-size update in the pinned UVC helper and confirms readback before
 starting preview. The old code released the whole receiver for this adjustment.
 A transient frame gap gets one preview restart first. No-frame startup gets8s;
 a previously active stream gets3s of missing rendered frames before that
-restart. Another failure after the restart escalates to a USB reopen with the
+restart. The existing2s stale-frame vehicle-control cutoff remains separate;
+recovered video never re-enables driving. Another failure after the restart escalates to a USB reopen with the
 existing bounded1/2/4/30s retry delays. Three seconds of sustained fresh frames
 restore the preview-restart budget and save the confirmed format per receiver
 VID/PID. A saved format is reused only if it is still advertised and permitted
