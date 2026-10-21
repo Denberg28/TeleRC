@@ -1327,10 +1327,12 @@ class ThemeImageInstrumentation : Instrumentation() {
             while(true) {
                 val angle=atan2(maze.endX-p.pose.x,-(maze.endY-p.pose.y))-p.pose.heading
                 val error=atan2(sin(angle),cos(angle))
-                if(abs(error)<.08f)break // Above the joystick deadband.
+                if(abs(error)<.08f)break
                 check(frames++<1500 && p.state==MazePractice.State.RUNNING) { "Finish handoff could not align" }
                 p.drive(1500)
-                p.steering((1500+error.coerceIn(-1f,1f)*400).roundToInt())
+                // Cross both the channel and rover-physics deadbands while
+                // aligning; proportional steering alone stalls near .14 rad.
+                p.steering((1500+sign(error)*maxOf(80f,abs(error).coerceAtMost(1f)*400)).roundToInt())
                 check(!p.advance(20)) { "Alignment unexpectedly cleared END before View callback" }
             }
             p.steering(1500); p.drive(1740)

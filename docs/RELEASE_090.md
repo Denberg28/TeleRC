@@ -60,3 +60,10 @@ and explicitly supplies forward drive for the production View frame to finish.
 Game code, END threshold, onClear/wallet behavior and all reward assertions remain
 unchanged. The complete native suite and release gates must pass on the corrected
 source before publication; final BUILD_INFO identifies that run.
+
+Run39536634669 isolated a second helper issue: proportional final alignment
+could fall below the rover physics deadband. Final alignment now keeps its
+turn command above both deadbands until aligned. A local pure-physics probe
+passed400 replay/finish handoffs (20 seeds across all20 levels), preserving
+once-only clear/replay payout; the temporary probe is excluded from release
+source. Production movement and reward rules are unchanged.
