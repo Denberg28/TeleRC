@@ -95,11 +95,12 @@ inline void setupReply(const telerc::Status &s,uint32_t now,uint32_t request=0,c
   char bytes[480];
   const char *block=uint32_t(now-s.at)>50 ? "CONTROLLER_STATUS_EXPIRED" : telerc::armName(s.physicalBlock);
   int n=snprintf(bytes,sizeof(bytes),
-    "TELERC_BALANCE_V1|STATUS|%lu|%lu|%lu|%lu|%s|%u|%u|%s|%u|%u|%.3f|%.3f|%s|%s|%s|%.4f|%d|150",
+    "TELERC_BALANCE_V1|STATUS|%lu|%lu|%lu|%lu|%s|%u|%u|%s|%u|%u|%.3f|%.3f|%s|%s|%s|%.4f|%d|%lu|%u|%d|%d|%u|%u|%u|%u|%u|%u",
     (unsigned long)setupBoot,(unsigned long)setupLease.challenge,(unsigned long)++setupSequence,
     (unsigned long)(request?request:s.setupRequest),result?result:s.setupResult,
     s.mode,(unsigned)s.calibrated,s.store,(unsigned)s.verified,(unsigned)s.testDone,
-    s.angle,s.rate,block,s.calStage,s.reason,s.gyroBias,TEST_PWM);
+    s.angle,s.rate,block,s.calStage,s.reason,s.gyroBias,TEST_PWM,(unsigned long)TEST_MS,
+    (unsigned)s.testOutputValid,s.testLeft,s.testRight,s.testDuty[0],s.testDuty[1],s.testDuty[2],s.testDuty[3],s.testMask,(unsigned)s.pwmReady);
   if(n>0 && size_t(n)<sizeof(bytes) && core.peer && udp.beginPacket(address(core.peer),UDP_PORT)) {
     udp.write(reinterpret_cast<const uint8_t *>(bytes),size_t(n));udp.endPacket();
   }

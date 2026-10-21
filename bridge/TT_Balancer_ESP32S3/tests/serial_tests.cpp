@@ -20,11 +20,11 @@ int main(){
   for(int i=0;i<30;++i)tick();
   check(Serial.output.find("SERIAL bytes=1")!=std::string::npos);
   check(Serial.output.find("result=RX_OK_NO_MOTOR_ACTION")!=std::string::npos);
-  check(Serial.output.find("testPWM=55 testMs=150 pwmReady=1")!=std::string::npos);
+  check(Serial.output.find("testPWM=140 testMs=300 pwmReady=1")!=std::string::npos);
   input(" \r\n\tT\r\n");check(mode==Mode::MOTOR_TEST&&motorCommand==TEST_PWM);
   check(serialLastCommand=='t'&&serialLastByte=='\n');
   check(!strcmp(serialResult,"TEST_STARTED"));
-  for(int i=0;i<40;++i)tick();
+  for(int i=0;i<int(TEST_MS/4+2);++i)tick();
   check(mode==Mode::DISARMED&&wheelTestComplete&&!directionsVerified);off();
   check(!strcmp(serialResult,"TEST_FINISHED_CHECK_WHEELS_BEFORE_V"));
   input(" V\r\n");check(directionsVerified&&!strcmp(serialResult,"DIRECTIONS_CONFIRMED"));off();

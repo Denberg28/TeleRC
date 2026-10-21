@@ -1,3 +1,48 @@
+# v0.3.1 / TeleRC 0.8.90 — step 2 motor test
+
+The reported v0.3.0 test was only 55/255 for 150 ms. A stationary TT motor
+may not start at that setting. The report does not establish that this is the
+sole hardware cause. v0.3.1 increases only the explicit diagnostic test to
+140/255 for 300 ms at 20 kHz, bounded by MAX_PWM and a 500 ms compile-time ceiling.
+No change is made to PID gains, motor signs, balancing minimum duty or arming.
+There is no automatic kick on ARM, link recovery or every balance correction.
+
+Upload with motor power removed. Use paired app 0.8.90. After calibration ready,
+power the regulated motor rail, secure the chassis with both wheels raised and
+check the power/suspension box. Tap Left, Right, Both separately and confirm each
+dialog. The entire pulse is timed on the ESP32; no repeated phone command is
+needed to stop it. STOP, fault, serial x and hardware stop retain priority.
+
+| Evidence | Interpretation / next action |
+| --- | --- |
+| No accepted PWM test recorded | Request did not start a successful output write this boot. Check freshness, calibration, stop input and displayed reply/fault |
+| TEST_RUNNING | Controller entered MOTOR_TEST and requested output |
+| TEST_FINISHED | Timer completed; this does not prove wheel motion |
+| TEST_ABORTED_FAULT | Read the fault reason and resolve it before retrying |
+| PWM unavailable | PWM initialization failed or a latched fault detached outputs |
+| L=140, R=-140; readback 140/0 and 0/140 | Default-sign Both pulse reached the LEDC duty registers. Check motor supply under pulse if physical wheels did not move |
+
+Retained last-test readback is sampled immediately after applying PWM and stays
+visible after the actual GPIO duties have returned to zero. It is labeled as a
+past test; it does not indicate live voltage or a still-running motor. A fresh
+boot or calibration clears evidence. Signed commands follow Config.h motor signs.
+
+With power OFF, verify GPIO4/5 → left MX1508 input pair, GPIO6/7 → right input
+pair, motors → output pairs, supply minus → common ESP32 GND. GPIO8/9 are the
+sensor bus. Check the actual module labels. A connected 2S battery does not
+establish motor voltage: measure the regulated supply directly at MX1508 +/−
+while pulsing. Keep the documented supply appropriate for the motors/driver;
+never feed raw 2S into ESP32 power or 3.3 V sensor pins. USB/logic power alone
+cannot drive the motors. Check loose output wires, load, stalls and heating.
+Do not bridge motor outputs to GPIO or confirm unobserved direction.
+
+The new app reads both original 20-field v0.3.0 reports and extended 29-field
+v0.3.1 reports. Firmware v0.3.1 requires app 0.8.90: the old 0.8.89 strict parser
+rejects the new duration/fields. Original command/action/challenge format stays
+unchanged. Saved gyro calibration remains compatible; do not erase all flash.
+
+## Historical Serial diagnosis (v0.2.8; old pulse settings below)
+
 # Diagnose Serial input and motor output — v0.2.8
 
 The submitted v0.2.7 log passes CAL_SAVED_READY and MPU_READY, stays DISARMED,

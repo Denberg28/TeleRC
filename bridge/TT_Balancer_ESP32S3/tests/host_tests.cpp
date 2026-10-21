@@ -36,7 +36,7 @@ int main(){
     // v is not a bypass: a full timed test is required before manual confirmation.
     boot();command('v');check(!directionsVerified);off();
     command('t');command('x');command('v');check(!directionsVerified);off();
-    command('t');for(int i=0;i<40;++i){tick();}
+    command('t');for(int i=0;i<int(TEST_MS/4+2);++i){tick();}
     check(wheelTestComplete&&!directionsVerified);off();
     command('v');check(directionsVerified);check(mode==Mode::DISARMED);off();
     publishStatus();check(testStatus.ready);
@@ -58,7 +58,7 @@ int main(){
   command('x');check(mode==Mode::DISARMED);off();
 
   boot();command('t');check(mode==Mode::MOTOR_TEST);check(motorCommand==TEST_PWM);
-  for(int i=0;i<40;++i){tick();}check(mode==Mode::DISARMED);off();
+  for(int i=0;i<int(TEST_MS/4+2);++i){tick();}check(mode==Mode::DISARMED);off();
   boot();command('t');stopLow=true;loop();check(mode==Mode::FAULT);off();
   stopLow=false;command('a');command('x');check(mode==Mode::FAULT);off();
 
@@ -88,7 +88,7 @@ int main(){
   for(int i=0;i<5;++i){tick();}check(mode==Mode::DISARMED);off();
   // millis() rollover must still terminate the timed motor test.
   boot();fakeUs=0xFFFFFFF0ULL*1000;tickUs=sampleUs=micros();command('t');
-  for(int i=0;i<40;++i){tick();}check(mode==Mode::DISARMED);off();
+  for(int i=0;i<int(TEST_MS/4+2);++i){tick();}check(mode==Mode::DISARMED);off();
 
   boot();arm();writeOK=false;tick();check(mode==Mode::FAULT);off();
   boot();attachOK=false;setup();check(mode==Mode::FAULT);off();

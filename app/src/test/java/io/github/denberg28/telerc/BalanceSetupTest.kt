@@ -25,6 +25,19 @@ class BalanceSetupTest {
         assertTrue(BalanceSetup.newer(s,s.copy(boot=556,sequence=0)))
         assertTrue(BalanceSetup.newer(s.copy(sequence=0xffffffffL),s.copy(sequence=0)))
     }
+    @Test fun newPulseAndRetainedOutputEvidenceAreBoundedAndOldFirmwareStillWorks() {
+        val extended=fixture.replace("|55|150","|140|300")+"|1|140|-140|140|0|0|140|3|1"
+        val s=BalanceSetup.parse(bytes(extended))!!
+        assertEquals(140,s.testPwm);assertEquals(300,s.testMs)
+        assertEquals(BalanceSetup.TestOutput(true,140,-140,listOf(140,0,0,140),3,true),s.output)
+        assertNull(BalanceSetup.parse(bytes(fixture))!!.output)
+        for(invalid in listOf(extended.replace("|140|300","|140|501"),extended.replace("|140|300","|140|99"),
+            extended.replace("|1|140|-140","|2|140|-140"),extended.replace("|1|140|-140","|1|161|-140"),
+            extended.replace("|140|0|0|140|3|1","|256|0|0|140|3|1"),extended.dropLast(1)+"2",
+            extended.replace("|3|1","|0|1"),extended+"|0"))assertNull(invalid,BalanceSetup.parse(bytes(invalid)))
+        assertFalse(BalanceSetup.allowed(s.copy(output=s.output!!.copy(pwmReady=false)),100,101,BalanceSetup.Action.BOTH))
+        assertTrue(BalanceSetup.responseText("TEST_FINISHED").contains("looking at the wheels"))
+    }
     @Test fun freshnessModeAndDirectionRequirements() {
         val s=BalanceSetup.parse(bytes(fixture))!!
         for(a in BalanceSetup.Action.entries)assertTrue(BalanceSetup.allowed(s,100,101,a))

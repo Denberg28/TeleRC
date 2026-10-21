@@ -27,12 +27,18 @@ int main(){
  lease.issue(123,0xfffffff0);check(lease.consume(r,20)); // Wrap-safe expiry.
  lease.issue(123,0);lease.reset();check(!lease.consume(r,1));
  boot();request(LEFT);check(mode==Mode::MOTOR_TEST&&duty[4]==TEST_PWM&&duty[5]==0&&duty[6]==0&&duty[7]==0);
- for(int i=0;i<40;i++){tick();}check(!wheelTestComplete&&!strcmp(setupResult,"TEST_FINISHED"));off();
+ check(TEST_PWM==140&&TEST_MS==300&&testOutputValid);
+ check(testLeft==140&&testRight==0&&testDuty[0]==140&&testDuty[1]==0&&testDuty[2]==0&&testDuty[3]==0);
+ for(int i=0;i<40;i++){tick();}check(mode==Mode::MOTOR_TEST&&motorCommand==140); // Old 150ms deadline must not finish the new test.
+ for(int i=0;i<int(TEST_MS/4+2);i++){tick();}check(!wheelTestComplete&&!strcmp(setupResult,"TEST_FINISHED"));off();
  request(VERIFY);check(!directionsVerified&&!strcmp(setupResult,"VERIFY_NEEDS_BOTH_MOTOR_TEST"));off();
  request(RIGHT);check(mode==Mode::MOTOR_TEST&&duty[4]==0&&duty[5]==0&&duty[6]==0&&duty[7]==TEST_PWM);
- for(int i=0;i<40;i++){tick();}check(!wheelTestComplete);off();
+ check(testOutputValid&&testLeft==0&&testRight==-140&&testDuty[3]==140);
+ for(int i=0;i<int(TEST_MS/4+2);i++){tick();}check(!wheelTestComplete);off();
  request(BOTH);check(mode==Mode::MOTOR_TEST&&duty[4]==TEST_PWM&&duty[7]==TEST_PWM);
- for(int i=0;i<40;i++){tick();}check(wheelTestComplete&&!directionsVerified);off();
+ for(int i=0;i<int(TEST_MS/4+2);i++){tick();}check(wheelTestComplete&&!directionsVerified);off();
+ publishStatus();check(testStatus.testOutputValid&&testStatus.testLeft==140&&testStatus.testRight==-140);
+ check(testStatus.testDuty[0]==140&&testStatus.testDuty[3]==140); // Last-test evidence survives electrical zero.
  request(VERIFY);check(directionsVerified&&mode==Mode::DISARMED&&!strcmp(setupResult,"DIRECTIONS_CONFIRMED"));off();
  boot();request(BOTH);testInput.setupStop++;testInput.disarmToken++;loop();
  check(mode==Mode::DISARMED&&!wheelTestComplete&&!strcmp(setupResult,"STOPPED"));off();
@@ -48,8 +54,14 @@ int main(){
  boot();request(CALIBRATE);check(recalibratePending&&!calibrated&&preferenceBlob.empty());off();
  auto restarts=ESP.restarts;
  for(int i=0;i<63;i++){tick();}check(ESP.restarts>restarts);off();
- boot();request(BOTH);for(int i=0;i<40;i++){tick();}angle=8;request(VERIFY);
+ boot();request(BOTH);for(int i=0;i<int(TEST_MS/4+2);i++){tick();}angle=8;request(VERIFY);
  check(!directionsVerified&&!strcmp(setupResult,"HOLD_UPRIGHT_AND_STILL"));off();
  boot();stopLow=true;request(BOTH);check(mode==Mode::FAULT);off();
+ boot();request(BOTH);for(int i=0;i<10;++i)tick();
+ testInput.setupStop++;testInput.disarmToken++;loop();check(mode==Mode::DISARMED&&!wheelTestComplete);off();
+ boot();request(BOTH);Wire.busOK=false;tick();check(mode==Mode::FAULT&&!wheelTestComplete);off();
+ boot();fakeUs=0xFFFFFFF0ULL*1000;tickUs=sampleUs=micros();request(BOTH);
+ for(int i=0;i<int(TEST_MS/4+2);++i){tick();}
+ check(mode==Mode::DISARMED&&wheelTestComplete);off();
  std::printf("Remote balancer admin/controller: %d assertions PASS\n",checks);
 }

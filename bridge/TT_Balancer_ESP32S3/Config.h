@@ -39,7 +39,9 @@ constexpr float TRIM_DEG = 0.0f; // Positive trim requests a forward lean.
 constexpr float INTEGRAL_LIMIT = 25.0f; // PWM contribution, anti-windup.
 constexpr int MAX_PWM = 160; // 0..255. Initial bench cap, not current limiting.
 constexpr int MIN_PWM = 0;   // Optional measured friction compensation: 0..MAX_PWM.
-constexpr int TEST_PWM = 55;
+// Suspended-wheel diagnostic only. Never inject this pulse into balancing.
+constexpr int TEST_PWM = 140;
+constexpr uint32_t TEST_MS = 300;
 constexpr uint32_t PWM_HZ = 20000;
 constexpr uint32_t PERIOD_US = 4000; // 250 Hz.
 constexpr float FILTER_TAU = 0.35f; // Complementary filter time constant, seconds.
@@ -71,5 +73,6 @@ static_assert(MAX_YAW_PWM>=0 && MAX_YAW_PWM<MAX_PWM, "Reserve balance authority"
 static_assert(MAX_PWM > 0 && MAX_PWM <= 255, "Invalid PWM cap");
 static_assert(MIN_PWM >= 0 && MIN_PWM <= MAX_PWM, "Invalid minimum PWM");
 static_assert(TEST_PWM > 0 && TEST_PWM <= MAX_PWM, "Invalid test PWM");
+static_assert(TEST_MS >= 100 && TEST_MS <= 500, "Keep motor test bounded to 100..500 ms");
 static_assert(LEFT_SIGN * LEFT_SIGN == 1 && RIGHT_SIGN * RIGHT_SIGN == 1,
               "Motor signs must be +1 or -1");

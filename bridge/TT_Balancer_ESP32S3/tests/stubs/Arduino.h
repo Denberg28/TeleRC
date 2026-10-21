@@ -19,6 +19,8 @@ inline void pinMode(int,int){}
 inline void digitalWrite(int pin,int value){duty[pin]=value;}
 inline int digitalRead(int){return stopLow?LOW:HIGH;}
 inline bool ledcAttach(int,unsigned,int){return attachOK;}
+inline bool ledcAttachChannel(int,unsigned,int,unsigned){return attachOK;}
+inline uint32_t ledcRead(int pin){return uint32_t(duty[pin]);}
 inline bool ledcDetach(int){return true;}
 inline bool ledcWrite(int pin,unsigned value){duty[pin]=(int)value;return writeOK;}
 struct FakeSerial {

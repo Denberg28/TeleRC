@@ -12,7 +12,7 @@ PWM readiness, stop switch, tilt/rate, connection and fresh complete CH1/CH2.
    baud, no line ending. Check the line starts `v0.2.6` and Wi-Fi reports READY.
 3. Tilt forward/back with motors inactive: angle must become positive/negative,
    and the rate sign must agree during rotation. Check the Config.h mounting selection: 0 for sensor +X forward/+Y left/+Z up, 1 for sensor +Y forward/-X left/+Z up. The robot-frame angle/rate signs must agree.
-4. Return upright. Send **t** once and watch both wheels during the 150 ms pulse.
+4. Return upright. Send **t** once and watch both wheels during the 300 ms pulse.
    They must propel the robot forward. If wrong, cut motor power and correct
    motor signs/leads, then repeat. If they do not move, do not confirm the test.
 5. Once both wheel directions and sensor signs are correct, return upright/still

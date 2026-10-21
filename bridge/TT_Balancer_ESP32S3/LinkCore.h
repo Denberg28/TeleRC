@@ -69,6 +69,10 @@ struct Input {
   bool linked=false, fresh=false, motion=false, armPending=false, ready=false;
 };
 struct Status {
+  bool testOutputValid=false,pwmReady=false;
+  int16_t testLeft=0,testRight=0;
+  uint16_t testDuty[4]{};
+  uint8_t testMask=0;
   uint32_t setupToken=0,setupRequest=0;
   uint8_t mode=0;
   bool calibrated=false,verified=false,testDone=false;

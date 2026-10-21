@@ -27,7 +27,7 @@ current-limited test setup; use the motor manufacturer's specifications first.
    and mounting. Native USB absence/reconnect must not block control.
 4. **Suspended-wheel gate:** Leave verification flag at zero. Confirm TeleRC
    ARM is denied. With app disconnected, run Serial `t`; verify both wheels go
-   forward and stop after 150 ms. Reverse one sign/lead only with power removed.
+   forward and stop after 300 ms. Reverse one sign/lead only with power removed.
    After the checks pass, send Serial v and confirm verified=1 while still
    DISARMED. Verify that v is rejected after an aborted test or while TeleRC is
    paired, and that reset clears runtime verification. Alternatively use the
@@ -114,6 +114,6 @@ the direction lock or relax calibration gates to bypass unexplained sensor data.
 
 - [ ] Motor supply disconnected: send ? via Serial Monitor; SERIAL bytes increases and reports RX_OK_NO_MOTOR_ACTION.
 - [ ] Confirm uppercase, CR/LF and leading whitespace are accepted and x takes precedence.
-- [ ] Wheels suspended: t pulses for 150 ms only, records completion and needs manual direction inspection.
+- [ ] Wheels suspended: t pulses for 300 ms only, records completion and needs manual direction inspection.
 - [ ] Verify actual driver supply/output and motion; do not equate software test completion with physical movement.
 - [ ] Verify saved calibration still reuses after upload/power cycle, with default verification still required.

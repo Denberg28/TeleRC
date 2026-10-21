@@ -1,3 +1,17 @@
+# v0.3.1 — 21 October 2026 — motor-test output and workflow
+
+- Increase explicit left/right/both tests from 55/255 ×150ms to 140/255 ×300ms.
+  Use TEST_MS consistently in firmware and diagnostics; compile-time 100..500ms
+  cap. Balance PID, min/max duty, motor signs, calibration and fault gates retained.
+- Use explicit LEDC channels 0..3 with inactive-leg-first output, as in MiniRover.
+- Retain signed last-test commands/duty-register readback after timed zero.
+- Append bounded output evidence to setup status; requires paired TeleRC0.8.90.
+- App accepts original reports, shows test replies/output evidence, clarifies
+  calibration completion and power checks, requires explicit observed direction.
+- Add regressions for output mask/polarity, >150ms duration, timed zero, STOP,
+  fault and rollover, new/old parser bounds and continued stale-session rejection.
+- No physical torque, power, UI-phone or balancing validation is claimed.
+
 # v0.3.0 — TeleRC app pre-test
 
 - Add paired-peer-only versioned Wi-Fi setup query/action/stop with random one-use challenge,1.5s challenge lifetime,500ms controller request age and no command replay.

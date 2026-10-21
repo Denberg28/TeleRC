@@ -30,6 +30,7 @@ class BalancePretestTab(private val activity:Activity,
     private var response="Connect to TeleRC-Balancer Wi-Fi, then Connect in Setup."
     private var stopButton:Button?=null
     private var wheels:CheckBox?=null
+    private var observed:CheckBox?=null
     private val actions=mutableMapOf<BalanceSetup.Action,Button>()
     private val ticker=object:Runnable { override fun run() {
         if(!visible || !foreground)return
@@ -85,16 +86,23 @@ class BalancePretestTab(private val activity:Activity,
         body.addView(summary,LinearLayout.LayoutParams(-1,-2))
         body.addView(detail,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(6)})
         section("1 · Calibration")
+        body.addView(text("Calibration ready means step 1 is complete. Recalibrate only after changing the sensor mounting or when the saved check fails."),LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(6)})
         body.addView(button("Calibrate & save") {confirmCalibration()}.also {actions[BalanceSetup.Action.CALIBRATE]=it},LinearLayout.LayoutParams(-1,rowHeight()))
         section("2 · Motor direction test · short forward pulse")
-        wheels=CheckBox(activity).apply {text="Chassis secured; both wheels off the floor";textSize=13f;setTextColor(AppColors.ink(activity));setOnCheckedChangeListener{_,_->refresh()}}
+        wheels=CheckBox(activity).apply {text="Regulated motor power ON; chassis secured; wheels raised";textSize=13f;setTextColor(AppColors.ink(activity));setOnCheckedChangeListener{_,_->refresh()}}
         body.addView(wheels,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(6)})
         val motors=LinearLayout(activity)
         listOf("Left" to BalanceSetup.Action.LEFT,"Right" to BalanceSetup.Action.RIGHT,"Both" to BalanceSetup.Action.BOTH).forEachIndexed {i,(name,action)->
             motors.addView(button(name){confirmMotor(action)}.also{actions[action]=it},LinearLayout.LayoutParams(0,rowHeight(),1f).apply{if(i>0)leftMargin=dp(6)})
         }
         body.addView(motors)
+        body.addView(button("No movement? Check output") {showMotorHelp()},LinearLayout.LayoutParams(-1,rowHeight()).apply{topMargin=dp(6)})
         section("3 · Confirm: both wheels propel forward; forward tilt makes angle positive.")
+        observed=CheckBox(activity).apply {
+            text="I observed both wheels move forward and checked the tilt signs";textSize=13f;setTextColor(AppColors.ink(activity))
+            setOnCheckedChangeListener{_,_->refresh()}
+        }
+        body.addView(observed,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(6)})
         body.addView(button("Confirm directions") {confirmDirections()}.also{actions[BalanceSetup.Action.VERIFY]=it},LinearLayout.LayoutParams(-1,rowHeight()))
         body.addView(text("Setup never arms. Use Controls ›, Phone control, centered sticks, then ARM while supported upright. Reported PWM does not prove wheel movement."),
             LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(12)})
@@ -142,6 +150,7 @@ class BalancePretestTab(private val activity:Activity,
             .setPositiveButton("Test"){_,_->if(wheels?.isChecked==true)dispatchAction(consent)}.setNegativeButton("Cancel",null).show()
     }
     private fun confirmDirections() {
+        if(observed?.isChecked!=true)return
         val consent=consent(BalanceSetup.Action.VERIFY)?:return
         AppDialog.Builder(activity).setTitle("Confirm physical directions?")
             .setMessage("Confirm you observed BOTH wheels propel forward and forward/back tilt gives positive/negative angle. Software cannot verify this. This confirmation applies to the current boot and does not arm.")
@@ -151,6 +160,9 @@ class BalancePretestTab(private val activity:Activity,
         val s=state?:return
         val action=consent.action
         if(!visible||!foreground||!connected()||pending!=0L||!consent.allowed(s,session,at,now())) {response="Status or session changed. Refresh and confirm again.";refresh();return}
+        if(action in listOf(BalanceSetup.Action.LEFT,BalanceSetup.Action.RIGHT,BalanceSetup.Action.BOTH) && wheels?.isChecked!=true)return
+        if(action==BalanceSetup.Action.VERIFY && observed?.isChecked!=true)return
+        if(action!=BalanceSetup.Action.VERIFY)observed?.isChecked=false
         request=(request+1) and 0xffffffffL;if(request==0L)request=1
         pending=request;pendingAction=action;sentAt=now();response="Waiting for rover confirmation…"
         send(BalanceSetup.command(s,request,action),false);refresh()
@@ -162,12 +174,13 @@ class BalancePretestTab(private val activity:Activity,
         if(!BalanceSetup.newer(old,s))return
         if(old!=null && old.boot!=s.boot) {
             session++
-            pending=0;pendingAction=null;wheels?.isChecked=false
+            pending=0;pendingAction=null;wheels?.isChecked=false;observed?.isChecked=false
             response="Rover restarted. Check calibration and repeat direction verification."
         }
         state=s;at=receivedAt
+        if(!s.testDone)observed?.isChecked=false
         if(s.request==pending && pending!=0L) {
-            response=s.result.replace('_',' ')
+            response=BalanceSetup.responseText(s.result)
             if(s.result!="QUEUED" && s.result!="TEST_RUNNING") {pending=0;pendingAction=null}
         }
         refresh()
@@ -178,12 +191,28 @@ class BalancePretestTab(private val activity:Activity,
         summary?.text=when {
             !connected()->"Connect via Wi-Fi in Setup · no setup commands sent"
             !fresh->"Waiting for balancer firmware v0.3.0+ · controls locked"
-            else->"${if(s!!.calibrated) "Calibration ready" else "Calibration unavailable"} · ${s.store}\n${if(s.verified) "Directions confirmed" else "Directions need checking"} · ${s.blocker.replace('_',' ')}"
+            else->"${if(s!!.calibrated) "Calibration ready" else "Calibration unavailable"} · ${s.store}\n${if(s.verified) "Directions confirmed" else "Directions need checking"} · ${s.blocker.replace('_',' ')}\nController: ${s.reason}"
         }
-        detail?.text=if(fresh)String.format(Locale.US,"Angle %.2f° · rate %.2f°/s · gyro bias %.3f°/s\n%s\n%s",s!!.angle,s.rate,s.bias,s.calibration,response) else response
+        detail?.text=if(fresh)String.format(Locale.US,"Angle %.2f° · rate %.2f°/s · gyro bias %.3f°/s\n%s\n%s\n%s",s!!.angle,s.rate,s.bias,s.calibration,response,outputText(s)) else response
+        observed?.isEnabled=fresh&&s?.testDone==true&&pending==0L
         stopButton?.isEnabled=connected()&&s!=null
         actions.forEach{(action,button)->button.isEnabled=visible&&foreground&&fresh&&pending==0L&&BalanceSetup.allowed(s,at,now(),action)&&
-            (action !in listOf(BalanceSetup.Action.LEFT,BalanceSetup.Action.RIGHT,BalanceSetup.Action.BOTH)||wheels?.isChecked==true)}
+            (action !in listOf(BalanceSetup.Action.LEFT,BalanceSetup.Action.RIGHT,BalanceSetup.Action.BOTH)||wheels?.isChecked==true)&&
+            (action!=BalanceSetup.Action.VERIFY||observed?.isChecked==true)}
+    }
+    private fun outputText(s:BalanceSetup.Status):String {
+        val out=s.output
+        val test="Test ${s.testPwm}/255 · ${s.testMs} ms"
+        if(out==null)return "$test · output details need firmware 0.3.1+"
+        if(!out.pwmReady)return "$test · PWM unavailable; check firmware fault"
+        if(!out.valid)return "$test · no accepted PWM test recorded this boot"
+        return "$test · last test command L ${out.left} / R ${out.right}\nGPIO 4/5: ${out.duties[0]}/${out.duties[1]} · GPIO 6/7: ${out.duties[2]}/${out.duties[3]} (last test readback)"
+    }
+    private fun showMotorHelp() {
+        val s=state
+        AppDialog.Builder(activity).setTitle("Motor test: no movement")
+            .setMessage((s?.let{outputText(it)+"\n\n"}?:"")+"PWM readback confirms only the ESP32 peripheral setting. Check regulated motor voltage at MX1508 +/− during the pulse and common GND. Left inputs: GPIO4/5; right: GPIO6/7. GPIO8/9 remain sensor SDA/SCL. Confirm the motors use the driver's output pairs. Change wiring with power off. If no accepted test is recorded, read the reply/fault before checking power. Leave directions unconfirmed until both wheels move correctly.")
+            .setPositiveButton("Close",null).show()
     }
     fun dismissPopup() {
         popup?.setOnCancelListener(null)
@@ -196,9 +225,9 @@ class BalancePretestTab(private val activity:Activity,
             send(BalanceSetup.stop,true)
         session++;visible=false;foreground=false;handler.removeCallbacks(ticker);pending=0;pendingAction=null
         dismissPopup()
-        wheels?.isChecked=false;state=null;at=0
+        wheels?.isChecked=false;observed?.isChecked=false;state=null;at=0
     }
     fun pause(){leave()}
     fun resume(){if(visible){foreground=true;handler.removeCallbacks(ticker);handler.post(ticker)}}
-    fun disconnected(){session++;state=null;at=0;pending=0;pendingAction=null;wheels?.isChecked=false;response="Link lost. Reconnect, refresh and repeat checks deliberately.";refresh()}
+    fun disconnected(){session++;state=null;at=0;pending=0;pendingAction=null;wheels?.isChecked=false;observed?.isChecked=false;response="Link lost. Reconnect, refresh and repeat checks deliberately.";refresh()}
 }

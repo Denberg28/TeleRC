@@ -1,3 +1,30 @@
+# Balancer motor test — 0.8.90 / 0.3.1 final software gates
+
+Baseline0.8.89/code107 cbfb507c8513b3dd57cba84762ac37249ce76e05.
+Scope, paired upgrade, hardware acceptance and rollback:
+[BALANCE_MOTOR_090.md](BALANCE_MOTOR_090.md).
+
+| Gate | Result | Evidence / limit |
+| --- | --- | --- |
+| A source/build | PASS — build verified | JDK17, Gradle8.11.1, Android35 debug/release build/lint; actual ESP32-S3 core3.3.2 mount0/mount1 compiles |
+| B behavior | PASS — host tested |163 JVM tests,0 failures/errors/skips; old/new status bounds, stale/boot/session consent; firmware timed output, selected legs, zero, stop/fault and rollover |
+| C regression | PASS with environment limit | Core sync, bridge/Mini/default checks,20 profiles, firmware-package tests; ASan/UBSan passes with detect_leaks=0. Default leak inspector fails under container ptrace; no leak-test claim |
+| D integration | Partial — compiled and host tested | Native Android harness compiles; producer29-field setup reply and consumer parse tested. Emulator/physical UI execution and real Android-Wi-Fi/ESP32 integration NOT TESTED |
+| E HIL | BLOCKED — no hardware | Motor torque/power/current/direction, phone layout, stop timing and balancing/PID not measured. No claim that physical nonmovement is resolved |
+| F delivery | PASS — candidate packaging | Signed0.8.90/code108 retains0.8.89 signer; alignment, APK/ZIP CRC and SHA256. Complete sketch, paired guide, source commit and rollback retained |
+
+New140/255 ×300ms test is explicit and confined to MOTOR_TEST; the 250Hz local
+balance loop and gain/min/max limits remain unchanged. Last-test readback remains
+visible after output zero and is explicitly labeled as past register evidence.
+Original firmware0.3.0 remains supported by new app; new firmware0.3.1 requires
+new app0.8.90. Install APK first, preserve data, upload with motor power removed.
+The unchanged firmware collection baseline remains0.3.0 until this candidate's
+hardware result is established. No public release or stable promotion performed.
+Next concrete check: suspended-wheel Left/Right/Both and driver-rail measurement,
+then actual observed-direction confirmation; see the scoped acceptance guide.
+
+Historical gate records below apply only to their named revisions.
+
 # Final 0.8.88 A–F result
 
 Published prerelease: https://github.com/Denberg28/TeleRC/releases/tag/v0.8.88

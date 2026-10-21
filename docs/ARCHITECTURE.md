@@ -1,3 +1,13 @@
+# Balancer motor output visibility — 0.8.90 / 0.3.1
+
+BalanceSetup retains20-field compatibility and accepts bounded29-field reports
+with last-test signed command, four LEDC duties, mask and PWM readiness. These
+are past-test evidence rather than current motor-voltage telemetry. UI consent
+remains tied to boot/session/fresh status; an extra observation checkbox gates
+verification, not arming. Motor tasks alone time300ms pulses, and preserve fault/
+STOP priority. Normal balance PID/output and IMU storage are unchanged. See
+[BALANCE_MOTOR_090.md](BALANCE_MOTOR_090.md).
+
 # UI and safety review — 0.8.88
 
 Balance is dropdown-only. Shared actions and compact bounded popup layouts are standardized. Session-bound Balance consent, stricter compatible MAVLink parsing and single-flight APK verification address confirmed review findings. App-only; retain balancer0.3.0. [Review, remaining gaps, gates and acceptance](UI_SAFETY_REVIEW_088.md). Final CI/build result supplies qualification; physical HIL remains BLOCKED.

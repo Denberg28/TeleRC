@@ -1,4 +1,4 @@
-/* TT Balancer 0.3.0 -- TeleRC Wi-Fi bench firmware, Arduino-ESP32 3.x.
+/* TT Balancer 0.3.1 -- TeleRC Wi-Fi bench firmware, Arduino-ESP32 3.x.
  * No external MPU library. Wire + LEDC are supplied by the ESP32 board package.
  * READ README.md BEFORE CONNECTING MOTOR POWER. Defaults forbid arming.
  */
@@ -40,6 +40,9 @@ const char *reason = "boot";
 float gyroBias = 0, angle = 0, rate = 0, integral = 0;
 int motorCommand = 0;
 uint8_t testMotorMask=3;
+bool testOutputValid=false;
+int16_t testLeft=0,testRight=0;
+uint16_t testDuty[4]{};
 uint32_t seenSetup=0,setupRequest=0,seenSetupStop=0,recalibrateAt=0;
 bool recalibratePending=false,remoteTest=false;
 const char *setupResult="IDLE";
@@ -125,6 +128,17 @@ void driveMixed(int command,float yaw) {
 }
 
 void drive(int command) { driveMixed(command,0); }
+
+// Retain output evidence after the short pulse, so the next app poll can show it.
+// Peripheral duty readback cannot establish motor voltage/current or movement.
+void captureTestOutput() {
+  testOutputValid=mode==Mode::MOTOR_TEST && pwmReady;
+  if(!testOutputValid)return;
+  testLeft=(testMotorMask&1) ? TEST_PWM*LEFT_SIGN : 0;
+  testRight=(testMotorMask&2) ? TEST_PWM*RIGHT_SIGN : 0;
+  const uint8_t pins[]={LEFT_IN1,LEFT_IN2,RIGHT_IN1,RIGHT_IN2};
+  for(uint8_t i=0;i<4;++i)testDuty[i]=uint16_t(ledcRead(pins[i]));
+}
 
 int16_t signedWord(const uint8_t *b) {
   return (int16_t)(((uint16_t)b[0] << 8) | b[1]);
@@ -390,8 +404,9 @@ void serialCommands() {
     // Suspended-wheel direction check; never run this on the floor.
     wheelTestComplete=false; testMotorMask=3; remoteTest=false;
     serialOutcome("TEST_STARTED");
-    mode = Mode::MOTOR_TEST; reason = "150ms forward test";
-    testUntil = millis() + 150; drive(TEST_PWM);
+    testOutputValid=false;
+    mode = Mode::MOTOR_TEST; reason = "bounded forward motor test";
+    testUntil = millis() + TEST_MS; drive(TEST_PWM); captureTestOutput();
   }
 }
 
@@ -476,6 +491,7 @@ void handleSetupRequests(bool stopChanged) {
   }
   if(action==balance_admin::CALIBRATE) {
     motorsOff();
+    testOutputValid=false;
     if(!eraseCalibration()){setupResult="ERASE_FAILED";return;}
     calibrated=false;directionsVerified=DIRECTIONS_VERIFIED;wheelTestComplete=false;
     recalibratePending=true;recalibrateAt=millis();setupResult="RESTARTING_FOR_CALIBRATION";return;
@@ -488,9 +504,10 @@ void handleSetupRequests(bool stopChanged) {
   }
   if(action<balance_admin::LEFT||action>balance_admin::BOTH){setupResult="UNSUPPORTED_ACTION";return;}
   wheelTestComplete=false;
+  testOutputValid=false;
   testMotorMask=action==balance_admin::LEFT?1:action==balance_admin::RIGHT?2:3;
-  remoteTest=true;mode=Mode::MOTOR_TEST;testUntil=millis()+150;
-  setupResult="TEST_RUNNING";reason="TeleRC 150ms motor test";drive(TEST_PWM);
+  remoteTest=true;mode=Mode::MOTOR_TEST;testUntil=millis()+TEST_MS;
+  setupResult="TEST_RUNNING";reason="TeleRC bounded motor test";drive(TEST_PWM);captureTestOutput();
 }
 
 void handleNetworkRequests() {
@@ -532,6 +549,9 @@ void handleNetworkRequests() {
 
 void publishStatus() {
   telerc::Status s;
+  s.pwmReady=pwmReady;s.testOutputValid=testOutputValid;
+  s.testLeft=testLeft;s.testRight=testRight;s.testMask=testOutputValid?testMotorMask:0;
+  for(uint8_t i=0;i<4;++i)s.testDuty[i]=testDuty[i];
   s.setupToken=seenSetup;s.setupRequest=setupRequest;s.mode=(uint8_t)mode;
   s.calibrated=calibrated;s.verified=directionsVerified;s.testDone=wheelTestComplete;s.gyroBias=gyroBias;
   snprintf(s.setupResult,sizeof(s.setupResult),"%s",setupResult);
@@ -557,6 +577,7 @@ void balanceTask(void *) {
 void setup() {
   commandsEnabled = false;
   seenSetup=setupRequest=seenSetupStop=0;recalibratePending=remoteTest=false;setupResult="IDLE";testMotorMask=3;
+  testOutputValid=false;testLeft=testRight=0;for(auto &v:testDuty)v=0;
   serialBytes=serialBootDiscard=0; serialLastByte=serialLastCommand=0;
   serialResult="IDLE"; serialReportRequested=false;
   calibrated = false; directionsVerified=DIRECTIONS_VERIFIED; wheelTestComplete=false;
@@ -570,7 +591,8 @@ void setup() {
   if(!networkBegin()) { fault("network task creation"); return; }
   // Attach sequentially. If any attach fails, detach all and force GPIO LOW.
   bool attached = true;
-  for (uint8_t pin : pins) attached = ledcAttach(pin, PWM_HZ, 8) && attached;
+  uint8_t channel=0;
+  for (uint8_t pin : pins) attached = ledcAttachChannel(pin, PWM_HZ, 8,channel++) && attached;
   if (!attached) {
     for (uint8_t pin : pins) { ledcDetach(pin); pinMode(pin, OUTPUT); digitalWrite(pin, LOW); }
     fault("PWM attach"); return;
@@ -637,10 +659,11 @@ void controlStep() {
       if(periodicSensor && !serialReportRequested) { mpuReportMs=millis(); sensorReport=0; }
       serialReportRequested=false;
       n=snprintf(telemetry,sizeof(telemetry),
-        "SERIAL bytes=%lu bootDiscard=%lu lastByte=0x%02X command=0x%02X result=%s enabled=%u testDone=%u testPWM=%d testMs=150 pwmReady=%u\n",
+        "SERIAL bytes=%lu bootDiscard=%lu lastByte=0x%02X command=0x%02X result=%s enabled=%u testDone=%u testPWM=%d testMs=%lu pwmReady=%u outputValid=%u L=%d R=%d duty=%u,%u/%u,%u\n",
         (unsigned long)serialBytes,(unsigned long)serialBootDiscard,
         serialLastByte,serialLastCommand,serialResult,(unsigned)commandsEnabled,
-        (unsigned)wheelTestComplete,TEST_PWM,(unsigned)pwmReady);
+        (unsigned)wheelTestComplete,TEST_PWM,(unsigned long)TEST_MS,(unsigned)pwmReady,
+        (unsigned)testOutputValid,testLeft,testRight,testDuty[0],testDuty[1],testDuty[2],testDuty[3]);
     } else if(periodicSensor) {
       mpuReportMs=millis();
       ++sensorReport;
@@ -662,7 +685,7 @@ void controlStep() {
         (unsigned)mpuDiag.probe[1].ack,(unsigned)mpuDiag.probe[1].read,mpuDiag.probe[1].who,mpuDiag.probe[1].error,
         mpuDiag.reg,mpuDiag.expected,mpuDiag.actual,mpuDiag.error,mpuDiag.wanted,mpuDiag.got);
     } else n = snprintf(telemetry, sizeof(telemetry),
-                     "v0.3.0 %s wifi=%s prearm=%s last=%s verified=%u CH1=%u CH2=%u age=%lu rx=%lu reject=%lu angle=%.2f rate=%.2f pwm=%d | %s\n",
+                     "v0.3.1 %s wifi=%s prearm=%s last=%s verified=%u CH1=%u CH2=%u age=%lu rx=%lu reject=%lu angle=%.2f rate=%.2f pwm=%d | %s\n",
                      modeName(), telerc::wifiName(linkInput.wifi), telerc::armName(remoteArmBlock()),
                      telerc::armName(linkInput.lastArmBlock), (unsigned)directionsVerified,
                      linkInput.observedSteer,linkInput.observedDrive,

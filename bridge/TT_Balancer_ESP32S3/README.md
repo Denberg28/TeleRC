@@ -1,13 +1,32 @@
-# TeleRC app pre-test integration — v0.3.0 source review
+# TeleRC balancer motor-test update — v0.3.1
 
-Paired Android0.8.87 adds Balance before Guide. Connect to this board's Wi-Fi
-and the existing UDP14550 endpoint. Remote calibration, separate motor tests,
-manual direction confirmation and Stop/Disarm no longer require Serial.
-See ../../docs/BALANCE_PRETEST_087.md for full use, limits and pending gates.
-Current app/board compilation remains unverified locally; this is source for
-review, not a hardware-qualified build. Serial commands remain supported.
+Pair with TeleRC **0.8.90/code108**. Open the dropdown → Balance.
+App 0.8.89 only understands the old 150 ms status and cannot use the new
+300 ms test report; upgrade the APK before flashing v0.3.1.
 
-# TeleRC Balancer ESP32-S3 — v0.3.0 test candidate
+1. If Calibration ready is shown, step 1 is already complete. Recalibrate after
+   changing sensor mounting or a failed saved check, with motor power removed.
+2. Apply regulated motor power and common ground. Secure the chassis and raise
+   both wheels. Confirm the checkbox, then test Left, Right, Both separately.
+3. Each explicit test applies **140/255 PWM at 20 kHz for 300 ms**, then zero.
+   Signed output follows LEFT_SIGN/RIGHT_SIGN and the inactive H-bridge leg is
+   cleared first. The balancing PID, MAX_PWM and MIN_PWM are unchanged; this
+   test pulse is never automatically injected into ordinary balancing.
+4. Check last-test command/readback in the app, even after the pulse ends.
+   No movement opens power/pin/output checks. Peripheral readback is NOT motor
+   voltage, current, direction or wheel-motion feedback.
+5. Confirm actual movement and tilt signs using the new observation checkbox,
+   then Confirm directions. Only a completed Both test qualifies. Setup never
+   arms: use Controls → Phone control → centered sticks → ARM deliberately.
+
+Left motor input GPIO4/5, right GPIO6/7; sensor SDA/SCL remain GPIO8/9.
+The 4-wheel MiniRover GPIO8–11 motor map must not be copied onto this balancer.
+MiniRover already uses 20 kHz proportional PWM without an automatic kick. This
+update uses the same explicit LEDC channel assignment/active-leg method, with
+an independently bounded diagnostic duty. No physical starting-torque claim.
+See MOTOR_TEST.md for electrical diagnosis and HIL_CHECKLIST.md for acceptance.
+
+# TeleRC Balancer ESP32-S3 — v0.3.1 test candidate
 
 ESP32-S3 + MPU6050 or MPU6500 + one MX1508 + two TT motors. This replaces the standalone
 v0.1.0 firmware with TeleRC legacy Wi-Fi/MAVLink control. No APK is included.
@@ -21,7 +40,7 @@ Send **`?`** from the Serial Monitor input box and press Enter/Send; expect
 wheels suspended, send **`t`**. Expect `TEST_STARTED` and
 `TEST_FINISHED_CHECK_WHEELS_BEFORE_V`. If no input bytes arrive, the SERIAL record
 shows `bytes=0`; `rx=0` in the normal status refers to Wi-Fi RC packets instead.
-See [MOTOR_TEST.md](MOTOR_TEST.md). The motor pulse remains 55/255 for 150 ms.
+See [MOTOR_TEST.md](MOTOR_TEST.md). The motor pulse remains 140/255 for 300 ms.
 The new diagnostics do not prove the motor wiring/power path works, and direction
 verification remains required before arming. Saved gyro calibration is retained.
 
@@ -138,11 +157,11 @@ retries from the old request cannot extend its lifetime.
 ## If the Wi-Fi network is missing
 
 1. Disconnect motor power. Power the ESP32-S3 through a suitable USB data cable
-   and verify that the v0.3.0 sketch uploaded successfully to the correct board.
+   and verify that the v0.3.1 sketch uploaded successfully to the correct board.
 2. Scan the phone's Wi-Fi settings for **TeleRC-Balancer**. The app cannot discover
    a rover until the phone joins its access point.
 3. Open Serial Monitor at **115200 baud**, with USB CDC On Boot enabled if using
-   native USB, then press RESET. Look for a line beginning `v0.3.0`.
+   native USB, then press RESET. Look for a line beginning `v0.3.1`.
 4. Inspect `wifi=` and the final fault reason:
 
 | Serial field | Meaning / next check |
@@ -167,7 +186,7 @@ Keep the phone app disconnected. With both wheels off the floor:
 
 - Confirm MPU +X points forward, +Y left, +Z up. Forward tilt must make `angle`
   positive; during forward rotation, `rate` must be positive. Remount if wrong.
-- Send Serial **`t`** once for a capped **150 ms** forward wheel pulse. Both wheels
+- Send Serial **`t`** once for a capped **300 ms** forward wheel pulse. Both wheels
   must turn to propel the robot forward. Fix `LEFT_SIGN`/`RIGHT_SIGN` (or motor
   lead order with power off), re-upload and recheck.
 - After visually confirming that both wheels propel forward and the sensor

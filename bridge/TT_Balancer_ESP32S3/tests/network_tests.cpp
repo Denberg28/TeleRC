@@ -64,6 +64,8 @@ int main() {
   admin("TELERC_BALANCE_V1|Q",20);
   std::string status(transport::udp.lastTx.begin(),transport::udp.lastTx.end());
   check(status.find("TELERC_BALANCE_V1|STATUS|")==0&&transport::setupLease.challenge!=0&&transport::setupBoot!=0);
+  check(status.find("|140|300|0|0|0|0|0|0|0|0|0")!=std::string::npos);
+  check(std::count(status.begin(),status.end(),'|')==28); // Paired app parses exactly 29 fields.
   check(transport::core.input.lastRC==7); // Query never refreshes drive lease.
   uint32_t challenge=transport::setupLease.challenge;
   std::string action="TELERC_BALANCE_V1|"+std::to_string(challenge)+"|33|4";

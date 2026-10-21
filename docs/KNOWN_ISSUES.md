@@ -1,3 +1,12 @@
+# Balancer no-movement report — 0.8.90 / firmware0.3.1
+
+The weak55/255 ×150ms diagnostic is replaced by140/255 ×300ms; physical motion
+is still unverified. Battery connection does not establish regulated voltage at
+the driver. Readback cannot prove motor voltage/current/rotation. New firmware
+requires paired0.8.90;0.8.89 rejects its longer duration/extended report. Other
+firmwares stay unchanged. Hardware torque/power/stop and phone layout checks
+remain required. [Review and acceptance](BALANCE_MOTOR_090.md).
+
 # UI and safety review — 0.8.88
 
 Balance is dropdown-only. Shared actions and compact bounded popup layouts are standardized. Session-bound Balance consent, stricter compatible MAVLink parsing and single-flight APK verification address confirmed review findings. App-only; retain balancer0.3.0. [Review, remaining gaps, gates and acceptance](UI_SAFETY_REVIEW_088.md). Final CI/build result supplies qualification; physical HIL remains BLOCKED.

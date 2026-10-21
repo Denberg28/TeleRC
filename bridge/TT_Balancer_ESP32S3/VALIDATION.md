@@ -1,3 +1,34 @@
+# v0.3.1 motor-test software checks — 21 October 2026
+
+Source baseline: app0.8.89 cbfb507c8513b3dd57cba84762ac37249ce76e05;
+standalone firmware0.3.0 verified byte-identical to all10 bridge compile sources.
+Changes:140/255 ×300ms explicit tests, explicit LEDC channels and retained last
+output readback; paired Android0.8.90 accepts old/new status and shows output
+checks and physical-observation confirmation. No PID/normal-drive gain changes.
+
+Host ASan/UBSan: default direction lock41; controller671; admin94; serial72;
+saved calibration82; mounting checks; protocol80 +20,000 malformed packets;
+network adapter35; production host syntax PASS. Tests include continued output
+past the old150ms boundary, final zero, selected motor legs/polarity, last-output
+capture retained after zero, stop/fault interruption and timer rollover.
+
+Actual ESP32-S3 build: Arduino-ESP32 core3.3.2, Arduino CLI1.5.2-rc.1;
+FQBN esp32:esp32:esp32s3:CDCOnBoot=cdc,USBMode=hwcdc,FlashSize=4M,
+PartitionScheme=default,PSRAM=disabled,FlashMode=dio.
+Mount0 PASS:934651 bytes flash/47320 bytes static RAM.
+Mount1 PASS:934631 bytes flash/47320 bytes static RAM.
+Both are source compilation results, not physical board/driver verification.
+
+Full bridge/core and20 MiniRover profile checks pass. Default leak inspection
+fails because this traced container cannot inspect /proc task lists; ASan/UBSan
+rerun passes with detect_leaks=0. Original failure is retained as a limitation.
+Android/native/signing final gate results live in docs/TESTING.md / BUILD_INFO.
+Actual phone layout, UDP link, motor voltage/current/starting torque, commanded
+stop timing and balancing/PID HIL remain NOT TESTED. The reported nonmovement
+is not confirmed as resolved on hardware. Read MOTOR_TEST.md before testing.
+
+Historical verification below applies only to the named earlier revisions.
+
 # v0.2.5 verification — 20 October 2026
 
 Baseline: v0.2.4. Reported hardware returns I2C 0x68, WHO_AM_I 0x70.
