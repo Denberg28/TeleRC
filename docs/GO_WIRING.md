@@ -26,11 +26,17 @@ separate regulated logic supply are required; do not power motors from the ESP32
 
 Optional ELRS: receiver TX → GPIO39; common ground; receiver-rated power and
 3.3V UART. Normal non-inverted CRSF420000 baud. GPIO39 is reserved in ELRS builds.
-CH1 steer, CH2 centered drive, CH5 ARM, CH6 STOP(high). BOOT/GPIO0 is local stop;
+CH1 steer, CH2 centered drive, CH5 ARM, CH6 STOP(high), CH7 Switch A source.
+Map SA to CH7: HIGH (>1800 us) permits phone control; LOW (<1300 us) selects
+the transmitter; middle/invalid inhibits both. A source change stops/disarms.
+For transmitter arming, center CH1/CH2, hold CH5 LOW at least 300 ms, then switch
+CH5 HIGH. Returning SA to phone requires a deliberate app ARM tap.
+BOOT/GPIO0 is local stop;
 status LED/GPIO21 indicates arm/stop state. Test with wheels restrained.
 
 Binary folders: `MX1508-ELRS0`, `MX1508-ELRS1`, `BTS7960-ELRS0`, `BTS7960-ELRS1`.
-ELRS0 is phone-only Wi-Fi. ELRS1 adds receiver control and explicit phone takeover.
+ELRS0 is phone-only Wi-Fi. ELRS1 adds receiver control with SA/CH7 arbitration;
+the phone continues connecting through rover Wi-Fi in either build.
 All builds use Wi-Fi AP TeleRC-MiniRover, default192.168.4.1 UDP14550, one peer.
 Set a private password before deployment. There is no LoRa or mission firmware.
 
@@ -39,5 +45,5 @@ or flash the generated **merged.bin at0x0** if that file is present in the selec
 folder. Otherwise use its ESP32-S3 image set: bootloader.bin at0x0,
 partitions.bin at0x8000, boot_app0.bin at0xe000 (if present), and application.bin at
 0x10000. Check actual filenames in the folder and do not substitute images from
-a different build. Firmware version is1.0.0-go-four-wheel. Hardware/pin/power and
+a different build. Firmware version is 1.0.2-go-sa-wifi. Hardware/pin/power and
 physical stop behavior remain unmeasured here; compilation is software evidence.
