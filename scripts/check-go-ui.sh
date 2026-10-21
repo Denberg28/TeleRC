@@ -20,8 +20,8 @@ trap cleanup EXIT
 adb install -r go/build/outputs/apk/debug/go-debug.apk
 adb install -r go/build/outputs/apk/androidTest/debug/go-debug-androidTest.apk
 adb shell run-as "$PKG" mkdir -p files
-adb exec-out run-as "$PKG" tee files/update-candidate.apk < /tmp/go-update-candidate.apk > /dev/null
-adb exec-out run-as "$PKG" tee files/update-wrong-package.apk < app/build/outputs/apk/debug/app-debug.apk > /dev/null
+adb exec-in run-as "$PKG" sh -c 'cat > files/update-candidate.apk' < /tmp/go-update-candidate.apk
+adb exec-in run-as "$PKG" sh -c 'cat > files/update-wrong-package.apk' < app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -r -w "$PKG.test/io.github.denberg28.telerc.GoInstrumentation" | tee go/build/ui-evidence/result.txt
 grep 'INSTRUMENTATION_CODE: -1' go/build/ui-evidence/result.txt
 grep 'PASS: Go Wi-Fi only' go/build/ui-evidence/result.txt
