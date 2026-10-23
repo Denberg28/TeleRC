@@ -1614,7 +1614,7 @@ class MainActivity : Activity() {
         if (page!=Page.CONTROLS || !resumed) return
         val allowed=synchronized(commandLock) {
             if(elrsMode && !elrsAuthority.allowed(SystemClock.elapsedRealtime())) false
-            else controlEnabled.enable(target,heartbeatAt,SystemClock.elapsedRealtime()).also { if(it) commandEpoch++ }
+            else controlEnabled.enable(target,heartbeatAt,SystemClock.elapsedRealtime(),steering,drive).also { if(it) commandEpoch++ }
         }
         if(allowed) {
                 steeringStick?.isEnabled = true; driveStick?.isEnabled = true
@@ -1625,7 +1625,7 @@ class MainActivity : Activity() {
                 }
                 refreshUi()
 
-        } else Toast.makeText(this,"Connect and wait for a fresh rover heartbeat.",Toast.LENGTH_SHORT).show()
+        } else Toast.makeText(this,"Center both controls and wait for fresh rover telemetry.",Toast.LENGTH_SHORT).show()
     }
     private fun requestElrsControl() {
         if(!linkFresh() || elrsAuthority.pending(SystemClock.elapsedRealtime())) return

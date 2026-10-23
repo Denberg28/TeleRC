@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LiveControlGateTest {
+    @Test fun movingOrInvalidAxesCannotAcquireAuthority() {
+        val gate = LiveControlGate()
+        for ((steering, drive) in listOf(1800 to 1500, 1500 to 1200, 0 to 1500, 1500 to 65535)) {
+            assertFalse(gate.enable(1, 1000, 1001, steering, drive))
+            assertFalse(gate.get())
+        }
+        assertTrue(gate.enable(1, 1000, 1001, 1500, 1500))
+        assertFalse(gate.enable(1, 1000, 1001, 1500, 1800))
+        assertFalse(gate.get())
+    }
     @Test fun telemetryRecoveryRequiresExplicitEnable() {
         val gate = LiveControlGate()
         assertTrue(gate.enable(1, 1000, 1001))

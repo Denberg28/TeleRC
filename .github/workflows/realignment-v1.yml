@@ -1,0 +1,82 @@
+name: v1.0 realignment candidate
+on:
+  push:
+    branches: [release/realignment-v1.0]
+permissions:
+  contents: read
+concurrency:
+  group: v1-realignment
+  cancel-in-progress: false
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Verify application, lint and build debug candidate
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - name: Build signed release with the existing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo 'BLOCKED: existing release signing secrets unavailable. Debug build is diagnostic only.'; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-v1.jks"
+          export TELERC_KEYSTORE_FILE="$RUNNER_TEMP/telerc-v1.jks"
+          ./gradlew :app:assembleRelease --no-daemon
+          mkdir -p release-dist
+          cp app/build/outputs/apk/release/app-release.apk release-dist/TeleRC-v1.0.0.apk
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.91/TeleRC-v0.8.91.apk --output "$RUNNER_TEMP/baseline.apk"
+          python scripts/verify_v1_apk.py release-dist/TeleRC-v1.0.0.apk "$RUNNER_TEMP/baseline.apk"
+          python scripts/package_v1_source.py
+      - name: Retain app artifacts and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-v1-app-and-evidence
+          path: |
+            release-dist/
+            app/build/outputs/apk/debug/
+            app/build/outputs/apk/release/
+            app/build/reports/
+            app/build/test-results/
+            ecosystem-release.json
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-v1.jks"
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Host and memory-safety regressions
+        run: |
+          python bridge/sync_motor_core.py --check
+          bash bridge/tests/run.sh
+          SANITIZE=1 bash bridge/tests/run.sh
+          python -m unittest discover -s scripts -p test_firmware_package.py
+          bash bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bash bridge/mini_wifi_tests/run.sh
+          bash bridge/TT_Balancer_ESP32S3/tests/run.sh
+      - name: Install pinned board and radio dependencies
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install RadioLib@7.2.1
+      - name: Compile and package actual board profiles
+        run: python scripts/build_v1_firmware.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-v1-firmware-and-evidence
+          path: |
+            firmware-dist/
+            firmware-v1-evidence/
+            ecosystem-release.json

@@ -1,3 +1,7 @@
+## 1.0.0 — v1.0 realignment candidate
+
+See docs/REALIGNMENT_V1.md. This is a software release candidate; hardware/stable gates remain blocked.
+
 ## 0.8.89 — Balance popup only
 
 - Replace the full-page Balance form with a centered content-measured popup.

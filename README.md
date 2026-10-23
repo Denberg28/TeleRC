@@ -1,3 +1,5 @@
+> **v1.0 realignment candidate:** see [scope, compatibility, validation and rollback](docs/REALIGNMENT_V1.md). Hardware qualification and production authentication are not complete.
+
 # External USB FPV reliability — 0.8.91 candidate
 
 Keep USB access during advertised-mode negotiation, restart a stalled preview
