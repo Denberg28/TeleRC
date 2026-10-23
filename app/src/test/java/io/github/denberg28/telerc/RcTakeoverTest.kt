@@ -17,7 +17,7 @@ class RcTakeoverTest {
         val gate=RcTakeover()
         assertFalse(gate.allowed(1000))
         gate.receive(packet(2000,system=2),1,1000);assertFalse(gate.allowed(1000))
-        val bad=packet(2000);bad[16]=0;gate.receive(bad,1,1000);assertFalse(gate.allowed(1000))
+        val bad=packet(2000);bad[22]=(bad[22].toInt() xor 1).toByte();gate.receive(bad,1,1000);assertFalse(gate.allowed(1000))
         gate.receive(packet(2000),1,1000);assertTrue(gate.allowed(1000))
         assertFalse(gate.allowed(999));assertFalse(gate.allowed(1750))
     }
