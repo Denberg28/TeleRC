@@ -1,0 +1,57 @@
+name: Publish verified v1.0.0 prerelease
+on:
+  push:
+    branches: [release/publish-v1.0.0]
+    paths:
+      - .github/workflows/publish-v1.0.0.yml
+      - scripts/stage_verified_v1.py
+      - docs/releases/v1.0.0.md
+permissions:
+  contents: read
+concurrency:
+  group: publish-v1.0.0
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Require successful original build and exact artifact provenance
+        run: |
+          gh api repos/Denberg28/TeleRC/actions/runs/39889664702 > run.json
+          gh api repos/Denberg28/TeleRC/actions/artifacts/12473858951 > artifact.json
+          python - <<'PY'
+          import json
+          run=json.load(open('run.json'))
+          artifact=json.load(open('artifact.json'))
+          assert run['conclusion']=='success'
+          assert run['head_sha']=='c845503175d1d48468ec0201c8992f379c059c52'
+          assert artifact['id']==12473858951 and artifact['expired'] is False
+          assert artifact['name']=='TeleRC-v1-complete-candidate'
+          assert artifact['workflow_run']['id']==run['id']
+          assert artifact['workflow_run']['head_sha']==run['head_sha']
+          PY
+      - name: Download and independently verify original release bytes
+        run: |
+          gh api repos/Denberg28/TeleRC/actions/artifacts/12473858951/zip > verified-build.zip
+          python scripts/stage_verified_v1.py verified-build.zip publication
+      - name: Publish prerelease without changing stable or earlier candidates
+        run: |
+          if gh release view v1.0.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v1.0.0 already exists; refusing replacement.'
+            exit 1
+          fi
+          gh release create v1.0.0 --repo "$GITHUB_REPOSITORY" --target c845503175d1d48468ec0201c8992f379c059c52 --prerelease --latest=false --title 'TeleRC v1.0.0 — Base prerelease' --notes-file docs/releases/v1.0.0.md publication/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-v1.0.0-published-files
+          path: publication/
+          if-no-files-found: error
