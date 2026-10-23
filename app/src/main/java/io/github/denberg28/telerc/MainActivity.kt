@@ -110,6 +110,8 @@ class MainActivity : Activity() {
         }
     }
     private val controlEnabled = LiveControlGate()
+    private val rcTakeover = RcTakeover()
+    private val fieldControlAllowed get() = miniRoverMode || usbMode || rcTakeover.allowed(SystemClock.elapsedRealtime())
     private val commandLock = Any()
     private var commandEpoch = 0L // Guarded by commandLock; cancels queued ARM after stop/lifecycle loss.
     private val txExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -512,6 +514,9 @@ class MainActivity : Activity() {
     }
 
     private fun toggleArmDisarm() {
+        if (!fieldControlAllowed) {
+            Toast.makeText(this,"RC authority unavailable or transmitter selected.",Toast.LENGTH_SHORT).show(); return
+        }
         if (!phoneCommandsAllowed) {
             Toast.makeText(this, FcElrs.HANDSET_ONLY, Toast.LENGTH_LONG).show(); return
         }
@@ -555,7 +560,7 @@ class MainActivity : Activity() {
                 repeat(3) { attempt ->
                     synchronized(commandLock) {
                         if (socket !== udp || !connected.get() || target != system ||
-                            (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                            (!armed && (commandEpoch != epoch || !resumed || !linkFresh() || !fieldControlAllowed ||
                                 (mini && (!controlEnabled.get() || steering !in 1475..1525 ||
                                     drive !in 1475..1525 || !miniArmGate.ready(SystemClock.elapsedRealtime()))) ||
                                 SystemClock.elapsedRealtime() - requestedAt >= 500))) {
@@ -566,7 +571,7 @@ class MainActivity : Activity() {
                         }
                         if (attempt == 0) sendControlHandoverBlocking(udp, remote, system, remotePort, releaseToReceiver = false)
                         // USB neutral writes can consume the remaining request lifetime.
-                        if (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                        if (!armed && (commandEpoch != epoch || !resumed || !linkFresh() || !fieldControlAllowed ||
                                 SystemClock.elapsedRealtime() - requestedAt >= 500)) {
                             runOnUiThread {
                                 if (socket === udp) { pendingArmState = null; lastArmAck = "COMMAND CANCELLED"; refreshUi() }
@@ -1573,7 +1578,7 @@ class MainActivity : Activity() {
             "${connect?.text}; tap to disconnect. ${status?.text?.toString().orEmpty()}" else connect?.text
         connect?.tooltipText = if (wantsLink) "Disconnect" else "Connect"
         if(fcElrsMode) { steeringStick?.isEnabled=false; driveStick?.isEnabled=false }
-        enable?.isEnabled = fcElrsMode || phoneCommandsAllowed && connected.get() && (controlEnabled.get() || linkFresh())
+        enable?.isEnabled = fcElrsMode || phoneCommandsAllowed && connected.get() && (controlEnabled.get() || linkFresh() && fieldControlAllowed)
         enable?.text = if(fcElrsMode) "Phone control" else if(elrsMode) when {
             controlEnabled.get() -> "Use transmitter"
             elrsAuthority.pending(now) -> "Taking control…"
@@ -1585,7 +1590,8 @@ class MainActivity : Activity() {
             status?.text=if(linkFresh()) elrsAuthority.label(now) else status?.text
             enable?.tooltipText=elrsAuthority.label(now)
         }
-        armButton?.apply { text = if(fcElrsMode) "Use transmitter" else armCaption(); isEnabled = phoneCommandsAllowed && linkFresh() && vehicleArmed != null }
+        armButton?.apply { text = if(fcElrsMode) "Use transmitter" else armCaption(); isEnabled = phoneCommandsAllowed && fieldControlAllowed && linkFresh() && vehicleArmed != null }
+        if(!miniRoverMode && !usbMode && !fcElrsMode && target!=0) status?.append(" · "+rcTakeover.label(now))
         val localUsb = usbMode && connected.get()
         loraRead?.isEnabled = localUsb && loraExchange.pending == null && !loraExchange.blocked
         loraSave?.isEnabled = localUsb && loraExchange.canSave && vehicleArmed != true
@@ -1610,10 +1616,10 @@ class MainActivity : Activity() {
         if(waypointTab?.navigation?.let { it.busy || it.functionsPendingOff }==true) {
             Toast.makeText(this,"Wait for Waypoint HOLD and function OFF confirmation.",Toast.LENGTH_LONG).show(); return
         }
-        if (!phoneCommandsAllowed) return
+        if (!phoneCommandsAllowed || !fieldControlAllowed) return
         if (page!=Page.CONTROLS || !resumed) return
         val allowed=synchronized(commandLock) {
-            if(elrsMode && !elrsAuthority.allowed(SystemClock.elapsedRealtime())) false
+            if(!fieldControlAllowed || elrsMode && !elrsAuthority.allowed(SystemClock.elapsedRealtime())) false
             else controlEnabled.enable(target,heartbeatAt,SystemClock.elapsedRealtime(),steering,drive).also { if(it) commandEpoch++ }
         }
         if(allowed) {
@@ -1873,6 +1879,10 @@ class MainActivity : Activity() {
                                 val previousSystem = target
                                 val previousArmed = vehicleArmed
                                 target = heartbeat.system
+                                if(previousSystem==0 && !miniRoverMode && !usbSession && !backpack) {
+                                    val request=WaypointProtocol.command(sequence++,target,511,65f,200000f)
+                                    udp.send(DatagramPacket(request,request.size,remote,number))
+                                }
                                 vehicleArmed = heartbeat.armed
                                 heartbeatAt = SystemClock.elapsedRealtime()
                                 val requestedArmState = pendingArmState
@@ -1898,6 +1908,7 @@ class MainActivity : Activity() {
                                     }
                                 }
                             }
+                            if(!miniRoverMode && !usbSession && !backpack)rcTakeover.receive(frame,target,SystemClock.elapsedRealtime())
                             val ack = Mavlink.commandAck(frame)
                             if (ack != null && ack.system == target && ack.command == 400) {
                                 lastArmAck = ack.resultText
@@ -1949,7 +1960,7 @@ class MainActivity : Activity() {
                 if (!backpack && now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
                         val rc = synchronized(commandLock) {
-                            if (!controlEnabled.get() || !linkFresh() || elrsMode && !elrsAuthority.allowed(now)) null else {
+                            if (!controlEnabled.get() || !linkFresh() || !fieldControlAllowed || elrsMode && !elrsAuthority.allowed(now)) null else {
                                 val channels = RoverControls.channels(steering, drive)
                                 val bytes = Mavlink.override(sequence++, target, 1,
                                     channels.one, channels.two, channels.three, channels.four)
@@ -1999,7 +2010,7 @@ class MainActivity : Activity() {
     }
     private fun revokeExpiredControl(transport: LinkTransport) {
         val expired = synchronized(commandLock) {
-            val lostElrs=elrsMode && controlEnabled.get() && !elrsAuthority.allowed(SystemClock.elapsedRealtime())
+            val lostElrs=controlEnabled.get() && (!fieldControlAllowed || elrsMode && !elrsAuthority.allowed(SystemClock.elapsedRealtime()))
             if (socket !== transport || !(lostElrs || controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime()))) false
             else {
                 controlEnabled.disable()
@@ -2034,6 +2045,7 @@ class MainActivity : Activity() {
         loraStatus?.text = loraInfo
         endpoint = null
         target = 0
+        rcTakeover.reset()
         vehicleArmed = null
         pendingArmState = null
         lastArmAck = ""

@@ -6,7 +6,7 @@ m=json.loads(Path('ecosystem-release.json').read_text());product=m['product']
 generic='esp32:esp32:esp32s3:CDCOnBoot=cdc,USBMode=hwcdc,FlashSize=4M,PartitionScheme=default,PSRAM=disabled,FlashMode=dio'
 t3='esp32:esp32:lilygo_t3s3:Revision=Radio_SX1262,PSRAM=disabled,USBMode=hwcdc,CDCOnBoot=cdc'
 if product=='TeleRC':
- targets=[('wifi-fc-bridge','bridge/TeleRCBridge',generic),('pwm-four-bts7960','bridge/BTS7960PWMConverter',generic),('dedicated-motor','bridge/TeleRCMotorController',generic),('dedicated-wifi-gateway','bridge/TeleRCWiFiGateway',generic),('balancer-existing','bridge/TT_Balancer_ESP32S3',generic)]
+ targets=[('wifi-fc-bridge','bridge/TeleRCBridge',generic),('pwm-paired-legacy','bridge/BTS7960PWMConverter',generic),('pwm-four-input-current','bridge/TeleRC_4x_BTS7960_PWM_GlitchFilter',generic),('dedicated-motor','bridge/TeleRCMotorController',generic),('dedicated-wifi-gateway','bridge/TeleRCWiFiGateway',generic),('balancer-existing','bridge/TT_Balancer_ESP32S3',generic)]
 elif product=='telerc_go':
  targets=[('mini-four-motor-mx1508','firmware/go/TeleRC_MiniRover_WiFi',generic),('tt-car-jog-steering','firmware/go/TeleRC_Go_TT_Car',generic),('balancer-sbrb-candidate','bridge/TT_Balancer_ESP32S3',generic)]
 else:

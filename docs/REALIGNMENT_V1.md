@@ -81,3 +81,11 @@ Install only the matching board/profile's images at its recorded offsets.
 Android downgrade normally needs uninstall and may erase application data; keep
 the prior signed package and export plans first. PC keeps prior settings and
 release downloads. Restore the whole tested app/firmware pairing when required.
+
+## Current four-input converter
+
+The current standalone four-input PWM converter is imported byte-for-byte from telerc_ardurover commit 2c84c68c3dd6527b340944202ca93e57457334b5, version 1.0.5 noise-filter candidate. It uses FC M5/M6/M7/M8 -> GPIO4/5/6/7 with FL/RL/FR/RR outputs. The older paired-input converter remains a separate legacy build; do not interchange wiring profiles. Compilation is not physical qualification.
+
+## Paired Wi-Fi field bridge
+
+The v1 bridge now forwards only the exact bounded app profile: real GCS heartbeat, targeted read-only parameter/message requests, HOLD, 0.5 m/s Guided destinations and bounded F servo commands excluding M5–M8. It validates CRC, sender, target, ranges and command shape. Navigation/servo commands additionally require genuine fresh FC heartbeat and RC_CHANNELS CH7 high (>1800 us), with ownership telemetry less than 750 ms old. Map Pocket switch A to CH7 and validate RC7_OPTION=46 on the deployed ArduRover version; manual/Guided intervention also requires the physical mode switch. Android requests RC_CHANNELS when preparing Waypoint. Go already requests it. No heartbeat is fabricated by the bridge. Guided/HOLD releases previous RC overrides and neutral-refresh state before forwarding; ArduRover retains execution and failsafe responsibility. Manual RC/normal arm paths remain intact. This requires a paired app/bridge upgrade and physical transition tests.

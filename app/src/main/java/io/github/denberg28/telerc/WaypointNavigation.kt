@@ -174,7 +174,7 @@ class WaypointNavigation {
         (required.keys + functions.flatMap { f -> listOf("SERVO${f.output}_FUNCTION","SERVO${f.output}_MIN","SERVO${f.output}_MAX") })
             .forEach { queue(WaypointProtocol.parameter(sequence++,system,it)) }
         // Read-only telemetry requests. No PARAM_SET, calibration, arming or pre-arm bypass.
-        for (id in (listOf(1,24,33,193,242,87)+if(functions.isNotEmpty()) listOf(36) else emptyList())) queue(WaypointProtocol.command(sequence++,system,511,id.toFloat(),500000f))
+        for (id in (listOf(1,24,33,65,193,242,87)+if(functions.isNotEmpty()) listOf(36) else emptyList())) queue(WaypointProtocol.command(sequence++,system,511,id.toFloat(),500000f))
     }
     @Synchronized fun start(points: List<Waypoint>, now: Long, sequenceActions:List<List<WaypointAction>> = List(points.size) { emptyList() }, bindings:List<WaypointFunction> = emptyList()): String? {
         val problem = WaypointFunctions.problem(points,sequenceActions,bindings) ?:
