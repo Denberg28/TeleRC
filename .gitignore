@@ -11,3 +11,11 @@ local.properties
 TeleRCLoRaConfigLocal.h
 __pycache__/
 *.pyc
+
+.kotlin/
+
+# Generated v1 build outputs and evidence staging.
+firmware-dist/
+firmware-v1-evidence/
+release-dist/
+installer-dist/

@@ -1,3 +1,174 @@
+## 1.0.0 — v1.0 realignment candidate
+
+See docs/REALIGNMENT_V1.md. This is a software release candidate; hardware/stable gates remain blocked.
+
+## 0.8.89 — Balance popup only
+
+- Replace the full-page Balance form with a centered content-measured popup.
+- Equal padding, section/text spacing, scrolling body and fixed footer actions.
+- Close/Back returns to Setup; navigation/background clears the old popup.
+- App-only; retain balancer0.3.0. See docs/BALANCE_POPUP_089.md for checks and limits.
+
+## 0.8.88 / code106
+
+- Remove duplicate Balance header button; retain dropdown navigation.
+- Standardize shared action appearance and compact bounded popup frames.
+- Bind Balance consent to session/boot; tighten compatible manual MAVLink validation.
+- Serialize and validate DownloadManager completion verification.
+- Full application review and remaining limits: docs/UI_SAFETY_REVIEW_088.md.
+
+## 0.8.87
+
+- Add the upper-right Balance pre-test tab immediately before Guide, plus a tab-menu entry.
+- Show live calibration persistence, angle/rate and exact readiness blocker; calibrate/save, test left/right/both, confirm directions and stop from TeleRC.
+- Add paired standalone balancer0.3.0 Wi-Fi admin support with current-peer restriction, boot/status ordering, expiring single-use challenge, bounded request mailbox, no action retries and robot-side state/stop checks.
+- Keep motor tests at55/255 for150ms and require a completed both-wheel test plus explicit physical confirmation before arming. Setup never arms or enables control.
+- Preserve ordinary rover, mission, FPV and wallet behavior; retain saved gyro storage compatibility. Software/physical qualification remains pending as recorded in docs/BALANCE_PRETEST_087.md.
+
+# 0.8.86 / code104
+
+- Add map-based F1/F2/F3 ON/OFF events interleaved with waypoints, editable ordered rows, coordinate-bound saved actions and configurable dedicated output PWM values.
+- Recheck each start and confirm exact coordinates/actions/output mapping. Verify stationary HOLD, initialize OFF, serialize absolute servo commands and require accepted ACK plus fresh reported PWM.
+- Cancel expired/session-old writes; request bounded all-function OFF on completion/STOP/failure, retain unconfirmed OFF across reconnect and guard phone-enable/arming handover.
+- Reformat the compact status/help pane and retain shared popup sizing/transitions. [Scope, tests, compatibility and HIL](docs/MISSION_FUNCTIONS_086.md).
+
+# 0.8.85 / code103
+
+- Add one possible replay bonus coin on completed levels: 25% saved chance, clear-only payout, bounded v3 earnings retaining v1/v2 wallet data.
+- Start practice immediately after either Restart level action, with neutral sticks/reset state.
+- Clarify Waypoint Single/Multiple points, ordered-route confirmation and planning-only connection guidance. [Checks and migration/rollback](docs/REPLAY_COINS_085.md).
+
+# 0.8.84 / code102
+
+- Measure actual popup content before opening; compact short forms/lists/notices and scroll long guides/lists within screen bounds.
+- Share sizing, large-text action heights, centering, transitions and lifecycle cleanup with Test sheets; keep Market size stable during category changes.
+- Preserve navigation, connection, authority, updater and firmware behavior. Extend native layout regressions. [Release checks and acceptance](docs/POPUP_LAYOUT_084.md).
+
+# 0.8.83
+
+- Standardize app popups with flat themed sheets, visible fixed actions, centered bounds and lifecycle cleanup.
+- Remove redundant unknown arm/mode text from Waypoint; shorten steps/help and expose full check details on tap.
+- Revoke manual phone control or request Guided HOLD before a modal; never resume on close.
+- Recover ordinary Wi-Fi after Android Network replacement without restoring authority. Bound updater metadata and duplicate checks.
+
+# 0.8.82
+
+- Move connection guide before Setup minimize; use a compact fixed pane with combined connection/status and ports.
+- Rename Controls actions to Use transmitter / Phone control; native Backpack offers a deliberate disconnected FC Wi-Fi setup switch.
+- Combine Waypoint readiness and confirmation under Mission start, retain all navigation gates, share F1–F3 servo assignments, and shorten Help & safety.
+
+## 0.8.81 — ELRS recovery
+- Continue bounded Backpack registration after F405 telemetry becomes stale.
+- Rebind a removed Android Wi-Fi Network through the existing safe reconnect path.
+- Distinguish UDP-open/live/stale telemetry and retain native handset-only command guard.
+- Add outage/network-removal/background/command-guard JVM regressions and native status checks.
+- App-only/code99; hardware/RF stopping and phone installation remain pending.
+
+# F405 ELRS and clear Waypoint flow — 0.8.80 development
+
+Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](docs/ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
+
+## 0.8.79
+
+Add isolated Waypoint map/tab, single or multi waypoint saved drafts, confirmed ArduRover DO_REPOSITION sequencing, verified HOLD/readiness/failsafe parameters and cancellation on stale telemetry/lifecycle/timeout. Existing gateway sketches remain unchanged and planning-only; compatible navigation link and physical/SITL validation pending. Preserve existing tab bodies, FPV, wallet and manual protocol.
+
+# 0.8.78 — practice worlds and accessories
+
+- Setup version is centered in its bottom footer in expanded/minimized modes; narrow layouts place it below corner actions.
+- City (1–5), Forest (6–10), Desert (11–15), Space (16–20) have deterministic vector scenery, matching floor/wall palettes and environment labels. Course version/physics/times remain unchanged.
+- Market groups seven distinct silhouettes into Land/Sea/Air/Space. Adds Skiff, Skywing and Starship.
+- Accessories replaces Colors: stack/remove Hood, Armament, Wheels, Exhaust and Spoiler. Cosmetics only. Existing color purchases refund through v1-to-v2 wallet migration; vehicles, claimed coins and progress remain. Complete catalog costs the existing 220-coin supply.
+- App-only signed test candidate; no firmware reflash. Phone/rover acceptance remains pending; see docs/PRACTICE_WORLDS_078.md.
+
+## 0.8.77
+
+- Persist desired FPV receiver and camera/map choice; reconnect granted receivers after USB re-enumeration and foreground resume.
+- Separate and deduplicate explicit USB permission transactions; automatic recovery waits for missing access instead of prompting repeatedly. Android owns the Always/default chooser.
+- Keep existing sessions on repeated Connect, reject stale session/grant callbacks, restart replaced textures and reset recovery after sustained fresh frames. Retries slow to 30 seconds after three fast attempts.
+- Add Auto reconnect and USB default help to video options, production reconnect-policy regression tests and native no-device lifecycle checks. Physical UVC/phone validation remains pending.
+
+## 0.8.76
+
+- Extend Controls and Test center panes through the former footer by placing bottom actions in their joystick columns.
+- Remove the Test version and Controls connection-status footer; retain Setup diagnostics and all control gating.
+- Size Enable/Stop and Clear times to their side columns; share F1–F3 width without fixed-width overflow.
+- Add native full-height, no-overlap and visible-action checks across themes/font sizes. Signed test release; phone/HIL pending.
+
+## 0.8.75
+
+- Fix theme-switch flashes by updating Light/Sepia/Dark without recreating the Activity or reloading its wallpaper; retain endpoint drafts, native dialog palettes and link session ownership.
+- Ignore repeated current theme/accent selections; remove background-selector window animation and use the active theme for the window fallback.
+- Compact the shared anchored tab dropdown from 48 to 40 dp rows, scaling for larger text.
+- Add repeated native theme/accent transition and draw-frame regressions, retain full UI/control sanitizer qualification, and publish the owner-authorized stable channel with verified signing/source/checksums. Physical phone/receiver/HIL remains untested.
+
+## 0.8.67 — FPV recovery and photo theme
+
+- Select advertised video profiles with Auto/MJPEG/YUYV choices; expose format and error diagnostics.
+- Bound stalled/open-error recovery; guard stale callbacks, duplicate preview/surfaces and background resume. Recovery disables live authority.
+- Import, persist and remove an offline photo background using the system document picker, bounded off-UI decoding and atomic save. Keep theme-colored scrim and readable panels.
+- Add profile/image policy regressions and native Android image storage/render/options checks. Hardware/video quality remains unverified.
+
+## 0.8.66 — USB FPV default handler and diagnostics
+
+- Register USB video-class attachment handling, including composite UVC devices.
+- Reuse the running Activity and open FPV after validating the device against the USB bus; neutralize control before permission prompts.
+- Distinguish no USB enumeration from non-UVC devices. Hold Connect FPV for VID/PID/interface/permission diagnostics.
+- Keep camera dependency, Wi-Fi/LoRa control and firmware unchanged. Actual Skydroid/phone verification pending.
+
+## 0.8.62
+
+- Restore the pre-compact palette with slightly deeper surfaces/action fills, white action labels and original joystick colors.
+- Keep the current compact layout, dimensions and controls; remove Pastel and migrate that setting to Light. Preserve explicit Light/Sepia/Dark selections.
+- Retain all rover, map/FPV, connection and sensitivity/expo behavior; no firmware change.
+
+## 0.8.61
+
+- Add Pastel as the default background with powder-blue, mint, lavender and slate tonal fills; brighten Light and warm Sepia panels.
+- Migrate the existing Dark setting to Pastel once while preserving later explicit theme choices and all control/connection preferences.
+- Lighten the launch background and idle joystick knobs; retain readable slate text and stronger enabled knobs.
+- Verify theme migration/persistence and attempt native Setup/Controls captures for all 16 background/accent combinations. No firmware or control-protocol changes.
+
+## 0.8.60 — muted themes and balanced Setup
+
+- Add desaturated accents and tonal buttons across Light/Sepia/Dark with readable foregrounds.
+- Replace stretched Setup quadrants with centered, equal columns and matching content rows; remove shadows and reduce rounding.
+- Preserve connection, response, updates, diagnostics and all rover control/firmware behavior.
+- Verify native Setup variants in an API 35 emulator. Keep physical phone/rover acceptance pending.
+- Retain signer and increase versionCode to 78. Use release assets without the redundant quota-limited Actions copy.
+
+## 0.8.59 — compact UI and Sepia background
+
+- Keep Setup and Controls; remove Test drive/game and LoRa provisioning pages.
+- Add persistent Light/Sepia/Dark backgrounds with legacy preference migration.
+- Reduce shell padding, widen both joystick panels and retain central USB FPV/map swapping.
+- Preserve response settings, Wi-Fi/USB LoRa control, arming, failsafes and stored routes; move CSV export into diagnostics.
+- Package with retained signing identity and increasing versionCode 77; hardware/phone QA pending.
+
+## 0.8.58 — larger controls and USB FPV (development)
+
+- Base this update on the released 0.8.57/code75 source, retaining independent steering/drive sensitivity, expo and all Mini rover/Wi-Fi/LoRa behavior.
+- Enlarge joystick panels, circles and knobs; retain the response curve, endpoints and spring return.
+- Add USB UVC FPV preview, permission/error/disconnect states, aspect-fit rendering and stale-frame masking.
+- Add Show camera / Show map and Connect FPV below the center view; preserve route activity during view swaps.
+- Neutralize before camera/USB permission prompts; release video resources on lifecycle loss. Firmware unchanged.
+
+# Changelog
+
+## 0.8.56
+
+- Restore the full previous TeleRC layout and features after the Wi-Fi-only simplification.
+- Preserve Wi-Fi bridge and USB LoRa choices, map/test/game, themes and diagnostics.
+- Add Mini rover Wi-Fi setup and require a fresh centered command dwell before ARM; wait for heartbeat-confirmed arm/disarm.
+- Correct standalone Wi-Fi instructions for existing sketch 1.2.0: no receiver or flight controller required. Firmware is unchanged.
+- Retain signing identity and increase versionCode to 74 so this restoration installs over 0.8.55.
+
+## 0.8.54
+
+- Add an explicit Mini rover Wi-Fi preset with fixed target/source UDP 14550 and direct ESP32 receiver setup instructions.
+- Require successfully streamed centered controls before mini ARM; preserve explicit Enable/ARM, source permission and failsafe recovery.
+- Explain missing receiver permission and single-client Wi-Fi without flight-controller UART diagnostics.
+- Add neutral arming regressions and Android-to-mini parser compatibility tests. Firmware unchanged; physical installation/Wi-Fi/motor HIL pending.
+
 ## 0.8.53
 
 - Signed test candidate, versionCode 71, with matching compiled ESP32-S3 and LILYGO T3-S3 binaries, source sketches, flash instructions, build evidence and checksums.
@@ -381,3 +552,4 @@
 - Record transmitted live rover controls and validated global position telemetry in the Test route session.
 - Set a fixed Home from the first precise phone GPS fix and draw later phone movement as a separate route.
 - Add MapLibre Test map with pinch, compass, route reset, CSV export, and access to the offline simulator.
+

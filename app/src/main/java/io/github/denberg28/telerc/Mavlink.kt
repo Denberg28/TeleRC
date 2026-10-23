@@ -66,9 +66,9 @@ object Mavlink {
         if (!v1 && !v2) return null
         val offset = if (v1) 6 else 10
         val length = packet[1].toInt() and 255
-        if (length != 9 || packet.size < offset + length + 2) return null
+        if (length != 9 || packet.size != offset + length + 2) return null
         if (v1 && (packet[5].toInt() and 255) != 0) return null
-        if (v2 && (packet[2].toInt() and 1) != 0) return null // no MAVLink signature verification
+        if (v2 && packet[2] != 0.toByte()) return null // no MAVLink signature verification
         if (v2 && (packet[7].toInt() != 0 || packet[8].toInt() != 0 || packet[9].toInt() != 0)) return null
         if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null // autopilot component
         var crc = 0xffff
@@ -114,18 +114,21 @@ object Mavlink {
         if (!v1 && !v2) return null
         val offset = if (v1) 6 else 10
         val length = packet[1].toInt() and 255
-        if (length < 3 || packet.size < offset + length + 2) return null
-        if (v2 && (packet[2].toInt() and 1) != 0) return null
+        if (length < (if(v1) 3 else 1) || packet.size != offset + length + 2) return null
+        if (v2 && packet[2] != 0.toByte()) return null
         val id = if (v1) packet[5].toInt() and 255 else
             (packet[7].toInt() and 255) or ((packet[8].toInt() and 255) shl 8) or ((packet[9].toInt() and 255) shl 16)
-        if (id != 77) return null
+        if (id != 77 || length !in 1..10 || v1 && length != 3) return null
+        if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null
         var crc = 0xffff
         for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
         crc = accumulate(crc, 143) // COMMAND_ACK CRC extra
         if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
             (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
-        val command = (packet[offset].toInt() and 255) or ((packet[offset + 1].toInt() and 255) shl 8)
-        val result = packet[offset + 2].toInt() and 255
+        fun payload(i:Int)=if(i<length) packet[offset+i].toInt() and 255 else 0
+        if (payload(8) !in setOf(0,255) || payload(9) !in setOf(0,190)) return null
+        val command = payload(0) or (payload(1) shl 8)
+        val result = payload(2)
         val system = packet[if (v1) 3 else 5].toInt() and 255
         return CommandAck(system, command, result).takeIf { system in 1..254 }
     }
@@ -138,27 +141,28 @@ object Mavlink {
         if (!v1 && !v2) return null
         val offset = if (v1) 6 else 10
         val length = packet[1].toInt() and 255
-        if (length < 12 || packet.size < offset + length + 2) return null
-        if (v2 && (packet[2].toInt() and 1) != 0) return null // signed frames need authentication
+        if (length < (if(v1) 28 else 1) || packet.size != offset + length + 2) return null
+        if (v2 && packet[2] != 0.toByte()) return null // signed frames need authentication
         val id = if (v1) packet[5].toInt() and 255 else
             (packet[7].toInt() and 255) or ((packet[8].toInt() and 255) shl 8) or ((packet[9].toInt() and 255) shl 16)
-        if (id != 33) return null
+        if (id != 33 || length > 28 || v1 && length != 28) return null
+        if ((packet[if (v1) 4 else 6].toInt() and 255) != 1) return null
         var crc = 0xffff
         for (i in 1 until offset + length) crc = accumulate(crc, packet[i].toInt() and 255)
         crc = accumulate(crc, 104) // GLOBAL_POSITION_INT CRC extra
         if ((packet[offset + length].toInt() and 255) != (crc and 255) ||
             (packet[offset + length + 1].toInt() and 255) != (crc ushr 8)) return null
-        fun int32(start: Int) = (packet[start].toInt() and 255) or
-            ((packet[start + 1].toInt() and 255) shl 8) or
-            ((packet[start + 2].toInt() and 255) shl 16) or
-            (packet[start + 3].toInt() shl 24)
-        val lat = int32(offset + 4) / 1e7
-        val lon = int32(offset + 8) / 1e7
+        // MAVLink2 removes trailing zero payload bytes; restore before reading fields.
+        val data=packet.copyOfRange(offset,offset+length).copyOf(28)
+        fun int32(start: Int) = (data[start].toInt() and 255) or
+            ((data[start + 1].toInt() and 255) shl 8) or
+            ((data[start + 2].toInt() and 255) shl 16) or
+            (data[start + 3].toInt() shl 24)
+        val lat = int32(4) / 1e7
+        val lon = int32(8) / 1e7
         if (lat !in -90.0..90.0 || lon !in -180.0..180.0 || lat == 0.0 && lon == 0.0) return null
-        val bearing = if (length >= 28) {
-            val centidegrees = (packet[offset + 26].toInt() and 255) or ((packet[offset + 27].toInt() and 255) shl 8)
-            if (centidegrees < 36000) centidegrees / 100.0 else null
-        } else null
+        val centidegrees = (data[26].toInt() and 255) or ((data[27].toInt() and 255) shl 8)
+        val bearing = if (centidegrees < 36000) centidegrees / 100.0 else null
         val system = packet[if (v1) 3 else 5].toInt() and 255
         return GlobalPosition(system, lat, lon, bearing).takeIf { system in 1..254 }
     }

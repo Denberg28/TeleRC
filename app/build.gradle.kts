@@ -3,7 +3,7 @@ android {
  namespace = "io.github.denberg28.telerc"
  compileSdk = 35
  buildFeatures { buildConfig = true }
- defaultConfig { applicationId = "io.github.denberg28.telerc"; minSdk = 26; targetSdk = 35; versionCode = 71; versionName = "0.8.53"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+ defaultConfig { applicationId = "io.github.denberg28.telerc"; minSdk = 26; targetSdk = 35; versionCode = 1000; versionName = "1.0.0"; testInstrumentationRunner = "io.github.denberg28.telerc.ThemeImageInstrumentation" }
  signingConfigs {
    create("teleRcRelease") {
      val keystorePath = System.getenv("TELERC_KEYSTORE_FILE")
@@ -23,5 +23,7 @@ android {
 }
 dependencies {
  implementation("org.maplibre.gl:android-sdk:13.6.1")
+ implementation("com.herohan:UVCAndroid:1.0.13")
  testImplementation("junit:junit:4.13.2")
 }
+

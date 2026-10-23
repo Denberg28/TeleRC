@@ -7,6 +7,8 @@ checks=()
 if [[ "${SANITIZE:-0}" == 1 ]]; then
   checks+=(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie)
 fi
+g++ -std=c++17 -Wall -Wextra -Werror "${checks[@]}" bridge/tests/field_protocol_test.cpp -o "$build_dir/field-protocol"
+"$build_dir/field-protocol"
 for core in 2 3; do
   for transport in WIFI UART; do
     options=()

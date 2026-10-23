@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android matches device OR interface class, including composite UVC receivers.
+         Do not use an empty filter: USB LoRa/serial devices belong to their own flow. -->
+    <usb-device class="14" />
+</resources>

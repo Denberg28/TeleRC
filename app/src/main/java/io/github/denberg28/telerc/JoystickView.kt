@@ -11,39 +11,42 @@ import kotlin.math.min
 /** Spring-return rover input. Axis output is neutral immediately on release. */
 class JoystickView(context: Context, private val vertical: Boolean, private val changed: (Int) -> Unit) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val purple = AppColors.accent(context)
+    private val accent = AppColors.accent(context)
     private val track = AppColors.softAccent(context)
     private var position = StickPosition(0f, 0f)
     private var pointer = -1
+    // Settings are edited only in Setup; entering Controls/Test creates new sticks.
+    private val response = ControlResponseStore.read(context)
 
     init {
         isEnabled = false
         contentDescription = if (vertical) "Drive joystick, forward up and reverse down" else "Steering joystick, left and right"
     }
     private fun dp(value: Float) = value * resources.displayMetrics.density
+    private fun radius() = min(width * 0.40f, height * 0.44f).coerceAtLeast(1f)
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f; val cy = height / 2f
-        val radius = min(width * 0.37f, height * 0.43f).coerceAtLeast(dp(24f))
+        val radius = radius()
         paint.style = Paint.Style.FILL
         paint.color = track
         canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.STROKE; paint.strokeWidth = dp(2f)
-        paint.color = purple
+        paint.color = accent
         canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.FILL
-        paint.color = if (isEnabled) purple else Color.rgb(126, 157, 185)
+        paint.color = if (isEnabled) accent else Color.rgb(116, 144, 170)
         val travel = radius * 0.62f
         val knobX = cx + position.x * travel
         val knobY = cy + position.y * travel
-        canvas.drawCircle(knobX, knobY, radius * 0.30f, paint)
+        canvas.drawCircle(knobX, knobY, radius * 0.33f, paint)
         paint.color = Color.WHITE
         canvas.drawCircle(knobX, knobY, radius * 0.12f, paint)
     }
     private fun input(x: Float, y: Float) {
-        val radius = min(width * 0.37f, height * 0.43f).coerceAtLeast(dp(24f)) * 0.62f
+        val radius = radius() * 0.62f
         position = limitStick((x - width / 2f) / radius, (y - height / 2f) / radius)
-        changed(stickChannel(position, vertical, context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getInt("sensitivity", 100).coerceIn(25, 100) / 100f)); invalidate()
+        changed(response.channel(position, vertical)); invalidate()
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled) return false

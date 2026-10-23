@@ -1,0 +1,98 @@
+name: Publish qualified TeleRC 0.8.91
+on:
+  push:
+    branches: ['release/fpv-091']
+concurrency:
+  group: publish-fpv-091
+  cancel-in-progress: false
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRODUCT_SHA: d876ac1c6b4d55b77a2c1be21a50b31be6aea8b9
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Prove retained qualification and unchanged product sources
+        run: |
+          git diff --exit-code "$PRODUCT_SHA" HEAD -- app bridge scripts tests gradle gradlew gradlew.bat build.gradle.kts settings.gradle.kts gradle.properties .github/workflows/fpv-reliability-091.yml
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/39545978020" > "$RUNNER_TEMP/product-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/39545978020/jobs" > "$RUNNER_TEMP/product-jobs.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/12321793685" > "$RUNNER_TEMP/product-artifact.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          run=json.loads((root/'product-run.json').read_text())
+          assert run['head_sha']==os.environ['PRODUCT_SHA'] and run['conclusion']=='success' and run['status']=='completed'
+          jobs=json.loads((root/'product-jobs.json').read_text())['jobs']
+          job=next(j for j in jobs if j['name']=='android')
+          assert job['conclusion']=='success'
+          for name in ('Host regression and balancer tests','Android unit tests, lint, signed APK and native harness','Native balance tab and complete UI regression','Verify and package qualified app'):
+              assert next(s for s in job['steps'] if s['name']==name)['conclusion']=='success',name
+          artifact=json.loads((root/'product-artifact.json').read_text())
+          assert artifact['id']==12321793685 and not artifact['expired']
+          assert artifact['name']=='TeleRC-0.8.91-candidate'
+          assert artifact['workflow_run']['head_sha']==os.environ['PRODUCT_SHA']
+          assert artifact['digest']=='sha256:8a333d6345767e962296349d0c0283fc6d1e67b9976c4a7487b13250f3c4fc55'
+          print('PASS: exact qualified source, completed software gates and retained artifact identity')
+          PY
+      - name: Download and verify the exact signed candidate
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/12321793685/zip" > "$RUNNER_TEMP/candidate.zip"
+          python - <<'PY'
+          from pathlib import Path
+          import os,hashlib,zipfile,xml.etree.ElementTree as ET
+          p=Path(os.environ['RUNNER_TEMP'])/'candidate.zip'
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='8a333d6345767e962296349d0c0283fc6d1e67b9976c4a7487b13250f3c4fc55'
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              for name in z.namelist():assert Path(name).name==name
+              z.extractall('deliverables')
+          root=Path('deliverables')
+          expected={'TeleRC-v0.8.91.apk','TeleRC-v0.8.91-source.zip','TeleRC-v0.8.91-test-evidence.zip','BUILD_INFO.txt','START_HERE.md','SHA256SUMS.txt'}
+          assert {f.name for f in root.iterdir()}==expected
+          for line in (root/'SHA256SUMS.txt').read_text().splitlines():
+              digest,name=line.split(None,1);name=name.strip().lstrip('*')
+              assert Path(name).name==name and name in expected
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          for p in root.iterdir():
+              if p.suffix in ('.apk','.zip'):
+                  with zipfile.ZipFile(p) as z:assert z.testzip() is None,p
+          assert 'Source: '+os.environ['PRODUCT_SHA'] in (root/'BUILD_INFO.txt').read_text()
+          with zipfile.ZipFile(root/'TeleRC-v0.8.91-source.zip') as z:
+              assert 'versionCode = 109; versionName = "0.8.91"' in z.read('app/build.gradle.kts').decode()
+          with zipfile.ZipFile(root/'TeleRC-v0.8.91-test-evidence.zip') as z:
+              tests=[ET.fromstring(z.read(n)) for n in z.namelist() if n.startswith('app/build/test-results/testDebugUnitTest/TEST-') and n.endswith('.xml')]
+              counts={k:sum(int(t.get(k,0)) for t in tests) for k in ('tests','failures','errors','skipped')}
+              assert counts=={'tests':170,'failures':0,'errors':0,'skipped':0},counts
+              ui=z.read('app/build/photo-evidence/result.txt').decode()
+              assert 'PASS: persistent FPV lifecycle' in ui and 'INSTRUMENTATION_CODE: -1' in ui
+          print('PASS: unchanged qualified APK, source, tests and all asset CRC/checksums')
+          PY
+          (cd deliverables && sha256sum -c SHA256SUMS.txt)
+      - name: Publish owner-authorized prerelease
+        run: |
+          test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
+          if git rev-parse --verify refs/tags/v0.8.91 >/dev/null 2>&1; then
+            test "$(git rev-parse 'v0.8.91^{commit}')" = "$PRODUCT_SHA"
+          fi
+          if gh release view v0.8.91 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to replace it.'
+            exit 1
+          fi
+          gh release create v0.8.91 --repo "$GITHUB_REPOSITORY" --target "$PRODUCT_SHA" --draft --prerelease --latest=false --title 'TeleRC v0.8.91 - USB FPV reliability' --notes-file docs/RELEASE_091.md deliverables/*
+          gh release view v0.8.91 --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,targetCommitish,assets > "$RUNNER_TEMP/draft.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.loads((Path(os.environ['RUNNER_TEMP'])/'draft.json').read_text())
+          assert d['tagName']=='v0.8.91' and d['isDraft'] and d['isPrerelease'] and d['targetCommitish']==os.environ['PRODUCT_SHA']
+          assert {a['name'] for a in d['assets']}=={p.name for p in Path('deliverables').iterdir()}
+          PY
+          gh release edit v0.8.91 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false

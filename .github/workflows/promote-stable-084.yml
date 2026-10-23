@@ -1,0 +1,27 @@
+name: Promote verified TeleRC 0.8.84 to Latest stable
+on:
+  push:
+    branches: ['work/stable-promote-084-20261019']
+    paths:
+      - '.github/workflows/promote-stable-084.yml'
+      - 'scripts/promote-stable-084.py'
+      - 'docs/STABLE_084.md'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: telerc-stable-promotion-084
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.repository == 'Denberg28/TeleRC'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify retained build and promote owner-selected release channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/promote-stable-084.py
+      - name: Record promotion audit in workflow log
+        run: cat stable-promotion-084.json

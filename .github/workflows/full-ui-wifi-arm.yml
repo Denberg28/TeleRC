@@ -1,0 +1,117 @@
+name: TeleRC readable maze rover release
+on:
+  push:
+    branches: ['work/fpv-ui-058-*']
+  workflow_dispatch:
+concurrency:
+  group: telerc-navy-maze-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Cancel superseded runs of this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_REF_NAME&per_page=10" --jq '.workflow_runs[] | select(.id != '${{ github.run_id }}' and .status != "completed") | .id' | while read -r run_id; do
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
+          done
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { cache-read-only: false }
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Full existing firmware host regression
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+      - name: Prepare retained release signer
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: Full Android unit tests, lint and signed APK
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease --no-daemon
+      - name: Mini rover protocol integration
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror tests/mini-rover/emit-heartbeat.cpp -o /tmp/emit-mini-heartbeat
+          /tmp/emit-mini-heartbeat | xxd -p > /tmp/mini-heartbeat.hex
+          cmp /tmp/mini-heartbeat.hex tests/mini-rover/heartbeat.hex
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer tests/mini-rover/interop.cpp -o /tmp/mini-interop
+          /tmp/mini-interop app/build/mini-rover-interop
+      - name: Reclaim completed toolchains before emulator image download
+        run: python3 scripts/reclaim-ui-runner.py
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          python3 -m pip install Pillow
+      - name: Native three-page theme and offline practice checks
+        id: native_ui
+        continue-on-error: true
+        timeout-minutes: 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          emulator-boot-timeout: 180
+          disk-size: 2048M
+          ram-size: 2048M
+          cores: 4
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          pre-emulator-launch-script: python3 scripts/prepare-ui-emulator.py
+          script: python3 scripts/capture-setup-ui.py
+      - name: Record native UI qualification
+        env:
+          UI_OUTCOME: ${{ steps.native_ui.outcome }}
+        run: |
+          mkdir -p app/build/ui-evidence
+          if [ "$UI_OUTCOME" = success ]; then
+            echo "PASS: 12 Setup, Controls and Test variants; practice pause/retry/shuffle/background; record persistence; upgrade and geometry" > app/build/ui-evidence/STATUS.txt
+          else
+            echo "FAIL: native UI qualification did not complete; startup and app checks are required" > app/build/ui-evidence/STATUS.txt
+            exit 1
+          fi
+      - name: Verify signer, upgrade identity and package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.65.apk
+          gh release download v0.8.64 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.64.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-mini-apk.py deliverables/TeleRC-v0.8.65.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          git archive --format=zip --output=deliverables/TeleRC-v0.8.65-source.zip HEAD
+          cp docs/READABLE_ROVER_065.md deliverables/START_HERE.md
+          (cd app/build && zip -r "$RUNNER_TEMP/evidence.zip" reports test-results mini-rover-interop ui-evidence)
+          cp "$RUNNER_TEMP/evidence.zip" deliverables/TeleRC-v0.8.65-build-evidence.zip
+          cd deliverables
+          sha256sum *.apk *.zip BUILD_INFO.txt START_HERE.md > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          python3 -c "import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob('*.zip'))"
+      - name: Publish navy and maze test candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd deliverables
+          gh release create v0.8.65 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title "TeleRC v0.8.65 — thinner maze walls and a larger directional rover" --notes-file START_HERE.md *.apk *.zip BUILD_INFO.txt SHA256SUMS.txt START_HERE.md
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"

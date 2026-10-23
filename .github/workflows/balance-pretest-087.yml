@@ -1,0 +1,100 @@
+name: Balancer pre-test 0.8.87 review build
+on:
+  push:
+    branches: ['codex/balance-pretest-087']
+  workflow_dispatch:
+concurrency:
+  group: balance-pretest-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Host regression and balancer tests
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+          bash bridge/TT_Balancer_ESP32S3/tests/run.sh
+      - name: Retain release signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: Android unit tests, lint, signed APK and native harness
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease --no-daemon
+      - name: Verify signer and increased version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.87.apk
+          gh release download v0.8.86 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.86.apk --output "$RUNNER_TEMP/baseline.apk"
+          python scripts/verify-balance-apk.py deliverables/TeleRC-v0.8.87.apk "$RUNNER_TEMP/baseline.apk" > deliverables/BUILD_INFO.txt
+          git archive --format=zip -o deliverables/TeleRC-v0.8.87-source.zip HEAD
+          git archive --format=zip -o deliverables/TT-Balancer-ESP32S3-TeleRC-v0.3.0.zip HEAD bridge/TT_Balancer_ESP32S3
+          cp docs/BALANCE_PRETEST_087.md deliverables/START_HERE.md
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: TeleRC-v0.8.87-build, path: deliverables/, retention-days: 7 }
+      - name: Reclaim before emulator
+        run: python scripts/reclaim-ui-runner.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native balance tab and complete UI regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 3072M
+          cores: 2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/check-photo-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-v0.8.87-evidence
+          path: |
+            app/build/reports/
+            app/build/test-results/
+            app/build/photo-evidence/
+          retention-days: 7
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli compile --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=cdc,USBMode=hwcdc,FlashSize=4M,PartitionScheme=default,PSRAM=disabled,FlashMode=dio' --output-dir firmware-build bridge/TT_Balancer_ESP32S3
+      - uses: actions/upload-artifact@v4
+        with: { name: TT-Balancer-v0.3.0-ESP32S3-build, path: firmware-build/, retention-days: 7 }

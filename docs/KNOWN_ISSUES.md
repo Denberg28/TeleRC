@@ -1,3 +1,134 @@
+# External USB FPV reliability — 0.8.91 candidate
+
+Keep USB access during advertised-mode negotiation, restart a stalled preview
+before reopening USB, and remember a format after sustained frames. Fresh
+Android attachment/default launches can reconnect after manual disconnect.
+Android still owns default/grant decisions; physical phone/UVC/RF acceptance
+remains BLOCKED. Firmware0.3.1 remains compatible; no reflash. See
+[scope, A–F gates, installation and acceptance](FPV_RELIABILITY_091.md).
+
+# Balancer no-movement report — 0.8.90 / firmware0.3.1
+
+The weak55/255 ×150ms diagnostic is replaced by140/255 ×300ms; physical motion
+is still unverified. Battery connection does not establish regulated voltage at
+the driver. Readback cannot prove motor voltage/current/rotation. New firmware
+requires paired0.8.90;0.8.89 rejects its longer duration/extended report. Other
+firmwares stay unchanged. Hardware torque/power/stop and phone layout checks
+remain required. [Review and acceptance](BALANCE_MOTOR_090.md).
+
+# UI and safety review — 0.8.88
+
+Balance is dropdown-only. Shared actions and compact bounded popup layouts are standardized. Session-bound Balance consent, stricter compatible MAVLink parsing and single-flight APK verification address confirmed review findings. App-only; retain balancer0.3.0. [Review, remaining gaps, gates and acceptance](UI_SAFETY_REVIEW_088.md). Final CI/build result supplies qualification; physical HIL remains BLOCKED.
+
+# Balance pre-test qualification pending — 0.8.87
+
+A Balance tab precedes Guide in the upper-right Setup header and is available in
+the page menu. It reads standalone balancer readiness and offers confirmed gyro
+calibration/save, separate left/right/both short motor tests, direction
+confirmation and stop/disarm. Setup never arms. This needs the paired0.3.0
+balancer firmware; unsupported peers keep actions locked. Existing ordinary
+rover/MAVLink/manual/Waypoint/game/FPV paths remain unchanged apart from tab
+lifecycle/receive hooks. [Scope, compatibility, checks and rollback](BALANCE_PRETEST_087.md).
+
+Source is implemented and host-tested. APK/target/native verification awaits
+authorized public review-branch push; no APK or validated release is claimed.
+
+# Mission function limits — 0.8.86
+
+Function events are supervised Guided actions after approximate 3 m waypoint arrival, not uploaded AUTO missions or precision position triggers. Dedicated SERVOx_FUNCTION=0 plus current MIN/MAX readback is required; M5–M8 are excluded and outputs9–16 require MAVLink2 SERVO_OUTPUT_RAW extensions on port0. Reported PWM is not physical actuator feedback. Link/power loss cannot guarantee OFF; independent actuator watchdog/cutoff and restrained-wheel acceptance are required. Every used function must end OFF. Native handset-only ELRS/Mini/LoRa remain planning-only. Unsigned MAVLink cannot authenticate command/telemetry sources. [Detailed review, acceptance and rollback](MISSION_FUNCTIONS_086.md).
+
+# Replay wallet compatibility — 0.8.85
+
+Wallet v3 retains v1/v2 data but older unmodified parsers cannot read it. Rollback needs a higher-code v3-compatible rebuild preserving earnings/ownership, without clearing data. Bonus pickup pays only after END; retry/reload preserves the chance. Waypoint Mini/LoRa/native handset-only ELRS remain planning-only. Phone/migration and FC/HIL acceptance pending. [Details](REPLAY_COINS_085.md).
+
+# Compact popup limits — 0.8.84
+
+Actual OEM phone/keyboard/display-mode layouts remain pending physical checks; native API35 normal/large text and all themes are required software gates. System permission/picker/installer windows retain Android styling. [Checks and acceptance](POPUP_LAYOUT_084.md). Existing unsigned Wi-Fi/MAVLink and physical connection/neutral/HOLD limitations remain. App-only; no reflash.
+
+# Shared popups / review 0.8.83
+
+System-owned USB/camera permission, file-picker and installer windows retain Android styling. Wi-Fi/MAVLink remains unsigned and not replay authenticated. Actual network rebinding, physical HOLD/neutral behavior, RF/USB reliability and phone layout remain pending hardware acceptance. [Scope and checks](SHARED_DIALOGS_083.md).
+
+# Compact tabs 0.8.82
+
+F1–F3 share the existing servo assignment controls and do not actuate servos. Native ELRS TX Backpack remains transmitter-controlled; Phone control offers a separate FC Wi-Fi setup path. Fixed Setup is landscape; native geometry checks cover normal and large text, with actual OEM-phone verification pending. [Acceptance](COMPACT_TABS_082.md).
+
+# ELRS recovery limits — 0.8.81
+
+[0.8.81](ELRS_RECOVERY_081.md) addresses heartbeat-dependent registration and removed-network rebinding in the native Backpack profile. Native phone drive/arm/live Waypoint remain locked. The phone must stay near Backpack Wi-Fi; the configured remote IPv4 address does not auto-update on router DHCP changes. Actual Wi-Fi replacement/ELRS/FC recovery latency and stopping are unmeasured; physical HIL remains BLOCKED. Retry PING is not GCS failsafe supervision or RF-health proof.
+
+# F405 ELRS and clear Waypoint flow — 0.8.80 development
+
+Setup distinguishes Mini Wi-Fi from ArduRover Wi-Fi, LoRa and ELRS TX Backpack. FC ELRS guides cover receiver/transmitter wiring and CRSF phone/handset handover. Native Backpack supports telemetry with separate send/listen ports and handset authority; phone commands are locked to avoid competing RC overrides. Waypoint uses Select → Check rover → Review & confirm, visible Undo/Clear and a fixed STOP. [Compatibility, gates and hardware checks](ELRS_WAYPOINT_080.md). Development source; hardware validation remains blocked.
+
+# Waypoint tab — 0.8.79
+
+An isolated Controls-style Waypoint tab adds confirmed single destinations, saved multi waypoint routes and phone-supervised ArduRover Guided sequencing with fresh navigation/parameter checks and confirmed HOLD handling. Setup/Controls/Test bodies, manual protocol, FPV and firmware stay unchanged. Existing mini/filtering gateways are planning-only: live execution requires a separately validated compatible transparent MAVLink link and FC GPS/compass/EKF. [Scope, software gates, compatibility and restrained-wheel acceptance](WAYPOINT_079.md). Physical navigation and full SITL integration remain NOT TESTED/BLOCKED; no stable promotion.
+
+# Practice worlds and accessories — 0.8.78
+
+Vehicle categories and Armament/accessories are offline cosmetics; all retain rover maze handling and the same collision envelope. They do not enable real sea/air/space control or firing. v2 wallet saves cannot be read by an unmodified 0.8.77 parser; rollback needs a forward-version compatibility build that preserves v2 claims and refunds unsupported cosmetics. Phone installation, OEM/font/orientation rendering and rover/receiver HIL remain BLOCKED. See [acceptance/rollback](PRACTICE_WORLDS_078.md).
+
+# Persistent FPV limits — 0.8.77
+
+Android controls USB defaults and grants. TeleRC cannot set Always silently; choose it in the system chooser when offered. Automatic reconnect reuses actual grants and otherwise waits for explicit Connect. A physical detach, revoked/one-time CAMERA permission or OEM default handling can still require approval. VID/PID cannot distinguish two identical receivers without serial identity, so ambiguous matches are not opened. Native cleanup timing, power loss, actual UVC/RF stability and phone chooser behavior are unmeasured; run [acceptance](FPV_PERSISTENT_077.md). Retry frequency is bounded, not a guarantee of recovery or glitch-free RF.
+
+# Stable theme transitions and compact navigation — 0.8.75
+
+Light/Sepia/Dark now change in place without Activity recreation, connection teardown or reloading the cached wallpaper. Accent changes preserve endpoint drafts; reselecting the active option does nothing. Tab menus use compact 40 dp rows, scaled for system text and aligned to their button. [Release scope, A–F gates, evidence, installation and rollback](STABLE_075.md). Owner-authorized stable channel; physical phone/Skydroid/rover validation remains BLOCKED. App-only; no reflash.
+
+# Sharp labels, aligned tabs and wallpaper opacity — 0.8.74 test build
+
+Replaces blurred joystick shadows with crisp text on compact caption strips, aligns menu widths/edges with tab buttons, and shares consistent gaps/top/footer sizing across all tabs. Setup's Opacity preview saves 0–100% wallpaper opacity for Controls/Test (default 70%); Setup remains clear. [Scope, gates, phone checks and rollback](LABELS_LAYOUT_074.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software evidence; phone/OEM/HIL remains BLOCKED. No stable promotion.
+
+# Clear wallpaper and collapsible Setup — 0.8.73 test build
+
+Removes the 53% wallpaper tint on all tabs and the rectangular joystick-panel fills in Controls/Test. Setup **− / +** hides/restores both panels, keeping the existing connection/update controls in the bottom corners and preserving draft inputs/state. Practice popups are sized/centered before opening with no window animation. [Scope, gates, phone checks and rollback](WALLPAPER_SETUP_073.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software results; physical phone/OEM/HIL checks remain BLOCKED. No stable promotion.
+
+# Flat Test popups — 0.8.72 test build
+
+Restart, Levels and Market now use small headings, flat rows, quiet dividers and short text actions. Market has Vehicles/Colors tabs, smaller previews and a compact balance; restart drops the boxed statistics and long instructions. All actions retain 48 dp touch targets. [Scope, A–F gates, phone checks and rollback](MAZE_DIALOGS_072.md). Gameplay, wallet/prices, FPV/photo and firmware retained; no reflash. Final workflow/BUILD_INFO supplies software evidence; phone/HIL remains BLOCKED. No stable promotion.
+
+# Practice dialogs and version — 0.8.71 test build
+
+Levels and the three-bump restart popup now use padded, rounded themed layouts, scrolling content and fixed full-width actions. Level cards show current status and best times; restart separates time/bumps and confirms coins are kept. Test's bottom text is now the TeleRC version. [Scope, A–F gates, phone checks and rollback](MAZE_DIALOGS_071.md). App-only, no reflash; Market/wallet, FPV/photo and game behavior retained. Final workflow/BUILD_INFO supplies software evidence; phone/HIL remains BLOCKED. No stable promotion.
+
+# Maze Market and coins — 0.8.70 test build
+
+Market replaces the Test page's OFFLINE control; its button shows the saved coin balance. Collect randomly placed gold coins to unlock cosmetic vehicles and maze palettes. Fixed lifetime quotas total 220 coins against 180 for all paid items; retry/reload cannot duplicate rewards. Opening Market pauses practice. [Use, prices, A–F gates, phone acceptance and rollback](MAZE_MARKET_070.md). App-only, no reflash. Final workflow/BUILD_INFO supplies software results; phone/HIL remains BLOCKED. No stable promotion.
+
+# Persistent wall-bump dots — 0.8.69 test build
+
+Counted maze impacts leave opaque red dots with white outlines on the struck wall. They do not fade; pause/resume and navigation retain them for the current attempt. Restart/level changes clear them. [Scope, A–F evidence, phone checks and rollback](MAZE_BUMPS_069.md). Android-only; fixed levels, FPV/photo and firmware retained. Final workflow/BUILD_INFO supplies software results; phone/HIL remains BLOCKED. No stable promotion.
+
+# Fixed maze levels — 0.8.68 test build
+
+Twenty repeatable levels replace random shuffle. The single Lv/time header and taller courses expand the maze; END is the farthest passage from START. Three separate wall bumps stop the run and prompt a restart. Saved unlocks, replay and level times preserve legacy records. [Use, A–F gates, phone acceptance and rollback](MAZE_LEVELS_068.md). Android-only; FPV/photo features retained, no firmware reflash. Final workflow/BUILD_INFO supplies software evidence; phone/rover HIL remains BLOCKED. No stable promotion.
+
+# FPV recovery and photo theme — 0.8.67 test build
+
+Hold Connect FPV for advertised video formats (including YUYV compatibility) and diagnostics. Bounded USB recovery, explicit permission gating, single preview ownership and background resume preserve disabled control. Setup → Background → Choose image adds a private offline photo; Remove image restores the plain tone. See [use, gates, acceptance and rollback](FPV_THEME_067.md). Physical Skydroid/video compatibility remains BLOCKED; source and software checks do not establish clean RF/video. Firmware unchanged; no reflash.
+
+# Skydroid USB FPV fix — 0.8.66 test build
+
+USB video attachment registration now allows Android to offer TeleRC as a default handler; cold/warm USB launches open FPV with control disabled. Hold Connect FPV for receiver VID/PID, interfaces and permissions. No USB enumeration and connected non-UVC devices have distinct messages. See [setup, evidence, phone checks and rollback](SKYDROID_FPV_066.md). Firmware unchanged. Phone/Skydroid HIL remains BLOCKED; this is a review/test artifact, no stable promotion.
+
+# Readable maze rover 0.8.65
+
+Baseline stable 0.8.64/code82; candidate 0.8.65/code83. [Scope, A–F gates, acceptance and rollback](READABLE_ROVER_065.md). Thin wall drawing and collision share rectangles; the larger oriented rover uses the earlier top-view design. Old records remain Classic; new geometry has separate best times. Required cloud Android/native/host/sanitizer/parser/signing/package checks remain pending until the final workflow succeeds. Phone readability and physical HIL remain BLOCKED. App-only: firmware unchanged, no affected ESP32 target. Latest stable 0.8.64 stays retained. Next check: phone upgrade and four-direction/reverse/wall-contact practice in all backgrounds.
+
+# v0.8.64 release-channel status
+
+The owner requested Latest stable promotion of the already qualified v0.8.64 build. See [channel promotion, evidence and remaining limits](STABLE_064.md). The channel designation supersedes older candidate-only wording for this release. Physical phone installation, receiver/driver compatibility and restrained-wheel HIL remain pending; no field-validation claim. Existing APK/sketch/source/evidence/checksums and build tag remain unchanged.
+
+# Navy / offline maze / 95% mini candidate
+
+Baseline app 0.8.62/code80 `bc7e983b88f2deea28aaf7c81e5ecffc159da949`; candidate 0.8.64/code82 + standalone mini 1.2.3. Scope, acceptance, installation and rollback: [NAVY_MAZE_064.md](NAVY_MAZE_064.md).
+
+A source/build: reviewed; local Android/actual ESP32 toolchains BLOCKED; cloud Android and six pinned ESP32-S3 builds REQUIRED. B behavior: maze generator/collision/timing/record and 95% PWM regressions plus native three-page lifecycle/theme checks REQUIRED. C regression: local host/profile/sync PASS; final cloud default sanitizers REQUIRED. D software integration: Android packets through mini parser REQUIRED; actual transport/driver integration NOT TESTED. E physical HIL/phone installation: BLOCKED; use the executable restrained-wheel sequence in the guide. F delivery: retained signer, code82, matching source/sketch/binaries/evidence/checksums and prerelease REQUIRED. A successful final workflow and BUILD_INFO supersede pending software statuses only. No physical/field/stable claim.
+
+Test disables auto-connect and disconnects live authority; returning to Controls needs explicit Connect. Practice motion/time is approximate and active-time based. The firmware 242/255 ceiling multiplies app sensitivity: Drive100 gives OUT242; Drive95 gives OUT229. Other driver profiles retain their old limits. Physical stop/current/supply validation remains pending. Next check: install on phone, verify offline isolation with raised wheels, and measure PWM/stop/recovery.
+
 # Verification limits and next work
 
 - **Local Android environment — BLOCKED:** this workspace lacks the Android SDK and cannot download Gradle from `services.gradle.org`. Initial local unit/build/lint checks could not run; authorized cloud build evidence is recorded in the final release `BUILD_INFO.txt`. Verify API 26/33+ receiver behavior, queued ARM cancellation, and heartbeat recovery on devices even after cloud checks pass.
@@ -12,3 +143,7 @@ Next: verify the final release `BUILD_INFO.txt` and checksums, then run `docs/TE
 
 
 0.8.53 software-build update: release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c` passed run 37619553457, including retained signing identity, increased code 71, Android tests/debug/release lint/build, full host sanitizers and ten packaged firmware configurations. Actual T3-S3 builds use manufacturer SX1262/SX1276 revisions with QSPI PSRAM/native CDC. This resolves cloud software/packaging gates; local infrastructure limitations and installed-device, native USB, RF/driver timing, PC and HIL limitations remain. Download checksums and BUILD_INFO from v0.8.53; follow `bridge/FIRMWARE_FLASHING.md` before flashing.
+
+
+0.8.58 USB FPV: based on released v0.8.57, retaining separate sensitivities/expo and Mini rover Wi-Fi/ARM behavior. Only USB UVC receivers are supported. Phone/receiver/powered-hub integration, physical installation, visual/device QA and RF/latency behavior remain NOT TESTED. USB frames do not prove healthy FPV RF reception. Default local leak inspection is blocked by the runtime; the cloud workflow retains default ASan/UBSan/leak checks before prerelease publishing. No stable promotion. See USB_FPV.md.
+

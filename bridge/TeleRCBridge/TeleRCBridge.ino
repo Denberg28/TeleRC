@@ -3,6 +3,7 @@
 #include <WiFiUdp.h>
 #include <esp_system.h>
 #include <cstring>
+#include "FieldProtocol.h"
 
 // TeleRC minimal ESP32-S3 MAVLink bridge.
 // FC T3 -> GPIO18 (RX), FC R3 <- GPIO17 (TX), common GND.
@@ -47,6 +48,7 @@ uint32_t rejectedCommands = 0;
 uint32_t uartCommandBytes = 0;
 uint32_t armCommands = 0;
 uint32_t lastStatusMs = 0;
+field::Authority fieldAuthority;
 
 uint16_t crcByte(uint16_t crc, uint8_t value) {
   uint8_t tmp = value ^ (crc & 0xff);
@@ -277,6 +279,7 @@ void consumeFcByte(uint8_t b) {
   }
 
   if (frameExpected && frameSize == frameExpected) {
+    fieldAuthority.observe(frame,frameSize,millis());
     ++serialFrames;
     sendToPhone(frame, frameSize);
     frameSize = 0;
@@ -383,7 +386,8 @@ void loop() {
         }
       }
     }
-    else if (sourceOk && packetSize == 41 && count == 41 && validArmCommand(p, count)) {
+    else if (sourceOk && packetSize == 41 && count == 41 && validArmCommand(p, count) &&
+             (p[8]!=0x80 || fieldAuthority.phoneAllowed(millis()))) {
       if (newSenderAfterTimeout(sender) && activeOverrideMask)
         releaseReceiver();
       phone = sender;
@@ -394,6 +398,18 @@ void loop() {
       ++acceptedCommands;
       ++armCommands;
       Serial.printf("%s command forwarded.\n", p[8] == 0x80 ? "ARM" : "DISARM");
+    }
+    else if (sourceOk && count==packetSize && fieldAuthority.fresh(millis())) {
+      const auto kind=field::classify(p,size_t(count),fieldAuthority.system);
+      const bool readOnly=kind==field::Kind::HEARTBEAT||kind==field::Kind::READ;
+      if(kind!=field::Kind::REJECT && (readOnly||fieldAuthority.phoneAllowed(millis()))) {
+        // Guided/HOLD takes over from RC overrides, not from a retained neutral
+        // override refresh. ArduRover executes navigation and loss policy locally.
+        if(kind==field::Kind::DESTINATION||kind==field::Kind::HOLD)releaseReceiver();
+        if(fc.availableForWrite()>=count && fc.write(p,count)==size_t(count)) {
+          phone=sender;lastPhoneMs=millis();++acceptedCommands;uartCommandBytes+=count;
+        } else ++rejectedCommands;
+      } else ++rejectedCommands;
     }
     else if (localPhone(sender) && senderPort == UDP_PORT) {
       ++rejectedCommands;

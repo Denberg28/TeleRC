@@ -1,0 +1,108 @@
+name: Build and release map mission functions and reinforced start 0.8.86
+on:
+  push:
+    branches: ['release/mission-functions-086-*']
+  workflow_dispatch:
+concurrency:
+  group: mission-functions-086-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - run: ./scripts/check-android-env.sh
+      - name: Preserve existing safety engine, camera and firmware
+        run: python scripts/check-fc-elrs-scope.py
+      - name: Host regression and default sanitizers
+        run: |
+          python bridge/sync_motor_core.py --check
+          python -m unittest discover -s scripts -p 'test_firmware_package.py'
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+          bridge/mini_wifi_tests/run.sh
+          SANITIZE=1 bridge/mini_wifi_tests/run.sh
+          bridge/mini_wifi_tests/check_profiles.sh
+      - name: Prepare existing release signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$TELERC_KEYSTORE_PASSWORD" && test -n "$TELERC_KEY_ALIAS" && test -n "$TELERC_KEY_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-release.jks"
+          echo "TELERC_KEYSTORE_FILE=$RUNNER_TEMP/telerc-release.jks" >> "$GITHUB_ENV"
+      - name: JVM, debug and signed release builds, lint and native harness compile
+        env:
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease :app:assembleRelease --no-daemon
+      - name: Retain signed review APK before native qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables validation-evidence
+          cp app/build/outputs/apk/release/app-release.apk deliverables/TeleRC-v0.8.86.apk
+          gh release create "mission-functions-review-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title 'Internal TeleRC 0.8.86 review build; UI qualification pending' deliverables/TeleRC-v0.8.86.apk
+      - name: Reclaim tools before native checks
+        run: python scripts/reclaim-ui-runner.py
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native mission functions, map taps, help and complete UI regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 3072M
+          cores: 2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            bash scripts/check-photo-ui.sh || { adb logcat -d -b crash; adb logcat -d -s AndroidRuntime ActivityManager ActivityTaskManager; exit 1; }
+      - name: Verify signing continuity and package tested sources and evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.8.85 --repo "$GITHUB_REPOSITORY" --pattern TeleRC-v0.8.85.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          python scripts/verify-mission-functions-apk.py deliverables/TeleRC-v0.8.86.apk "$RUNNER_TEMP/telerc-baseline.apk" > deliverables/BUILD_INFO.txt
+          cp docs/MISSION_FUNCTIONS_086.md deliverables/START_HERE.md
+          git archive --format=zip -o deliverables/TeleRC-v0.8.86-source.zip HEAD
+          zip -qr deliverables/TeleRC-v0.8.86-check-evidence.zip app/build/reports/tests app/build/test-results app/build/reports/lint-results-* app/build/photo-evidence app/src/androidTest
+          cd deliverables
+          sha256sum *.apk *.zip *.md BUILD_INFO.txt > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          python -c 'import glob,zipfile; assert all(zipfile.ZipFile(p).testzip() is None for p in glob.glob("*.zip"))'
+      - name: Publish software-qualified test candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)" = "$GITHUB_SHA"
+          gh release create v0.8.86 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title 'TeleRC v0.8.86 — map mission functions and reinforced start sequence' --notes-file deliverables/START_HERE.md deliverables/*
+          gh release edit v0.8.86 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+      - name: Retain published release bundle for download
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-v0.8.86-release
+          path: deliverables/
+          retention-days: 1
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-release.jks"
+
