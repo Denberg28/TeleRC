@@ -1,0 +1,75 @@
+name: Sign reviewed Go v1.0 baseline with retained TeleRC identity
+on:
+  push:
+    branches: [release/go-sign-v1.0.0]
+    paths: [.github/workflows/go-sign-v1.0.0.yml]
+permissions:
+  contents: read
+concurrency:
+  group: go-v1-retained-signer
+  cancel-in-progress: false
+jobs:
+  signed-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GO_SOURCE: 36323abbebfa0d02b069b4f23cb502607f65e7c0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Denberg28/telerc_go
+          ref: 36323abbebfa0d02b069b4f23cb502607f65e7c0
+          path: go-source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Verify exact public source, tests and release lint
+        working-directory: go-source
+        run: |
+          test "$(git rev-parse HEAD)" = "$GO_SOURCE"
+          python -m unittest discover -s scripts -p 'test_*safety.py' -v
+          ./gradlew :go:testDebugUnitTest :go:lintDebug :go:lintRelease :go:assembleDebug :go:assembleDebugAndroidTest --no-daemon
+      - name: Sign without exporting or changing the existing key
+        working-directory: go-source
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo 'Existing signing identity unavailable'; exit 1; }
+          trap 'rm -f "$RUNNER_TEMP/go-retained-v1.jks"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/go-retained-v1.jks"
+          export TELERC_KEYSTORE_FILE="$RUNNER_TEMP/go-retained-v1.jks"
+          ./gradlew :go:assembleRelease --no-daemon
+          mkdir -p release-dist
+          cp go/build/outputs/apk/release/go-release.apk release-dist/TeleRC-Go-v1.0.4.apk
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/go-v1.0.3/TeleRC-Go-v1.0.3.apk --output "$RUNNER_TEMP/go-baseline.apk"
+          env GITHUB_SHA="$GO_SOURCE" python scripts/verify_v1_apk.py release-dist/TeleRC-Go-v1.0.4.apk "$RUNNER_TEMP/go-baseline.apk"
+          env GITHUB_SHA="$GO_SOURCE" python scripts/package_v1_source.py
+      - name: Record actual application source and signing build provenance
+        working-directory: go-source
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path('release-dist')
+          metadata=dict(source_commit=os.environ['GO_SOURCE'],signing_repository=os.environ['GITHUB_REPOSITORY'],signing_workflow_commit=os.environ['GITHUB_SHA'],signing_workflow_run=os.environ['GITHUB_RUN_ID'],stable_qualified=False,hardware_validation='BLOCKED')
+          (out/'SIGNING_PROVENANCE.json').write_text(json.dumps(metadata,indent=2)+'\n')
+          (out/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in sorted(out.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt'))
+          PY
+          python scripts/release_safety.py release-dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-Go-v1.0-retained-signer
+          path: |
+            go-source/release-dist/
+            go-source/go/build/reports/
+            go-source/go/build/test-results/
+          if-no-files-found: error
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/go-retained-v1.jks"
