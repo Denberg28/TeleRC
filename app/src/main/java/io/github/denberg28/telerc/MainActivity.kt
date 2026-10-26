@@ -1870,6 +1870,9 @@ class MainActivity : Activity() {
                 if (!wantsLink || !usbMode) return
                 if (manager.hasPermission(device)) start()
                 else {
+                    wantsLink = false
+                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                    reconnectHandler.removeCallbacks(reconnect)
                     lastLinkError = "USB permission denied. Tap Connect to request it again."
                     wantsLink = false
                     getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
