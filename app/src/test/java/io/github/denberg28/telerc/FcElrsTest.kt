@@ -26,8 +26,8 @@ class FcElrsTest {
         })
         fun packet(bytes:ByteArray)=java.net.DatagramPacket(bytes,bytes.size)
         for(bytes in listOf(Mavlink.override(1,1,1,1900,1500,1500,1500),Mavlink.release(2,1,1),
-            Mavlink.armDisarm(3,1,1,true),WaypointProtocol.hold(4,1),
-            "TELERC_DISCOVER_V1".toByteArray(),byteArrayOf(),ByteArray(17),WaypointProtocol.heartbeat(2))) {
+            Mavlink.armDisarm(3,1,1,true),Mavlink.requestMessage(4,1,65,200000),
+            "TELERC_DISCOVER_V1".toByteArray(),byteArrayOf(),ByteArray(17),TestMavlink.frame(0,50,ByteArray(9),255,190))) {
             assertThrows(java.net.SocketException::class.java) { transport.send(packet(bytes)) }
         }
         assertTrue(sent.isEmpty())
@@ -49,7 +49,7 @@ class FcElrsTest {
             assertTrue(FcElrs.isRegistration(p))
             assertNull(Mavlink.heartbeat(p))
         }
-        assertFalse(FcElrs.isRegistration(WaypointProtocol.heartbeat(0)))
+        assertFalse(FcElrs.isRegistration(TestMavlink.frame(0,50,ByteArray(9),255,190)))
     }
     private fun autopilotHeartbeat(sequence:Int):ByteArray {
         val frame=byteArrayOf(0xfe.toByte(),9,sequence.toByte(),1,1,0,4,0,0,0,10,3,0,4,3)

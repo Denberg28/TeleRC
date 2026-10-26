@@ -40,7 +40,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS, TEST, WAYPOINT, BALANCE }
+    private enum class Page { SETUP, CONTROLS, TEST, LORA, BALANCE }
+    private val balancerTelemetry = BalancerTelemetry()
+    private var balanceSummary: TextView? = null
+    private var balanceDetail: TextView? = null
     private var balanceTab:BalancePretestTab?=null
     private fun balanceSetup():BalancePretestTab = balanceTab ?: BalancePretestTab(this,
         {connected.get() && phoneCommandsAllowed && !usbMode && !fcElrsMode && !elrsMode},
@@ -58,7 +61,6 @@ class MainActivity : Activity() {
         }
     }
     @Volatile private var page = Page.SETUP
-    @Volatile private var waypointTab: WaypointTab? = null
     private var mazePractice: MazePractice? = null
     private var mazeView: MazePracticeView? = null
     private var mazeRestartDialog: android.app.Dialog? = null
@@ -76,7 +78,8 @@ class MainActivity : Activity() {
     private val elrsMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == ElrsControl.TRANSPORT
     private val elrsAuthority = ElrsAuthority()
     private var elrsRequestEpoch = -1L
-    private val miniRoverMode get() = elrsMode || getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
+    private val balanceMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "balance_wifi"
+    private val miniRoverMode get() = balanceMode || elrsMode || getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
     private val miniArmGate = MiniRoverArmGate()
     private var loraStatus: TextView? = null
     private var loraInfo = "Attach one T3-S3 by native USB, connect, then read board settings."
@@ -281,7 +284,7 @@ class MainActivity : Activity() {
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
             "BALANCE" -> Page.BALANCE
-            "WAYPOINT" -> Page.WAYPOINT
+            "LORA" -> Page.LORA
             "TEST" -> Page.TEST
             "CONTROLS" -> Page.CONTROLS
             else -> Page.SETUP
@@ -328,7 +331,6 @@ class MainActivity : Activity() {
     private fun switchTo(next: Page) {
         if (page == next) return
         if (page == Page.BALANCE) balanceTab?.leave()
-        if (page == Page.WAYPOINT) waypointTab?.leave()
         disableControl()
         releaseMap()
         page = next
@@ -376,7 +378,7 @@ class MainActivity : Activity() {
                 inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
                 animationStyle = 0
             }
-            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST, "Waypoint" to Page.WAYPOINT, "Balance" to Page.BALANCE)) {
+            for ((name, destination) in listOf("Setup" to Page.SETUP, "Controls" to Page.CONTROLS, "Test" to Page.TEST, "LoRa setup" to Page.LORA, "Balance" to Page.BALANCE)) {
                 rows.addView(text(name, 14f, if (destination == page) accent else ink, destination == page).apply {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END; includeFontPadding=false
@@ -405,8 +407,6 @@ class MainActivity : Activity() {
 
     internal fun prepareForDialog() {
         if(page==Page.CONTROLS) disableControl()
-        if(page==Page.WAYPOINT && waypointTab?.navigation?.moving==true)
-            waypointTab?.stop("Navigation paused for dialog")
     }
 
     private fun render() {
@@ -423,17 +423,18 @@ class MainActivity : Activity() {
         loraRead = null; loraSave = null; loraOperate = null; loraLinkStatus = null
         loraKey = null; loraReveal = null; loraFingerprint = null
         armButton = null
+        balanceSummary = null; balanceDetail = null
         functionButtons.clear()
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(pale))
         window.statusBarColor = pale
         window.navigationBarColor = pale
         window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         when (page) {
-            Page.BALANCE -> { val root=shell(); balanceSetup().create(root,pageDropdown("Balance"),resumed){switchTo(Page.SETUP)};setContentView(root) }
+            Page.BALANCE -> renderBalance()
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
             Page.TEST -> renderTest()
-            Page.WAYPOINT -> renderWaypoint()
+            Page.LORA -> renderLoRa()
         }
         refreshUi()
     }
@@ -514,16 +515,13 @@ class MainActivity : Activity() {
     }
 
     private fun toggleArmDisarm() {
-        if (!fieldControlAllowed) {
+        if (vehicleArmed != true && !fieldControlAllowed) {
             Toast.makeText(this,"RC authority unavailable or transmitter selected.",Toast.LENGTH_SHORT).show(); return
         }
         if (!phoneCommandsAllowed) {
             Toast.makeText(this, FcElrs.HANDSET_ONLY, Toast.LENGTH_LONG).show(); return
         }
         val armed = vehicleArmed
-        if(armed==false && waypointTab?.navigation?.let { it.busy || it.functionsPendingOff }==true) {
-            Toast.makeText(this,"Confirm Waypoint HOLD and function OFF before arming.",Toast.LENGTH_LONG).show(); return
-        }
         val udp = socket
         val remote = endpoint
         val system = target
@@ -625,6 +623,168 @@ class MainActivity : Activity() {
         refreshFunctionButtons()
         return control
     }
+    private fun renderLoRa() {
+        host = null; port = null; enable = null; steeringStick = null; driveStick = null
+        val root = shell()
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        header.addView(pageDropdown("LoRa setup"), LinearLayout.LayoutParams(dp(160), dp(48)))
+        status = text("DISCONNECTED", 12f, accent, true)
+        header.addView(status, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
+
+        val scroll = ScrollView(this).apply { isFillViewport = true; clipToPadding = false }
+        val center = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        val wide = resources.configuration.screenWidthDp >= 640
+        val body = LinearLayout(this).apply { orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
+        center.addView(body, LinearLayout.LayoutParams(-1, -2))
+        center.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = minOf(dp(920), view.width)
+            if (width > 0 && body.layoutParams.width != width) {
+                body.layoutParams = (body.layoutParams as LinearLayout.LayoutParams).apply { this.width = width }
+            }
+        }
+        scroll.addView(center)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(left, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f).apply { if (wide) rightMargin = dp(8) })
+        body.addView(right, LinearLayout.LayoutParams(if (wide) 0 else -1, -2, if (wide) 1f else 0f))
+        fun section(column: LinearLayout, title: String) = card().apply {
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            addView(text(title, 13f, accent, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+            column.addView(this, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        }
+        fun LinearLayout.action(view: View) {
+            addView(view, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(6) })
+        }
+        fun LinearLayout.actions(first: View, second: View) {
+            val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(first, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
+            row.addView(second, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(6) })
+        }
+        fun label(value: String) = text(value, 12f, muted).apply { gravity = Gravity.START }
+        fun field(label: String, value: String, type: Int) = EditText(this).apply {
+            hint = label; contentDescription = label; setSingleLine(); inputType = type
+            setTextColor(ink); setHintTextColor(muted); textSize = 14f
+            background = shape(pale, 12); setPadding(dp(10), 0, dp(10), 0); setText(value)
+            // The key must not be retained by framework view-state/autofill.
+            isSaveEnabled = false; importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+        }
+        val device = section(left, "1 · DEVICE CONNECTION")
+        device.addView(text("Attach one T3-S3 with a USB OTG data cable. Grant USB permission; close other serial apps.", 13f, ink))
+        connect = button("Connect USB board") {
+            hideLoRaKey()
+            if (wantsLink) {
+                wantsLink = false
+                getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                reconnectHandler.removeCallbacks(reconnect); stop(explicitDisconnect = true)
+            } else {
+                getSharedPreferences("link", MODE_PRIVATE).edit().putString("transport", "lora_usb").putBoolean("auto_connect", true).apply()
+                wantsLink = true; start(); scheduleReconnect()
+            }
+            refreshUi()
+        }
+        loraRead = button("Read board settings", false) {
+            if (loraExchange.beginRead()) sendLoRaAdmin("TELERC_LORA_GET_V1")
+        }
+        device.actions(connect!!, loraRead!!)
+        loraStatus = text(loraInfo, 12f, ink)
+        device.addView(loraStatus, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+
+        val check = section(left, "3 · LINK CHECK")
+        loraLinkStatus = text("Connect and read the local board first.", 13f, ink)
+        check.addView(loraLinkStatus)
+        loraOperate = button("Open Controls") {
+            hideLoRaKey(); switchTo(Page.CONTROLS)
+        }
+        check.action(loraOperate!!)
+        check.addView(text("Enable control and ARM explicitly at neutral.", 12f, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+
+        val pairing = section(right, "2 · RADIO & PAIRING")
+        pairing.addView(text("Fixed control profile · SF7 / 500 kHz / CR4:5", 12f, muted))
+        val prefs = getSharedPreferences("lora_pair", MODE_PRIVATE)
+        val draft = loraDraft ?: LoRaSetupExchange.Draft(prefs.getString("mhz", "").orEmpty(),
+            prefs.getString("power", "2").orEmpty(), prefs.getString("key", "").orEmpty()).also { loraDraft = it }
+        val radioRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun radioField(title: String, value: String, type: Int): EditText {
+            val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            val edit = field(title, value, type)
+            column.addView(label(title)); column.addView(edit, LinearLayout.LayoutParams(-1, dp(48)))
+            radioRow.addView(column, LinearLayout.LayoutParams(0, -2, 1f).apply { if (radioRow.childCount == 1) rightMargin = dp(8) })
+            return edit
+        }
+        val frequency = radioField("Frequency (MHz)", draft.mhz, InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        val power = radioField("Power (2–17 dBm)", draft.power, InputType.TYPE_CLASS_NUMBER)
+        pairing.addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        pairing.addView(label("Shared pairing key · 64 hex digits"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        val keyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val key = field("Pairing key", draft.key, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            transformationMethod = PasswordTransformationMethod.getInstance()
+        }
+        loraKey = key
+        loraReveal = button("Show", false) {
+            val caret = key.selectionStart.coerceAtLeast(0)
+            val reveal = key.transformationMethod != null
+            key.transformationMethod = if (reveal) null else PasswordTransformationMethod.getInstance()
+            key.setSelection(caret.coerceAtMost(key.length()))
+            loraReveal?.text = if (reveal) "Hide" else "Show"
+            loraReveal?.contentDescription = if (reveal) "Hide pairing key" else "Show pairing key"
+        }.apply { contentDescription = "Show pairing key"; textSize = 13f }
+        keyRow.addView(key, LinearLayout.LayoutParams(0, dp(48), 1f))
+        keyRow.addView(loraReveal, LinearLayout.LayoutParams(dp(64), dp(48)).apply { leftMargin = dp(6) })
+        pairing.addView(keyRow)
+        loraFingerprint = text("", 12f, muted)
+        pairing.addView(loraFingerprint)
+        fun captureDraft() {
+            loraDraft = LoRaSetupExchange.Draft(frequency.text.toString(), power.text.toString(), key.text.toString())
+            loraFingerprint?.text = LoRaSetup.fingerprint(key.text.toString().trim())?.let { "Draft key fingerprint · $it (comparison hint)" }
+                ?: "Enter or generate a 64-digit hex key"
+        }
+        val watcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { captureDraft() }
+            override fun afterTextChanged(s: Editable?) {}
+        }
+        frequency.addTextChangedListener(watcher); power.addTextChangedListener(watcher); key.addTextChangedListener(watcher)
+        captureDraft()
+        val generateKey = button("Generate key", false) {
+            fun generate() {
+                hideLoRaKey()
+                val bytes = ByteArray(32); java.security.SecureRandom().nextBytes(bytes)
+                key.setText(bytes.joinToString("") { "%02x".format(it.toInt() and 255) })
+            }
+            if (key.text.isNotEmpty()) AppDialog.Builder(this).setTitle("Replace draft pairing key?")
+                .setMessage("Both boards need the same key. This changes only the draft; the board stays unchanged until Save succeeds.")
+                .setPositiveButton("Replace") { _, _ -> generate() }.setNegativeButton("Cancel", null).show()
+            else generate()
+        }
+        loraSave = button("Save pairing") {
+            hideLoRaKey()
+            if (vehicleArmed == true) { loraStatus?.text = "Disarm and disconnect motor power before setup."; return@button }
+            val value = LoRaSetupExchange.Draft(frequency.text.toString().trim(), power.text.toString().trim(), key.text.toString().trim())
+            if (LoRaSetup.request(value.mhz, value.power, value.key) == null) {
+                loraStatus?.text = "Enter 150–960 MHz with up to 3 decimal places, 2–17 dBm, and a nonzero 64-digit hex key."; return@button
+            }
+            val request = loraExchange.beginSave(value) ?: return@button
+            sendLoRaAdmin(request)
+        }
+        pairing.actions(generateKey, loraSave!!)
+        pairing.addView(text("Match both inactive boards. Save → restart → read back. Local frequency rules apply.", 12f, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        if (!wide) { left.removeView(check); right.addView(check) }
+        val help = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        right.addView(help, LinearLayout.LayoutParams(-1, -2))
+        val details = text("Keep motor power disconnected while pairing. Read BASE and ROVER separately; compare frequency, power and key fingerprint. An active radio cannot be edited here: follow the NVS reset/reflash guide to re-pair. The key is retained in private phone settings only after the board confirms Save.\n\nNative USB CDC only; BLE, USB-UART adapters, mesh routing and Meshtastic channel QR import are unavailable. The shared key authenticates direct radio packets; payloads are not encrypted. No Wi-Fi password is needed for this USB setup.", 12f, muted).apply { visibility = View.GONE }
+        help.action(button("Setup details ▾", false) {
+            details.visibility = if (details.visibility == View.GONE) View.VISIBLE else View.GONE
+        })
+        help.addView(details, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        setContentView(root)
+    }
+
     private fun hideLoRaKey() {
         loraKey?.transformationMethod = PasswordTransformationMethod.getInstance()
         loraReveal?.text = "Show"
@@ -697,11 +857,11 @@ class MainActivity : Activity() {
                 if (column.childCount > 0) topMargin = dp(4)
             })
         }
-        row(connection, button(if (usbMode) "ArduRover LoRa ▾" else if (fcElrsMode) "ArduRover ELRS ▾" else if (elrsMode) "ELRS + Wi-Fi ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "ArduRover Wi-Fi ▾", false) {
+        row(connection, button(if (usbMode) "ArduRover LoRa ▾" else if (fcElrsMode) "ArduRover ELRS ▾" else if (elrsMode) "ELRS + Wi-Fi ▾" else if (balanceMode) "Balancer Wi-Fi ▾" else if (miniRoverMode) "Mini rover Wi-Fi ▾" else "ArduRover Wi-Fi ▾", false) {
             if (!wantsLink) AppDialog.Builder(this).setTitle("Control link")
-                .setItems(arrayOf("Mini rover · Wi-Fi", "ArduRover · Wi-Fi bridge", "ArduRover · LoRa USB base", "ArduRover · ELRS TX Backpack")) { _, choice ->
+                .setItems(arrayOf("Mini rover · Wi-Fi", "ArduRover · Wi-Fi bridge", "ArduRover · LoRa USB base", "ArduRover · ELRS TX Backpack", "Balancer · Wi-Fi")) { _, choice ->
                     getSharedPreferences("link", MODE_PRIVATE).edit()
-                        .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; 3 -> FcElrs.TRANSPORT; else -> "wifi" }).apply()
+                        .putString("transport", when (choice) { 0 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; 3 -> FcElrs.TRANSPORT; 4 -> "balance_wifi"; else -> "wifi" }).apply()
                     render()
                 }.show()
             else Toast.makeText(this, "Disconnect before changing the control link.", Toast.LENGTH_SHORT).show()
@@ -880,7 +1040,13 @@ class MainActivity : Activity() {
     }
 
     private fun showConnectionGuide() {
-        if (miniRoverMode && !elrsMode) {
+        if (balanceMode) {
+            AppDialog.Builder(this).setTitle("Balancer Wi-Fi").setMessage(BalancerTelemetry.GUIDE)
+                .setPositiveButton("Close", null).show()
+        } else if (usbMode) {
+            AppDialog.Builder(this).setTitle("LoRa USB base").setMessage("Attach a matching TeleRC native USB CDC base with an OTG data cable. Open LoRa setup to read and provision BASE/ROVER settings. This profile uses framed direct-link firmware; fleet relay firmware is managed by PC TeleRC.")
+                .setPositiveButton("LoRa setup") { _, _ -> switchTo(Page.LORA) }.setNegativeButton("Close", null).show()
+        } else if (miniRoverMode && !elrsMode) {
             AppDialog.Builder(this).setTitle("Connection guide")
                 .setItems(arrayOf("Mini rover Wi-Fi", "ELRS transmitter + receiver")) { _, choice ->
                     if (choice == 0) showMiniRoverSetup() else showFcElrsSetup()
@@ -1096,36 +1262,48 @@ class MainActivity : Activity() {
         update(); setContentView(root)
     }
 
-    private fun renderWaypoint() {
-        host=null; port=null; connect=null; status=null; enable=null
-        val tab=waypointTab ?: WaypointTab(this,
-            { target to (connected.get() && !miniRoverMode && !usbMode && phoneCommandsAllowed) },
-            { dispatch ->
-                val udp=socket; val remote=endpoint; val portNumber=endpointPort
-                val submitted=SystemClock.elapsedRealtime()
-                if(udp!=null && remote!=null) txExecutor.execute {
-                    synchronized(commandLock) {
-                        if(socket===udp && connected.get() && !miniRoverMode && !usbMode && phoneCommandsAllowed &&
-                            (!controlEnabled.get() || dispatch.gcsHeartbeat) &&
-                            (!dispatch.gcsHeartbeat || resumed) &&
-                            SystemClock.elapsedRealtime()-submitted in 0..500 &&
-                            (!dispatch.motion || page==Page.WAYPOINT && resumed)) {
-                            try { waypointTab?.sendIfAllowed(dispatch) { bytes ->
-                                udp.send(DatagramPacket(bytes,bytes.size,remote,portNumber))
-                            } }
-                            catch (_:Exception) { runOnUiThread { waypointTab?.stop("Navigation send failed") } }
-                        }
-                    }
-                }
-            }, linkHint = { when {
-                fcElrsMode -> "ELRS handset link is planning only. Use ArduRover Wi-Fi + GPS."
-                miniRoverMode -> "Mini rover cannot navigate GPS routes. Use ArduRover Wi-Fi + GPS."
-                usbMode -> "This LoRa gateway is planning only. Use a compatible ArduRover Wi-Fi link."
-                else -> "Connect to ArduRover Wi-Fi in Setup, then tap Mission start."
-            } }, servoButton = ::servoAssignmentButton).also { waypointTab=it }
-        val root=shell()
-        tab.create(root,pageDropdown("Waypoint"),started,resumed)
-        setContentView(root)
+    private fun renderBalance() {
+        host = null; port = null; connect = null; enable = null; status = null
+        val root = shell()
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(pageDropdown("Balance"), LinearLayout.LayoutParams(dp(124), barHeight()))
+        header.addView(text("Local balancing · Wi-Fi", 15f, ink, true), LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
+        header.addView(button("Controls ›", false) { switchTo(Page.CONTROLS) }, LinearLayout.LayoutParams(dp(112), barHeight()))
+        root.addView(header)
+        val scroll = ScrollView(this)
+        val body = card()
+        balanceSummary = text("", 16f, ink, true)
+        balanceDetail = text("", 14f, muted)
+        body.addView(balanceSummary)
+        body.addView(balanceDetail, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        body.addView(text("Releasing sticks stops travel; firmware maintains balance. PAUSED can resume motor output when upright. Support the chassis and DISARM before handling.", 13f, ink), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        val actions = LinearLayout(this)
+        actions.addView(button("Connection guide", false) {
+            AppDialog.Builder(this).setTitle("Balancer setup").setMessage(BalancerTelemetry.GUIDE).setPositiveButton("Close", null).show()
+        }, LinearLayout.LayoutParams(0, barHeight(), 1f))
+        actions.addView(button("DISARM", false) {
+            if (balanceMode && linkFresh() && vehicleArmed == true) {
+                AppDialog.Builder(this).setTitle("Disarm balancer?").setMessage("Support the chassis. Disarm removes balancing torque.")
+                    .setPositiveButton("Disarm") { _, _ -> toggleArmDisarm() }.setNegativeButton("Cancel", null).show()
+            } else Toast.makeText(this, "Disarm needs a fresh, armed balancer connection.", Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(0, barHeight(), 1f).apply { leftMargin = dp(8) })
+        body.addView(actions, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        body.addView(button("Legacy v0.3 pre-test ›", false) {
+            balanceSetup().create(root, View(this).apply { visibility = View.GONE }, resumed) { switchTo(Page.SETUP) }
+        }, LinearLayout.LayoutParams(-1, barHeight()).apply { topMargin = dp(8) })
+        scroll.addView(body); root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
+        setContentView(root); refreshBalance()
+    }
+    private fun refreshBalance() {
+        val now = SystemClock.elapsedRealtime()
+        balanceSummary?.text = when {
+            !balanceMode -> "Select Balancer · Wi-Fi in Setup"
+            !connected.get() -> "Disconnected · connect in Setup"
+            !linkFresh() -> "Waiting for fresh balancer heartbeat"
+            else -> balancerTelemetry.summary(now)
+        }
+        balanceDetail?.text = if (balanceMode && connected.get() && linkFresh()) balancerTelemetry.detail(now)
+            else "Join TeleRC-2WD-Test, keep the Wi-Fi connection without internet, then Connect. Legacy v0.3 setup uses its own versioned status protocol."
     }
 
     private fun renderControls() {
@@ -1583,14 +1761,14 @@ class MainActivity : Activity() {
             controlEnabled.get() -> "Use transmitter"
             elrsAuthority.pending(now) -> "Taking control…"
             else -> "Phone control"
-        } else if (controlEnabled.get()) "Use transmitter" else "Phone control"
+        } else if (controlEnabled.get()) { if (miniRoverMode) "Stop control" else "Use transmitter" } else "Phone control"
         enable?.contentDescription = if (fcElrsMode) "Phone control; use phone Wi-Fi" else
-            if (controlEnabled.get()) "Use transmitter; release phone control" else "Phone control; enable after fresh telemetry"
+            if (controlEnabled.get()) { if (miniRoverMode) "Stop phone control" else "Use transmitter; release phone control" } else "Phone control; enable after fresh telemetry"
         if(elrsMode) {
             status?.text=if(linkFresh()) elrsAuthority.label(now) else status?.text
             enable?.tooltipText=elrsAuthority.label(now)
         }
-        armButton?.apply { text = if(fcElrsMode) "Use transmitter" else armCaption(); isEnabled = phoneCommandsAllowed && fieldControlAllowed && linkFresh() && vehicleArmed != null }
+        armButton?.apply { text = if(fcElrsMode) "Use transmitter" else armCaption(); isEnabled = phoneCommandsAllowed && (vehicleArmed == true || fieldControlAllowed) && linkFresh() && vehicleArmed != null }
         if(!miniRoverMode && !usbMode && !fcElrsMode && target!=0) status?.append(" · "+rcTakeover.label(now))
         val localUsb = usbMode && connected.get()
         loraRead?.isEnabled = localUsb && loraExchange.pending == null && !loraExchange.blocked
@@ -1611,11 +1789,9 @@ class MainActivity : Activity() {
             else -> "BASE connected · rover heartbeat fresh. Control remains disabled until you enable it."
         }
         refreshFunctionButtons()
+        refreshBalance()
     }
     private fun activatePhoneControl() {
-        if(waypointTab?.navigation?.let { it.busy || it.functionsPendingOff }==true) {
-            Toast.makeText(this,"Wait for Waypoint HOLD and function OFF confirmation.",Toast.LENGTH_LONG).show(); return
-        }
         if (!phoneCommandsAllowed || !fieldControlAllowed) return
         if (page!=Page.CONTROLS || !resumed) return
         val allowed=synchronized(commandLock) {
@@ -1694,6 +1870,9 @@ class MainActivity : Activity() {
                 if (!wantsLink || !usbMode) return
                 if (manager.hasPermission(device)) start()
                 else {
+                    wantsLink = false
+                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+                    reconnectHandler.removeCallbacks(reconnect)
                     lastLinkError = "USB permission denied. Tap Connect to request it again."
                     wantsLink = false
                     getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
@@ -1752,18 +1931,19 @@ class MainActivity : Activity() {
             val wifi = connectivity.allNetworks.firstOrNull {
                 connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
             }
-            if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
+            if (wifi == null) { lastLinkError = "No Wi-Fi network available. Join the rover Wi-Fi and keep it connected without internet."; status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
             try {
                 UdpTransport(DatagramSocket(localPort).also { transport ->
                     try { wifi.bindSocket(transport); boundWifi = wifi; transport.soTimeout = 50 }
                     catch (error: Exception) { transport.close(); throw error }
                 }).let { if(backpack) FcElrsTelemetryTransport(it) else it }
-            } catch (error: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
+            } catch (error: Exception) { lastLinkError = "Wi-Fi UDP port unavailable. Close other rover controller apps and retry."; status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
         }
         socket = udp; endpoint = remote; endpointPort = number
         reconnectHandler.removeCallbacks(loraTimeout); loraExchange.reset()
         loraInfo = if (usbMode) "USB connected. Read settings to identify BASE or ROVER." else "Disconnect Wi-Fi, then connect a USB board for setup."
         loraStatus?.text = loraInfo
+        rcTakeover.reset(); balancerTelemetry.reset()
         target = 0; vehicleArmed = null; lastArmAck = ""; lastLinkError = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
         disableControl(); connected.set(true)
@@ -1860,9 +2040,15 @@ class MainActivity : Activity() {
                                 }
                             }
                         } else for (frame in Mavlink.frames(payload)) {
-                            if (waypointTab!=null) {
-                                val receivedAt=SystemClock.elapsedRealtime()
-                                runOnUiThread { if(socket===udp) waypointTab?.receive(frame,target,receivedAt) }
+                            if (balanceMode) {
+                                val receivedAt = SystemClock.elapsedRealtime()
+                                if (balancerTelemetry.receive(frame, target, receivedAt)) {
+                                    synchronized(commandLock) {
+                                        commandEpoch++; controlEnabled.disable(); miniArmGate.reset()
+                                        steering = 1500; drive = 1500
+                                    }
+                                    runOnUiThread { if (socket === udp) disableControl() }
+                                }
                             }
                             if(elrsMode) ElrsControl.status(frame,target)?.let { state ->
                                 val receivedAt=SystemClock.elapsedRealtime()
@@ -1880,7 +2066,7 @@ class MainActivity : Activity() {
                                 val previousArmed = vehicleArmed
                                 target = heartbeat.system
                                 if(previousSystem==0 && !miniRoverMode && !usbSession && !backpack) {
-                                    val request=WaypointProtocol.command(sequence++,target,511,65f,200000f)
+                                    val request=Mavlink.requestMessage(sequence++,target,65,200000)
                                     udp.send(DatagramPacket(request,request.size,remote,number))
                                 }
                                 vehicleArmed = heartbeat.armed
@@ -1960,7 +2146,8 @@ class MainActivity : Activity() {
                 if (!backpack && now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
                         val rc = synchronized(commandLock) {
-                            if (!controlEnabled.get() || !linkFresh() || !fieldControlAllowed || elrsMode && !elrsAuthority.allowed(now)) null else {
+                            if (socket !== udp || !connected.get() || !resumed || page != Page.CONTROLS ||
+                                !controlEnabled.get() || !linkFresh() || !fieldControlAllowed || elrsMode && !elrsAuthority.allowed(now)) null else {
                                 val channels = RoverControls.channels(steering, drive)
                                 val bytes = Mavlink.override(sequence++, target, 1,
                                     channels.one, channels.two, channels.three, channels.four)
@@ -2031,7 +2218,7 @@ class MainActivity : Activity() {
     }
     private fun stop(explicitDisconnect: Boolean = false) {
         balanceTab?.disconnected()
-        waypointTab?.disconnected()
+        balancerTelemetry.reset()
         val udp = socket
         val remote = endpoint
         val system = target
@@ -2080,11 +2267,11 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { balanceTab?.pause(); AppDialog.dismissAll(this); waypointTab?.onPause(); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; if(page==Page.BALANCE)render() else balanceTab?.resume(); waypointTab?.onResume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; val fromAttachment = fpvResumeFromAttachment; fpvResumeMayRequestPermission = false; fpvResumeFromAttachment = false; connectFpv(mayRequest, fromAttachment) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
-    override fun onStart() { super.onStart(); started = true; waypointTab?.onStart(); routeMap?.onStart() }
-    override fun onStop() { waypointTab?.onStop(); fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
-    override fun onLowMemory() { super.onLowMemory(); waypointTab?.lowMemory(); routeMap?.onLowMemory() }
-    override fun onDestroy() { AppDialog.dismissAll(this); waypointTab?.close(); pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
+    override fun onPause() { balanceTab?.pause(); AppDialog.dismissAll(this); pageMenu?.dismiss(); pageMenu = null; mazeView?.pause(); practiceSteer?.reset(); practiceDrive?.reset(); fpvCamera?.pause(); hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; if(page==Page.BALANCE)render() else balanceTab?.resume(); mazeView?.resume(); fpvCamera?.resume(); if (connectFpvOnResume && page == Page.CONTROLS) { connectFpvOnResume = false; val mayRequest = fpvResumeMayRequestPermission; val fromAttachment = fpvResumeFromAttachment; fpvResumeMayRequestPermission = false; fpvResumeFromAttachment = false; connectFpv(mayRequest, fromAttachment) }; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
+    override fun onStop() { fpvCamera?.suspendCamera(); started = false; routeMap?.onStop(); super.onStop() }
+    override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }
+    override fun onDestroy() { AppDialog.dismissAll(this); pageMenu?.dismiss(); pageMenu = null; wallpaperDialog?.dismiss(); wallpaperDialog = null; mazeRestartDialog?.dismiss(); mazeRestartDialog = null; mazeLevelsDialog?.dismiss(); mazeLevelsDialog = null; mazeMarketDialog?.dismiss(); mazeMarketDialog = null; usbPermissionReceiver?.let { unregisterReceiver(it) }; usbPermissionReceiver = null; usbPermissionPending = false; wantsLink = false; reconnectHandler.removeCallbacks(reconnect); releaseMap(); stop(explicitDisconnect = true); saveRoute(); updater.close(); imageExecutor.shutdown(); currentShell = null; txExecutor.shutdown(); super.onDestroy() }
 }
 

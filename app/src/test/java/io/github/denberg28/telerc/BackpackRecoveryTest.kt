@@ -61,7 +61,7 @@ class BackpackRecoveryTest {
         }
         for (command in listOf(Mavlink.override(1, 1, 1, 1900, 1900, 1500, 1500),
             Mavlink.release(2, 1, 1), Mavlink.armDisarm(3, 1, 1, true),
-            WaypointProtocol.hold(4, 1), WaypointProtocol.heartbeat(5))) {
+            Mavlink.requestMessage(4,1,65,200000), TestMavlink.frame(0,50,ByteArray(9),255,190))) {
             assertThrows(java.net.SocketException::class.java) { transport.send(DatagramPacket(command, command.size)) }
         }
         assertEquals(3, sent.size)

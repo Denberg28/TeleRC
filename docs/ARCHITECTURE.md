@@ -1,3 +1,5 @@
+Current Android 1.1 scope and evidence: [ANDROID_CORE_1.1.md](ANDROID_CORE_1.1.md). Historical entries below remain baseline evidence only.
+
 # External USB FPV reliability — 0.8.91 candidate
 
 Keep USB access during advertised-mode negotiation, restart a stalled preview

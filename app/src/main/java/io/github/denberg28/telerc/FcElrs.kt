@@ -45,7 +45,7 @@ internal object FcElrs {
         "3. F405: SERIAL2_PROTOCOL=2, SERIAL2_BAUD=460, RSSI_TYPE=5. Match the actual ELRS UART rate. Keep GPS on UART6. Reboot and verify CH1 steer / CH2 centered drive in Mission Planner.\n\n" +
         "4. ELRS Lua → Backpack → Telemetry → WiFi. Join ExpressLRS TX Backpack Wi-Fi (password: expresslrs), or the same router network. Do not use firmware-update Wi-Fi mode.\n\n" +
         "5. Set Backpack IP, Send port = Backpack Listen (default 14555), Listen port = Backpack Send (default 14550). AP IP: 10.0.0.1; use the assigned IP on a router. Connect.\n\n" +
-        "Handset drives; TeleRC shows telemetry and FPV. Phone commands and live Waypoint are locked: native ELRS sends handset RC overrides continuously. For phone takeover with the handset linked, use CRSF + FC Wi-Fi/LoRa.\n\n" +
+        "Handset drives; TeleRC shows telemetry and FPV. Phone commands are locked: native ELRS sends handset RC overrides continuously. For phone takeover with the handset linked, use CRSF + FC Wi-Fi/LoRa.\n\n" +
         "The phone needs the ELRS TX module and Backpack. Direct ELRS USB and AirPort are separate protocols and are not implemented here."
 }
 

@@ -1,0 +1,58 @@
+name: TeleRC Android core candidate
+on:
+  push:
+    branches: [work/android-core-1.1]
+permissions:
+  contents: read
+concurrency:
+  group: android-core-candidate
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Existing bridge regressions
+        run: |
+          python bridge/sync_motor_core.py --check
+          bridge/tests/run.sh
+          SANITIZE=1 bridge/tests/run.sh
+      - name: Android unit tests and both lint variants
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon
+      - name: Build with retained signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/telerc-core.jks"
+          export TELERC_KEYSTORE_FILE="$RUNNER_TEMP/telerc-core.jks"
+          ./gradlew :app:assembleRelease --no-daemon
+          mkdir -p core-dist
+          cp app/build/outputs/apk/release/app-release.apk core-dist/TeleRC-v1.1.0rc1.apk
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v1.0.0/TeleRC-v1.0.0.apk --output "$RUNNER_TEMP/baseline.apk"
+          python scripts/verify_core_apk.py core-dist/TeleRC-v1.1.0rc1.apk "$RUNNER_TEMP/baseline.apk"
+          git archive --format=zip --output=core-dist/TeleRC-v1.1.0rc1-source.zip "$GITHUB_SHA"
+          cp docs/ANDROID_CORE_1.1.md core-dist/START_HERE.md
+          cd core-dist
+          sha256sum TeleRC-v1.1.0rc1.apk TeleRC-v1.1.0rc1-source.zip APK_VERIFICATION.json START_HERE.md > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-core-v1.1.0rc1
+          path: core-dist/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-core-evidence
+          path: |
+            app/build/reports/
+            app/build/test-results/
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/telerc-core.jks"

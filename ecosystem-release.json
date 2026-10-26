@@ -4,18 +4,25 @@
   "release_channel": "candidate",
   "product": "TeleRC",
   "tier": "base",
-  "application_version": "1.0.0",
-  "android_version_code": 1000,
+  "application_version": "1.1.0rc1",
+  "android_version_code": 1100,
   "protocol_profiles": [
     "wifi-mavlink-v1",
     "mini-native-v1",
-    "legacy-lora-manual"
+    "legacy-lora-manual",
+    "balancer-mavlink-v0.4"
   ],
   "managed_vehicle_target": 1,
   "validated_simultaneous_radio_vehicle_count": null,
-  "active_mission_sessions": null,
+  "active_mission_sessions": 0,
   "stable_qualified": false,
   "hardware_validation": "BLOCKED",
   "wifi_command_authentication": "UNIMPLEMENTED",
-  "failsafe_owner": "ArduRover for autopilot profiles; local controller for direct-drive profiles"
+  "failsafe_owner": "ArduRover for autopilot profiles; local controller for direct-drive profiles",
+  "scope": [
+    "wifi",
+    "lora-direct-manual",
+    "offline-test",
+    "balancing"
+  ]
 }

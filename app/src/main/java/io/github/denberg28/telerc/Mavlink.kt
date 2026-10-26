@@ -84,6 +84,20 @@ object Mavlink {
 
     fun heartbeatSystem(packet: ByteArray): Int? = heartbeat(packet)?.system
 
+    /** Request one telemetry stream; this cannot start navigation or change flight mode. */
+    fun requestMessage(sequence: Int, system: Int, message: Int, intervalUs: Int): ByteArray {
+        require(system in 1..254 && message >= 0 && intervalUs > 0)
+        val payload = ByteArray(33)
+        val b = java.nio.ByteBuffer.wrap(payload).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        b.putFloat(0, message.toFloat()); b.putFloat(4, intervalUs.toFloat())
+        b.putShort(28, 511.toShort()); payload[30] = system.toByte(); payload[31] = 1
+        val frame = byteArrayOf(0xfe.toByte(), 33, sequence.toByte(), 255.toByte(), 190.toByte(), 76) + payload
+        var crc = 65535
+        for (value in frame.drop(1)) crc = accumulate(crc, value.toInt() and 255)
+        crc = accumulate(crc, 152)
+        return frame + byteArrayOf(crc.toByte(), (crc ushr 8).toByte())
+    }
+
     fun armDisarm(
         sequence: Int,
         targetSystem: Int,
