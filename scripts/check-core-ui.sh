@@ -8,5 +8,9 @@ adb shell pm grant io.github.denberg28.telerc android.permission.ACCESS_COARSE_L
 adb shell pm grant io.github.denberg28.telerc android.permission.CAMERA
 adb shell am instrument -w io.github.denberg28.telerc.test/io.github.denberg28.telerc.CoreInstrumentation | tee core-ui-evidence/native-ui.txt
 adb logcat -d > core-ui-evidence/logcat.txt
-rg 'PASS: five mission-free pages' core-ui-evidence/native-ui.txt
-! rg 'FAIL:|INSTRUMENTATION_FAILED|FATAL EXCEPTION' core-ui-evidence/native-ui.txt
+python3 - <<'PYCHECK'
+from pathlib import Path
+s=Path('core-ui-evidence/native-ui.txt').read_text()
+assert 'PASS: five mission-free pages' in s, s
+assert not any(token in s for token in ('FAIL:', 'INSTRUMENTATION_FAILED', 'FATAL EXCEPTION')), s
+PYCHECK
