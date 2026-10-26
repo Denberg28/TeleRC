@@ -37,13 +37,17 @@ class CoreInstrumentation : Instrumentation() {
                         if (page == "LORA") check(find(r) { it is TextView && it.text.toString() == "Read board settings" } != null)
                         menu.performClick()
                     }
-                    waitForIdleSync(); SystemClock.sleep(100)
-                    fun texts(n: android.view.accessibility.AccessibilityNodeInfo?): List<String> = if (n == null) emptyList() else
-                        listOfNotNull(n.text?.toString()) + (0 until n.childCount).flatMap { texts(n.getChild(it)) }
-                    val items = texts(uiAutomation.rootInActiveWindow)
-                    check(items.containsAll(listOf("Setup", "Controls", "Test", "Balance", "LoRa setup"))) { "Missing navigation choices: $items" }
-                    check("Waypoint" !in items && "Mission" !in items)
-                    uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                    waitForIdleSync()
+                    main {
+                        val popup = MainActivity::class.java.getDeclaredField("pageMenu").apply { isAccessible = true }.get(a) as android.widget.PopupWindow
+                        check(popup.isShowing) { "Tab popup did not open" }
+                        fun texts(v: View): List<String> = (if (v is TextView) listOf(v.text.toString()) else emptyList()) +
+                            (if (v is ViewGroup) (0 until v.childCount).flatMap { texts(v.getChildAt(it)) } else emptyList())
+                        val items = texts(popup.contentView)
+                        check(items.containsAll(listOf("Setup", "Controls", "Test", "Balance", "LoRa setup"))) { "Missing navigation choices: $items" }
+                        check("Waypoint" !in items && "Mission" !in items)
+                        popup.dismiss()
+                    }
                     waitForIdleSync()
                 }
                 main { a.finish() }; waitForIdleSync()
