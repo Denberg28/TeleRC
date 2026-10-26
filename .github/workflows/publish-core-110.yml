@@ -1,0 +1,66 @@
+name: Publish verified TeleRC 1.1.0rc1
+on:
+  push:
+    branches: [release/publish-core-1.1.0rc1]
+    paths:
+      - .github/workflows/publish-core-110.yml
+      - scripts/publish_core_110.py
+      - docs/releases/v1.1.0rc1.md
+permissions:
+  contents: read
+concurrency:
+  group: publish-core-1.1.0rc1
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Check retained build and UI evidence
+        run: |
+          gh api repos/Denberg28/TeleRC/actions/runs/40288365262 > build-run.json
+          gh api repos/Denberg28/TeleRC/actions/runs/40293580334 > ui-run.json
+          gh api repos/Denberg28/TeleRC/actions/artifacts/12634643769 > build-artifact.json
+          python scripts/publish_core_110.py provenance
+          git diff --exit-code 03b5b69ff39487678d25a8023c5438a773ca3d51 19ee9353867ee18ba114dc32794c029bd628c9a6 -- app/src/main
+      - name: Download verified signed build and stage release
+        run: |
+          gh api repos/Denberg28/TeleRC/actions/artifacts/12634643769/zip > verified-core.zip
+          python scripts/publish_core_110.py stage
+      - name: Verify APK signature and package
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "build-tools;35.0.0"
+          python scripts/publish_core_110.py apk
+      - name: Create draft and verify every uploaded asset
+        run: |
+          if gh release view v1.1.0rc1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to replace it.'
+            exit 1
+          fi
+          if gh api repos/Denberg28/TeleRC/git/ref/tags/v1.1.0rc1 >/dev/null 2>&1; then
+            echo 'Tag already exists; refusing to retarget it.'
+            exit 1
+          fi
+          gh release create v1.1.0rc1 --repo "$GITHUB_REPOSITORY" --target 03b5b69ff39487678d25a8023c5438a773ca3d51 --draft --prerelease --latest=false --title 'TeleRC v1.1.0rc1 — Android control and balancing' --notes-file docs/releases/v1.1.0rc1.md publication/*
+          gh api 'repos/Denberg28/TeleRC/releases?per_page=100' --jq '.[] | select(.tag_name == "v1.1.0rc1")' > uploaded-release.json
+          python scripts/publish_core_110.py uploaded
+      - name: Publish verified test candidate
+        run: |
+          gh release edit v1.1.0rc1 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          gh api repos/Denberg28/TeleRC/releases/tags/v1.1.0rc1 > published-release.json
+          gh api repos/Denberg28/TeleRC/git/ref/tags/v1.1.0rc1 > published-tag.json
+          python scripts/publish_core_110.py published
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeleRC-v1.1.0rc1-published-files
+          path: publication/
+          if-no-files-found: error
