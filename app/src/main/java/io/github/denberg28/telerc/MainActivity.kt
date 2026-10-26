@@ -1761,9 +1761,9 @@ class MainActivity : Activity() {
             controlEnabled.get() -> "Use transmitter"
             elrsAuthority.pending(now) -> "Taking control…"
             else -> "Phone control"
-        } else if (controlEnabled.get()) "Use transmitter" else "Phone control"
+        } else if (controlEnabled.get()) { if (miniRoverMode) "Stop control" else "Use transmitter" } else "Phone control"
         enable?.contentDescription = if (fcElrsMode) "Phone control; use phone Wi-Fi" else
-            if (controlEnabled.get()) "Use transmitter; release phone control" else "Phone control; enable after fresh telemetry"
+            if (controlEnabled.get()) { if (miniRoverMode) "Stop phone control" else "Use transmitter; release phone control" } else "Phone control; enable after fresh telemetry"
         if(elrsMode) {
             status?.text=if(linkFresh()) elrsAuthority.label(now) else status?.text
             enable?.tooltipText=elrsAuthority.label(now)
