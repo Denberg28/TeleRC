@@ -8,7 +8,7 @@ internal object ElrsControl {
         "Transmitter: CH1 steer, CH2 centered forward/reverse, CH5 ARM, CH6 STOP (high). Center both axes, keep CH5 low for 0.3 s, then switch high to arm.\n\n" +
         "Phone: join TeleRC-MiniRover Wi-Fi, Connect, then Controls → Take control. Center the transmitter before takeover. Wait for ARM · READY, then ARM.\n\n" +
         "Release control stops and disarms. Center the transmitter, switch CH5 low then high to resume. Wi-Fi stays connected. Phone loss stops; it never switches back to a moving transmitter. CH6 STOP stops both sources.\n\n" +
-        "This is manual control. Mini rover Waypoint remains planning only."
+        "This is manual control."
 
     private fun crc(current:Int,value:Int):Int {
         var t=(value xor (current and 255)) and 255

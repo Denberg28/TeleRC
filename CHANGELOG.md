@@ -1,3 +1,12 @@
+## 1.1.0rc1
+
+- Remove mission/navigation from the Android app.
+- Add named balancer Wi-Fi profile and live v0.4 heartbeat/attitude/event diagnostics.
+- Restore direct LoRa provisioning and retain legacy balancer pre-test.
+- Guard live TX against replaced sessions and retain DISARM when permission expires.
+- Preserve retained signer/package, standalone controls, offline Test, themes and optional FPV.
+- Candidate: physical connection, takeover and installation gates remain pending.
+
 ## 1.0.0 — v1.0 realignment candidate
 
 See docs/REALIGNMENT_V1.md. This is a software release candidate; hardware/stable gates remain blocked.

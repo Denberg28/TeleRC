@@ -1,3 +1,7 @@
+# TeleRC 1.1.0rc1 — Android manual control and balancing
+
+Wi-Fi, direct LoRa, offline Test and Balance, with the full setup/diagnostic tools. Mission planning is removed. See [current scope, compatibility and validation](docs/ANDROID_CORE_1.1.md). This is an app-only test candidate; hardware validation remains pending.
+
 > **v1.0 realignment candidate:** see [scope, compatibility, validation and rollback](docs/REALIGNMENT_V1.md). Hardware qualification and production authentication are not complete.
 
 # External USB FPV reliability — 0.8.91 candidate
