@@ -1,0 +1,96 @@
+name: Sign TeleRC Go 1.0.5 with retained identity
+on:
+  push:
+    branches: [release/go-sign-v1.0.5]
+    paths: [.github/workflows/go-sign-wallpaper-105.yml]
+permissions:
+  contents: read
+concurrency:
+  group: go-v1-retained-signer
+  cancel-in-progress: false
+jobs:
+  signed-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GO_SOURCE: cfce723beb37b7445dd96725bffdafb31c25ba02
+      CHECKED_APP_SOURCE: 970ad88f54f6b4466b5d2929a16c977c383273e8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Denberg28/telerc_go
+          ref: cfce723beb37b7445dd96725bffdafb31c25ba02
+          path: go-source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"'
+      - name: Verify pinned source and release regression
+        working-directory: go-source
+        run: |
+          test "$(git rev-parse HEAD)" = "$GO_SOURCE"
+          git diff --exit-code "$CHECKED_APP_SOURCE" "$GO_SOURCE" -- go app bridge gradle build.gradle.kts settings.gradle.kts gradle.properties gradlew gradlew.bat
+          python3 -m unittest discover -s scripts -p 'test_*release*.py' -v
+          python3 scripts/sync-go-core.py --check
+          python3 bridge/sync_motor_core.py --check
+          ./gradlew :go:testDebugUnitTest :go:lintDebug :go:lintRelease :go:assembleDebug :go:assembleDebugAndroidTest --no-daemon
+      - name: Build production APK with existing key and verify upgrade identity
+        working-directory: go-source
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELERC_KEYSTORE_BASE64 }}
+          TELERC_KEYSTORE_PASSWORD: ${{ secrets.TELERC_KEYSTORE_PASSWORD }}
+          TELERC_KEY_ALIAS: ${{ secrets.TELERC_KEY_ALIAS }}
+          TELERC_KEY_PASSWORD: ${{ secrets.TELERC_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$TELERC_KEYSTORE_PASSWORD" && test -n "$TELERC_KEY_ALIAS" && test -n "$TELERC_KEY_PASSWORD"
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/go-wallpaper-retained.jks"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/go-wallpaper-retained.jks"
+          export TELERC_KEYSTORE_FILE="$RUNNER_TEMP/go-wallpaper-retained.jks"
+          ./gradlew :go:assembleRelease --no-daemon
+          mkdir -p release-dist
+          cp go/build/outputs/apk/release/go-release.apk release-dist/TeleRC-Go-v1.0.5.apk
+          curl --fail --location --retry 2 https://github.com/Denberg28/telerc_go/releases/download/v1.0.0/TeleRC-Go-v1.0.4.apk --output "$RUNNER_TEMP/go-1.0.4-baseline.apk"
+          python3 scripts/verify_go_wallpaper_release.py release-dist/TeleRC-Go-v1.0.5.apk "$RUNNER_TEMP/go-1.0.4-baseline.apk"
+          python3 scripts/package_go_release_source.py --source-commit "$GO_SOURCE" --output release-dist/telerc_go-v1.0.5-source.zip
+          cp docs/RELEASE_GO_105.md release-dist/RELEASE_NOTES.md
+          cp docs/GO_WALLPAPER_105.md release-dist/WALLPAPER_GUIDE.md
+      - name: Record source, signer and build provenance
+        working-directory: go-source
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path('release-dist')
+          verification=json.loads((out/'APK_VERIFICATION.json').read_text())
+          provenance=dict(source_commit=os.environ['GO_SOURCE'],signing_repository=os.environ['GITHUB_REPOSITORY'],signing_workflow_commit=os.environ['GITHUB_SHA'],signing_workflow_run=int(os.environ['GITHUB_RUN_ID']),signer_sha256=verification['signer_sha256'],channel='prerelease',stable_qualified=False,hardware_validation='BLOCKED')
+          (out/'SIGNING_PROVENANCE.json').write_text(json.dumps(provenance,indent=2)+'\n')
+          lines=[
+              'TeleRC Go 1.0.5 / code 1001 — retained-signer production package',
+              'Source: '+os.environ['GO_SOURCE'],
+              'Signing build: https://github.com/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/'+os.environ['GITHUB_RUN_ID'],
+              'PASS: 23 Go JVM tests; 18 release-source/archive tests; debug/release lint and builds.',
+              'PASS: exact previous APK SHA-256; same production package/signer; increasing code 1001 > 1000.',
+              'PASS: APK alignment, ZIP CRC, permission scope, exact clean source and archive exclusions.',
+              'Native UI/full-app/host evidence: independent Go producer gates required by publication.',
+              'Firmware: unchanged; retain the existing matched firmware; no reflash.',
+              'Actual phone install/gallery providers and restrained-wheel HIL: NOT TESTED/BLOCKED.',
+              'Channel: prerelease; no stable/field qualification.',
+          ]
+          (out/'BUILD_INFO.txt').write_text('\n'.join(lines)+'\n')
+          (out/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in sorted(out.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt'))
+          PY
+          python3 scripts/release_safety.py release-dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TeleRC-Go-v1.0.5-retained-signer
+          path: |
+            go-source/release-dist/
+            go-source/go/build/reports/
+            go-source/go/build/test-results/
+          if-no-files-found: error
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/go-wallpaper-retained.jks"
