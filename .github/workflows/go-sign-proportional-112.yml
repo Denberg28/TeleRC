@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: go-v1-retained-signer
+  group: go-v1.0.12-retained-signer-final
   cancel-in-progress: false
 jobs:
   signed-go:
@@ -57,6 +57,7 @@ jobs:
           s=s.replace('35676a84c704d712e6745cc21146b0bfae2c3c02e06a0d40bf4b97615806dd23','f938cb9f3bd7b182fcf56fdd3f59002f2df2a7905dba8e53df296058412ab2a8')
           s=s.replace('"1007", "1.0.11"','"1008", "1.0.12"').replace('"1006", "1.0.10"','"1007", "1.0.11"')
           s=s.replace('Go 1.0.11/code1007','Go 1.0.12/code1008')
+          s=s.replace('tests=64','tests=68').replace('64 tests','68 tests')
           Path('release-dist/VERIFY_APK.py').write_text(s)
           PY
           python3 release-dist/VERIFY_APK.py release-dist/TeleRC-Go-v1.0.12.apk "$RUNNER_TEMP/baseline.apk"
