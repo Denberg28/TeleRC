@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GO_SOURCE: ee6bb5e8de6c7f4b2c7bfcce76d729904d1e455b
+      GO_SOURCE: 93d9a0cbcab27a86e662f842e85cd0096de1f907
     steps:
       - uses: actions/checkout@v4
         with:
           repository: Denberg28/telerc_go
-          ref: ee6bb5e8de6c7f4b2c7bfcce76d729904d1e455b
+          ref: 93d9a0cbcab27a86e662f842e85cd0096de1f907
           path: go-source
           fetch-depth: 0
           persist-credentials: false
