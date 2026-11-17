@@ -2,302 +2,114 @@ package io.github.denberg28.telerc
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
 import android.os.Bundle
-import android.os.SystemClock
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.Polyline
 import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
-import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.layers.SymbolLayer
-import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.geojson.Feature
-import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.Point
 
-/** Phone branch and measured rover positions are separate layers. Camera moves only at Home/Locate. */
-class RouteMapView(private val context: Context, private val session: RouteSession) {
-    // Display-only map origin before the phone has an accepted GPS fix; never written to a route.
-    private val sampleStart = TrackPoint(13.6218, 123.1948, 0L)
+/** Measured tracks and local waypoints. No inferred position or command transmission. */
+class RouteMapView(context: Context, private val session: RouteSession) {
     val view: MapView
     private var map: MapLibreMap? = null
-    private var homeMarker: Marker? = null
-    private var phoneMarker: Marker? = null
-    private var roverMarker: Marker? = null
-    private var phoneLine: Polyline? = null
-    private var roverLine: Polyline? = null
-    private var estimatedLine: Polyline? = null
-    private var roverSource: GeoJsonSource? = null
-    private var roverLayer: SymbolLayer? = null
-    private var previewSource: GeoJsonSource? = null
-    private var previewLayer: SymbolLayer? = null
-    private var previewPose: RoverPose? = null
-    private var previewOrigin: RoverPose? = null
-    private var previewAnchor: TrackPoint? = null
-    private var livePreviewAnchor: TrackPoint? = null
-    private var showLivePreview = false
-    internal val livePreviewActive: Boolean get() = showLivePreview
-    private var liveAnchorHasRoverFix = false
-    private var previewLine: Polyline? = null
-    private val previewPath = mutableListOf<LatLng>()
-    internal var maxSpeedMetersPerSecond = 2.8
-    private var lastPreviewDraw = 0L
+    private var plan: List<Waypoint> = emptyList()
+    private val waypointMarkers = mutableMapOf<Long, Int>()
     private var centered = false
-    private var requestedPhoneFix: LatLng? = null
+    private var requestedLocate: LatLng? = null
+    private var pendingFit = false
+    var onAddWaypoint: ((Waypoint) -> Unit)? = null
+    var onEditWaypoint: ((Int) -> Unit)? = null
 
     init {
         MapLibre.getInstance(context)
         view = MapView(context)
         view.onCreate(null)
+        view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (pendingFit && view.width > 0 && view.height > 0 && map?.style?.isFullyLoaded == true) fitPlan()
+        }
         view.getMapAsync { ready ->
             map = ready
             ready.uiSettings.isCompassEnabled = true
-            ready.uiSettings.isZoomGesturesEnabled = true
-            ready.uiSettings.isRotateGesturesEnabled = true
-            ready.uiSettings.isScrollGesturesEnabled = true
-            ready.setStyle("https://tiles.openfreemap.org/styles/liberty") { style ->
-                installRoverIcon(style)
+            ready.addOnMapClickListener { point ->
+                onAddWaypoint?.invoke(Waypoint(point.latitude, point.longitude))
+                onAddWaypoint != null
+            }
+            ready.setOnMarkerClickListener { marker ->
+                val index = waypointMarkers[marker.id]
+                if (index != null) onEditWaypoint?.invoke(index)
+                index != null
+            }
+            ready.setStyle("https://tiles.openfreemap.org/styles/liberty") {
                 draw()
+                if (pendingFit) fitPlan()
             }
         }
     }
 
-    private fun installRoverIcon(style: Style) {
-        // Draw a top-down rover pointing north. MapLibre rotates it clockwise by telemetry heading.
-        fun icon(bodyColor: Int): Bitmap {
-        val bitmap = Bitmap.createBitmap(56, 56, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(24, 28, 41) }
-        canvas.drawRoundRect(10f, 10f, 17f, 46f, 3f, 3f, paint)
-        canvas.drawRoundRect(39f, 10f, 46f, 46f, 3f, 3f, paint)
-        paint.color = bodyColor
-        canvas.drawRoundRect(18f, 11f, 38f, 45f, 5f, 5f, paint)
-        paint.color = Color.rgb(178, 232, 239)
-        canvas.drawRect(21f, 17f, 35f, 26f, paint)
-        paint.color = Color.rgb(255, 218, 109)
-        canvas.drawPath(Path().apply { moveTo(28f, 3f); lineTo(18f, 14f); lineTo(38f, 14f); close() }, paint)
-        return bitmap
-        }
-        style.addImage("telerc-rover-heading", icon(AppColors.accent(context)))
-        style.addImage("telerc-preview-heading", icon(Color.rgb(0, 180, 186)))
-        roverSource = GeoJsonSource("telerc-rover-position", FeatureCollection.fromFeatures(arrayOf<Feature>()))
-        style.addSource(roverSource!!)
-        roverLayer = SymbolLayer("telerc-rover-heading-layer", "telerc-rover-position").apply {
-            setProperties(
-                PropertyFactory.iconImage("telerc-rover-heading"),
-                PropertyFactory.iconAllowOverlap(true),
-                PropertyFactory.iconIgnorePlacement(true),
-                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP)
-            )
-        }
-        style.addLayer(roverLayer!!)
-        previewSource = GeoJsonSource("telerc-preview-position", FeatureCollection.fromFeatures(arrayOf<Feature>()))
-        style.addSource(previewSource!!)
-        previewLayer = SymbolLayer("telerc-preview-layer", "telerc-preview-position").apply {
-            setProperties(
-                PropertyFactory.iconImage("telerc-preview-heading"),
-                PropertyFactory.iconOpacity(.75f),
-                PropertyFactory.iconAllowOverlap(true),
-                PropertyFactory.iconIgnorePlacement(true),
-                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP)
-            )
-        }
-        style.addLayer(previewLayer!!)
+    // Map — Only these stored coordinates become planned waypoints; Home remains phone GPS.
+    fun showPlan(points: List<Waypoint>, fit: Boolean = false) {
+        plan = points.toList(); draw()
+        if (fit) fitPlan()
     }
-
-    /** Cyan joystick simulation starts at Home, or at a labeled sample point while GPS is pending. */
-    internal fun updatePreview(pose: RoverPose) {
-        previewPose = pose
-        val now = SystemClock.uptimeMillis()
-        if (now - lastPreviewDraw >= 100L) { lastPreviewDraw = now; drawPreview() }
-    }
-
-    internal fun beginLivePreview() {
-        val recentRover = session.rover.lastOrNull()?.takeIf {
-            kotlin.math.abs(System.currentTimeMillis() - it.timeMs) <= 5_000L
-        }
-        livePreviewAnchor = recentRover ?: session.rover.lastOrNull() ?: session.home ?: sampleStart
-        liveAnchorHasRoverFix = recentRover != null
-        showLivePreview = true
-        previewPose = RoverPose()
-        resetPreview()
-    }
-
-    internal fun endLivePreview() {
-        showLivePreview = false; livePreviewAnchor = null; liveAnchorHasRoverFix = false; previewPose = null
-        resetPreview()
-    }
-
-    internal val sampleAnchorActive: Boolean get() = showLivePreview && livePreviewAnchor == sampleStart
-
-    /** Rebase once on the first measured rover fix; subsequent fixes expose accumulated drift. */
-    internal fun anchorToRoverIfWaiting(point: TrackPoint): Boolean {
-        if (!showLivePreview || liveAnchorHasRoverFix) return false
-        livePreviewAnchor = point; liveAnchorHasRoverFix = true; centered = false
-        session.estimated.clear() // previous anchor was unconfirmed; do not connect it to measured GPS
-        previewPose = RoverPose(); resetPreview()
-        return true
-    }
-
-    internal fun anchorToHomeIfWaiting(): Boolean {
-        val home = session.home ?: return false
-        if (!sampleAnchorActive) return false
-        livePreviewAnchor = home; centered = false
-        session.estimated.clear() // discard the illustrative sample-location path
-        previewPose = RoverPose(); resetPreview()
-        return true
-    }
-
-    private fun drawPreview() {
-        val source = previewSource ?: return
-        val home = livePreviewAnchor ?: session.home ?: sampleStart
-        val pose = previewPose
-        if (pose == null || session.rover.isNotEmpty() && !showLivePreview) {
-            val last = session.estimated.lastOrNull()
-            source.setGeoJson(if (last == null) FeatureCollection.fromFeatures(arrayOf<Feature>())
-                else FeatureCollection.fromFeatures(arrayOf(Feature.fromGeometry(
-                    Point.fromLngLat(last.longitude, last.latitude)))))
-            last?.headingDegrees?.let { previewLayer?.setProperties(PropertyFactory.iconRotate(it.toFloat())) }
-            previewLine?.let { map?.removePolyline(it) }; previewLine = null
-            return
-        }
-        if (previewAnchor != home) {
-            previewAnchor = home; previewOrigin = null; previewPath.clear()
-            previewLine?.let { map?.removePolyline(it) }; previewLine = null
-            previewPath.add(LatLng(home.latitude, home.longitude))
-        }
-        val origin = previewOrigin ?: pose.also { previewOrigin = it }
-        val location = previewLocation(home, origin, pose, maxSpeedMetersPerSecond)
-        source.setGeoJson(FeatureCollection.fromFeatures(arrayOf(Feature.fromGeometry(
-            Point.fromLngLat(location.longitude, location.latitude)))))
-        previewLayer?.setProperties(PropertyFactory.iconRotate(location.headingDegrees.toFloat()))
-        val current = LatLng(location.latitude, location.longitude)
-        val last = previewPath.lastOrNull()
-        // Record estimated movement at one-meter intervals; rotation alone makes no new segment.
-        if (last != null && distanceMeters(last, current) >= 1.0) {
-            previewPath.add(current)
-            if (previewPath.size > 500) previewPath.removeAt(0)
-            if (showLivePreview) {
-                session.addEstimate(TrackPoint(current.latitude, current.longitude,
-                    System.currentTimeMillis(), location.headingDegrees))
-                drawEstimatedLine()
-            }
-            previewLine?.let { map?.removePolyline(it) }
-            previewLine = map?.addPolyline(PolylineOptions().addAll(previewPath)
-                .color(Color.rgb(0, 180, 186)).width(4f))
-        }
-    }
-
     fun draw() {
         val m = map ?: return
         if (m.style?.isFullyLoaded != true) return
-        if (session.home != null && previewAnchor == sampleStart && !showLivePreview) centered = false
-        homeMarker?.let(m::removeMarker); phoneMarker?.let(m::removeMarker)
-        roverMarker?.let(m::removeMarker)
-        phoneLine?.let(m::removePolyline); roverLine?.let(m::removePolyline)
-        drawEstimatedLine()
+        m.clear(); waypointMarkers.clear()
         fun coords(p: TrackPoint) = LatLng(p.latitude, p.longitude)
-        session.home?.let {
-            // The cyan preview marks Home while offline; a pin at the same coordinate obscures its heading.
-            if (session.rover.isNotEmpty() || previewPose == null)
-                homeMarker = m.addMarker(MarkerOptions().position(coords(it)).title("HOME · fixed phone GPS"))
+        session.home?.let { m.addMarker(MarkerOptions().position(coords(it)).title("Phone Home")) }
+        session.phone.lastOrNull()?.let { m.addMarker(MarkerOptions().position(coords(it)).title("Phone GPS")) }
+        session.rover.lastOrNull()?.let { m.addMarker(MarkerOptions().position(coords(it)).title("Last measured rover GPS")) }
+        if (session.phone.size > 1) m.addPolyline(PolylineOptions().addAll(session.phone.map(::coords))
+            .color(Color.rgb(49, 113, 203)).width(3f))
+        if (session.rover.size > 1) m.addPolyline(PolylineOptions().addAll(session.rover.map(::coords))
+            .color(Color.rgb(20, 140, 90)).width(4f))
+        plan.forEachIndexed { index, p ->
+            val marker = m.addMarker(MarkerOptions().position(LatLng(p.latitude, p.longitude)).title("Waypoint ${index + 1}"))
+            waypointMarkers[marker.id] = index
         }
-        if (!centered && view.visibility == android.view.View.VISIBLE && view.width > 0 && view.height > 0) {
-            if (session.rover.isNotEmpty() || session.estimated.isNotEmpty()) locateRecovery()
-            else locateHome()
+        if (plan.size > 1) m.addPolyline(PolylineOptions()
+            .addAll(plan.map { LatLng(it.latitude, it.longitude) }).color(Color.rgb(210, 120, 20)).width(5f))
+        if (!centered) {
             centered = true
+            if (plan.isNotEmpty()) fitPlan() else locateRecovery()
         }
-        requestedPhoneFix?.let { applyPhoneLocate(it) }
-        session.phone.lastOrNull()?.let {
-            if (session.rover.isNotEmpty() || previewPose == null || session.home?.let { home ->
-                    distanceMeters(coords(home), coords(it)) > 5.0 } == true)
-                phoneMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Phone · current fix"))
-        }
-        session.rover.lastOrNull()?.let {
-            if (it.headingDegrees != null) {
-                roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf(
-                    Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)))))
-                roverLayer?.setProperties(PropertyFactory.iconRotate(it.headingDegrees.toFloat()))
-            } else {
-                roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
-                roverMarker = m.addMarker(MarkerOptions().position(coords(it)).title("Rover · heading unavailable"))
-            }
-        }
-        if (session.rover.isEmpty()) roverSource?.setGeoJson(FeatureCollection.fromFeatures(arrayOf<Feature>()))
-        drawPreview()
-        if (session.phone.size > 1) phoneLine = m.addPolyline(
-            PolylineOptions().addAll(session.phone.map(::coords)).color(Color.rgb(49, 113, 203)).width(5f))
-        if (session.rover.size > 1) roverLine = m.addPolyline(
-            PolylineOptions().addAll(session.rover.map(::coords)).color(AppColors.accent(context)).width(6f))
+        requestedLocate?.let { locatePhoneFix(it.latitude, it.longitude) }
     }
-
-    fun locateHome() {
-        val origin = livePreviewAnchor ?: session.home ?: sampleStart
-        map?.cameraPosition = CameraPosition.Builder().target(LatLng(origin.latitude, origin.longitude))
-            .zoom(17.0).build()
-    }
-
-    /** Center on a newly verified phone GPS fix, independent of the fixed route Home. */
     fun locatePhoneFix(latitude: Double, longitude: Double) {
-        requestedPhoneFix = LatLng(latitude, longitude)
-        applyPhoneLocate(requestedPhoneFix!!)
+        requestedLocate = LatLng(latitude, longitude)
+        val m = map ?: return
+        if (m.style?.isFullyLoaded != true) return
+        m.cameraPosition = CameraPosition.Builder().target(requestedLocate).zoom(17.0).build()
+        requestedLocate = null; centered = true
     }
-
-    private fun applyPhoneLocate(target: LatLng) {
-        val ready = map ?: return
-        if (ready.style?.isFullyLoaded != true) return
-        ready.cameraPosition = CameraPosition.Builder().target(target).zoom(17.0).build()
-        centered = true
-        requestedPhoneFix = null
-    }
-
-    /** Recovery priority: measured rover GPS, then last RC estimate, then phone Home. */
     fun locateRecovery() {
-        val last = session.rover.lastOrNull() ?: session.estimated.lastOrNull()
-            ?: livePreviewAnchor ?: session.home ?: sampleStart
-        map?.cameraPosition = CameraPosition.Builder().target(LatLng(last.latitude, last.longitude))
-            .zoom(17.0).build()
+        val last = session.rover.lastOrNull() ?: session.phone.lastOrNull() ?: session.home
+        // Before GPS, this is only a camera origin; it is never stored as Home or a waypoint.
+        locatePhoneFix(last?.latitude ?: 13.6218, last?.longitude ?: 123.1948)
     }
-
-    private fun drawEstimatedLine() {
-        estimatedLine?.let { map?.removePolyline(it) }; estimatedLine = null
-        if (session.estimated.size > 1) estimatedLine = map?.addPolyline(PolylineOptions()
-            .addAll(session.estimated.map { LatLng(it.latitude, it.longitude) })
-            .color(Color.rgb(0, 180, 186)).width(4f))
-    }
-
-    fun reset() {
-        requestedPhoneFix = null; centered = false; previewOrigin = null; previewAnchor = null; previewPath.clear()
-        previewLine?.let { map?.removePolyline(it) }; previewLine = null
-        draw()
-    }
-    internal fun resetPreview() {
-        previewOrigin = null; previewAnchor = null; previewPath.clear()
-        previewLine?.let { map?.removePolyline(it) }; previewLine = null
-        drawPreview()
-    }
-    private fun distanceMeters(a: LatLng, b: LatLng): Double {
-        val lat = Math.toRadians((a.latitude + b.latitude) / 2)
-        val north = (b.latitude - a.latitude) * 111_320.0
-        val east = (b.longitude - a.longitude) * 111_320.0 * kotlin.math.cos(lat)
-        return kotlin.math.hypot(north, east)
+    fun fitPlan() {
+        val m = map
+        if (m == null || m.style?.isFullyLoaded != true || view.width == 0 || view.height == 0) {
+            pendingFit = true
+            view.post { if (view.width > 0 && view.height > 0 && map?.style?.isFullyLoaded == true) fitPlan() }
+            return
+        }
+        pendingFit = false
+        if (plan.isEmpty()) return
+        val coordinates = plan.map { LatLng(it.latitude, it.longitude) }
+        if (coordinates.distinct().size == 1) locatePhoneFix(plan[0].latitude, plan[0].longitude)
+        else m.moveCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(
+            LatLngBounds.Builder().includes(coordinates).build(), (24 * view.resources.displayMetrics.density).toInt()))
     }
     fun onStart() = view.onStart()
     fun onResume() = view.onResume()
     fun onPause() = view.onPause()
     fun onStop() = view.onStop()
-    fun onDestroy() { view.onDestroy(); roverSource = null; roverLayer = null; previewSource = null; previewLayer = null; previewLine = null; estimatedLine = null; map = null }
+    fun onDestroy() { onAddWaypoint = null; onEditWaypoint = null; view.onDestroy(); map = null }
     fun onLowMemory() = view.onLowMemory()
     fun onSaveInstanceState(out: Bundle) = view.onSaveInstanceState(out)
 }

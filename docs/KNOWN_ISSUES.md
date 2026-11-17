@@ -12,3 +12,11 @@ Next: verify the final release `BUILD_INFO.txt` and checksums, then run `docs/TE
 
 
 0.8.53 software-build update: release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c` passed run 37619553457, including retained signing identity, increased code 71, Android tests/debug/release lint/build, full host sanitizers and ten packaged firmware configurations. Actual T3-S3 builds use manufacturer SX1262/SX1276 revisions with QSPI PSRAM/native CDC. This resolves cloud software/packaging gates; local infrastructure limitations and installed-device, native USB, RF/driver timing, PC and HIL limitations remain. Download checksums and BUILD_INFO from v0.8.53; follow `bridge/FIRMWARE_FLASHING.md` before flashing.
+
+
+0.8.54: mission planning is local-only (no onboard upload/execution or AUTO control); TeleRC CSV is not an autopilot mission format. Map tiles depend on internet/cache, while coordinate editing and plan storage remain local. No phone/emulator is attached in this workspace, so layout, document-provider behavior and upgrade remain NOT TESTED until device checks. The local Android SDK/download limits above still apply; cloud build/packaging evidence will be recorded after completion. UI simplification removes old simulated/inferred positions, not saved private track data.
+
+
+17 November 2026 final local update: previous local SDK/JDK/network blockers were resolved for this source review. All 47 JVM tests, final debug APK, debug/release compilation and both lint variants pass (0 errors, 34 warnings). Signed release packaging remains BLOCKED by missing local protected keystore; no replacement signer was generated. Public branch push was rejected by automatic approval review, which requires explicit current-conversation publication authorization. No new branch/PR/release is published. Full local leak checking remains blocked by ptrace; address/undefined checks pass separately. Device/UI, RF, PC and physical gates above remain pending. TESTING.md and STATUS.md contain exact next checks.
+
+Publication authorization update, 17 November 2026: user explicitly authorized push/build/release. The previous automatic-review authorization blocker is resolved; signed CI/packaging evidence is pending.

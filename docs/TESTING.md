@@ -114,3 +114,34 @@ Release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c`, tag [v0.8.53](https:/
 | F — delivery | PASS — prerelease packaging | Signed APK with retained signer and code71>code70, source ZIP, compiled binary ZIP, BUILD_INFO and SHA256SUMS published; installed-device/field validation NOT TESTED |
 
 Next concrete check: manually install over 0.8.52, verify retained settings, flash the matching dedicated motor/BASE/ROVER images with default-layout NVS preserved, and execute provisioning/mapping/loss/recovery HIL. Stable promotion remains blocked.
+
+
+## 0.8.54 single-rover / local planning verification — 17 November 2026
+
+Source baseline `67b2cf5`; branch `simplify-go-lora-missions`; final source is the commit attached to the release BUILD_INFO/CI run. No firmware source changed. Supersedes old Test-map/game UI criteria; control/failsafe and restrained-wheel criteria above remain required.
+
+| Gate | Final local status | Evidence / required follow-up |
+| --- | --- | --- |
+| A — source/build | PASS (build verified, local software scope) | Final Java 17 run: debug APK, debug/release Kotlin compilation and debug/release lint pass. Both lint reports have 0 errors, 34 warnings. Required signed-release packaging remains blocked under F. |
+| B — behavior | BLOCKED (partial automated PASS) | All 47 JVM tests pass (0 failures/errors), including 5 mission tests. Host control/provisioning tests pass. Actual UI/device acceptance checks remain NOT TESTED. |
+| C — regression | PASS (automated scope) | JVM control/heartbeat/LoRa/MAVLink/joystick/route/version and host firmware/parser regression pass. Hardware/actual PC regression is not implied. |
+| D — integration | BLOCKED | Stub protocol tests and Android compilation pass; real document provider, USB/RF, telemetry and actual PC interoperability NOT TESTED. |
+| E — HIL | BLOCKED | No phone/T3-S3/motor hardware attached. Run restrained-wheel procedure above on both transports. |
+| F — delivery | BLOCKED | Debug APK has correct package/code 72/version 0.8.54 and verified debug signature. Release packaging fails because `teleRcRelease.storeFile` is absent locally; existing protected CI signer required. Explicit current-conversation push/build/release approval received on 17 November; protected CI build/package verification now pending. Installation/upgrade/rollback NOT TESTED. |
+
+Final source is the local review commit containing this evidence; no app code changed after this run. Log: [android-final.txt](evidence/2026-11-17/android-final.txt). Environment: checksum-verified Temurin 17.0.21+9, Gradle wrapper 8.11.1, AGP 8.9.2, Kotlin 2.1.20, Android SDK/build tools 35. Initial system-Java/network/SDK blockers were resolved for local checks using the workspace SDK, downloaded JDK and configured environment proxy; cloud publication remains a separate blocker.
+
+Final command: `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:lintRelease :app:assembleRelease --no-daemon` in that configured environment. Unit/debug/lint tasks succeed; overall command exits 1 at `:app:packageRelease`: `SigningConfig "teleRcRelease" is missing required property "storeFile"`. Do not substitute a new signer or weaken the signing check. Use existing release CI after approval.
+
+Host commands: motor-core sync PASS; normal full host suite PASS; firmware packaging tests 3 PASS. Full `SANITIZE=1` is BLOCKED locally by LeakSanitizer ptrace/process-inspection restriction. Separate `ASAN_OPTIONS=detect_leaks=0 SANITIZE=1` PASS verifies address/undefined behavior, not leaks. Firmware source stayed unchanged across these checks; full leak-enabled CI remains required for candidate packaging.
+
+Additional device checks (expected results; NOT TESTED until observations recorded):
+
+1. Start without permissions/network: Controls opens, Connect usable, no control/ARM becomes active. Open Mission: sample area is labeled; coordinates can be added without tiles/GPS. Deny GPS, then grant via Locate phone; phone Home stays distinct from waypoints.
+2. Add 3 map/coordinate points (include negative longitude), edit middle point, move earlier/later, delete, cancel Clear, export CSV, clear, import, cancel/confirm replacement. Close/reopen/rotate/theme switch: plan/order restored exactly. Import NaN/out-of-range/101 points/oversized/bad sequence: current plan unchanged. Picker cancel/unavailable provider/write failure: no crash or false export-success message. Simulate storage failure: saved previous atomic file remains recoverable, failure shown.
+3. On a narrow landscape phone in both themes/large font, header/footer remain available and waypoint list scrolls independently of map. Map/list select the same numbered point; Fit shows all points; no game/servo-assignment/simulation path appears.
+4. With a restrained rover, Enable/ARM/axis release/STOP retains existing outputs. Navigate Controls → Mission while holding a stick: neutral authority revoked immediately; planning sends no waypoint/AUTO/ARM/drive command. Return to Controls/recover heartbeat/reconnect: explicit Enable/ARM as appropriate. Background during coordinate/file dialogs: no motion resumes automatically.
+5. Upgrade signed 0.8.53 → 0.8.54: original track/endpoint/appearance settings survive; no old estimate is shown as GPS. Validate native USB permissions/provisioning and both link paths. Follow all failsafe/latency/endurance tests above before stable promotion.
+
+
+Debug APK SHA-256 (review/testing only, Android Debug certificate; not an upgrade signed with the release identity): `a74ac2c446e3e913e2c8b02160e5827ee75eabea569392e96fe44c9be9ed48c0`.
