@@ -15,3 +15,6 @@ Checks: required host/motor-core/sanitizer commands; JVM plan/control/protocol r
 Rollback: export the mission and preserve private app data/settings before uninstalling. Android cannot normally install an older versionCode over the new one; reinstall retained signed 0.8.53 only after backup, then restore compatible data manually. Firmware is unchanged and must match the installed hardware roles.
 
 TeleRC Go reference commit: `9c3b2d9dac822d698f4b93549d1612c78ebf6e27`.
+
+
+Release inventory correction (17 November): default-branch 0.8.x source was older than the available published v1.1.0rc1/code 1100. Final version is 1.2.0rc1/code 1200. Preserve relevant physical RC permission, standalone neutral dwell, foreground/session send checks, Wi-Fi rebind, strict MAVLink parser, updater checks and steering/drive/expo preferences from published source `03b5b69ff39487678d25a8023c5438a773ca3d51`. The initial 0.8.54 release attempt fails closed on missing historical APK assets and is not a delivered release. Final packaging verifies against available v1.0.0 and v1.1.0rc1. Roll back using retained 1.1.0rc1 after data backup/uninstall as necessary; physical compatibility remains subject to HIL.

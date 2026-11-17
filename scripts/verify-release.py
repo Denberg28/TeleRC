@@ -69,11 +69,11 @@ def main():
         raise RuntimeError("Release package/version differs from source")
     current = signers(apk, tools)
     if current != signers(baseline, tools):
-        raise RuntimeError("Signing identity differs from retained 0.8.50 release")
+        raise RuntimeError("Signing identity differs from retained 1.0.0 release")
     previous_badging = output(str(tools / "aapt"), "dump", "badging", str(previous))
     previous_package = re.search(r"^package: name='([^']+)' versionCode='([^']+)'", previous_badging, re.M)
     if not previous_package or previous_package.group(1) != package.group(1) or int(code) <= int(previous_package.group(2)) or current != signers(previous, tools):
-        raise RuntimeError("Version/signing upgrade from previous 0.8.52 candidate is invalid")
+        raise RuntimeError("Version/signing upgrade from previous 1.1.0rc1 candidate is invalid")
     verify_firmware(firmware, version, os.environ["GITHUB_SHA"])
     tests = failures = errors = skipped = 0
     reports = list(Path("app/build/test-results/testDebugUnitTest").glob("TEST-*.xml"))
@@ -98,8 +98,8 @@ def main():
     print(f"Workflow run: https://github.com/Denberg28/TeleRC/actions/runs/{os.environ['GITHUB_RUN_ID']}")
     print("Application ID: io.github.denberg28.telerc")
     print(f"Signing certificate SHA-256: {', '.join(current)}")
-    print("Signing continuity with published v0.8.50: PASS")
-    print(f"Upgrade identity/version progression from v0.8.52 code {previous_package.group(2)} to code {code}: PASS")
+    print("Signing continuity with published v1.0.0: PASS")
+    print(f"Upgrade identity/version progression from v1.1.0rc1 code {previous_package.group(2)} to code {code}: PASS")
     print(f"JVM tests: {tests} passed, {failures} failures, {errors} errors, {skipped} skipped")
     print("Android debug/release lint: PASS (no errors/fatal issues)")
     print("Host regressions and default ASan/UBSan: PASS (required preceding workflow steps)")

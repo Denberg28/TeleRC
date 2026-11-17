@@ -1,3 +1,12 @@
+## 1.2.0rc1
+
+- Deliver the compact Controls/Mission/Setup/LoRa layout and local 100-waypoint editor prepared during the unpublished 0.8.54 source review below. Mission upload/AUTO/execution are unavailable.
+- Preserve released 1.1.0rc1 safety behavior: fresh physical CH7 permission for FC Wi-Fi, neutral-only enable, repeated queued ARM permission/dwell checks, foreground/captured-session checks on every live send, standalone MiniRover sent-neutral dwell, and safe Wi-Fi network rebind. DISARM remains available after physical permission expires while heartbeat is fresh.
+- Retain independent steering/drive sensitivity and expo preferences and update verification hardening. Removed/unsupported saved link profiles return to Setup with auto-connect off; native ELRS Backpack/balancer profiles are outside this compact build.
+- Use versionCode 1200, above published 1.1.0rc1 code 1100, with the same application/signing identity. Repair release-baseline downloads to the available v1.0.0 and v1.1.0rc1 APKs. Earlier default-branch 0.8.x packaging references were stale; no 0.8.54 release was published.
+- Restore the released FC bridge command/physical-permission checks and host regression. Dedicated motor/LoRa wire format is unchanged. Use the matched legacy FC bridge when applicable and bench-test the installed path.
+- Hardware/device/installation/PC verification remains pending: prerelease only.
+
 ## 0.8.54
 
 - Simplify TeleRC toward TeleRC Go: start on single-rover Controls with Connect, larger steer/drive panels, explicit Enable and ARM/DISARM; shared navigation to Mission, Setup and LoRa setup.

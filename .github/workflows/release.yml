@@ -56,8 +56,8 @@ jobs:
           test -s release-notes.md
           cp app/build/outputs/apk/release/app-release.apk "TeleRC-v${version}.apk"
           git archive --format=zip --output="TeleRC-bridge-v${version}.zip" "$GITHUB_SHA" bridge
-          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.50/TeleRC-v0.8.50.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
-          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v0.8.52/TeleRC-v0.8.52.apk --output "$RUNNER_TEMP/telerc-previous.apk"
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v1.0.0/TeleRC-v1.0.0.apk --output "$RUNNER_TEMP/telerc-baseline.apk"
+          curl --fail --location --retry 2 https://github.com/Denberg28/TeleRC/releases/download/v1.1.0rc1/TeleRC-v1.1.0rc1.apk --output "$RUNNER_TEMP/telerc-previous.apk"
           python scripts/verify-release.py "TeleRC-v${version}.apk" "$RUNNER_TEMP/telerc-baseline.apk" "$RUNNER_TEMP/telerc-previous.apk" "TeleRC-firmware-v${version}.zip" > BUILD_INFO.txt
           sha256sum "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" "TeleRC-firmware-v${version}.zip" BUILD_INFO.txt > SHA256SUMS.txt
           gh release create "v${version}" "TeleRC-v${version}.apk" "TeleRC-bridge-v${version}.zip" "TeleRC-firmware-v${version}.zip" SHA256SUMS.txt BUILD_INFO.txt --title "TeleRC v${version} test candidate" --notes-file release-notes.md --prerelease --latest=false --target "$GITHUB_SHA"

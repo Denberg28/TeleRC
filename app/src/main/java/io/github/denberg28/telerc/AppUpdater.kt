@@ -19,9 +19,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import kotlin.concurrent.thread
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Manual update path for public GitHub releases. No credential is stored in the APK. */
 class AppUpdater(private val activity: Activity, private val report: (String) -> Unit) {
+    private val checking=AtomicBoolean(false)
+    private val verifying=AtomicBoolean(false)
+    @Volatile private var closed=false
     private val downloads = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     private val apk = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "telerc-update.apk")
     private var downloadId = -1L
@@ -30,22 +34,36 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
     private var receiverRegistered = false
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE ||
+            if (downloadId<0 || intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE ||
                 intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
-            val uri = downloads.getUriForDownloadedFile(downloadId)
-            if (uri == null) { report("Update download failed. Try again."); return }
+            if (closed || !verifying.compareAndSet(false,true)) return
+            val id=downloadId
+            val hash=expectedHash
             thread(name = "telerc-verify-update") {
-                val valid = runCatching { verifyApk() }.getOrDefault(false)
+                // Exported completion broadcasts are hints; trust DownloadManager's record.
+                val status=runCatching {
+                    downloads.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                        if(cursor.moveToFirst()) cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) else null
+                    }
+                }.getOrNull()
+                val complete=status==DownloadManager.STATUS_SUCCESSFUL
+                val finished=complete || status==DownloadManager.STATUS_FAILED
+                val uri=if(complete) runCatching {downloads.getUriForDownloadedFile(id)}.getOrNull() else null
+                val valid=complete && uri!=null && hash!=null && runCatching { verifyApk(hash) }.getOrDefault(false)
                 activity.runOnUiThread {
-                    if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-                    if (valid) { pendingInstall = uri; offerInstall() }
-                    else report("Update verification failed. APK discarded.")
+                    verifying.set(false)
+                    if (closed || downloadId!=id || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                    if (!finished) return@runOnUiThread // Forged/early broadcast cannot consume the real completion.
+                    downloadId=-1L; expectedHash=null // One completed verification per download.
+                    if (valid) { pendingInstall=uri; offerInstall() }
+                    else { apk.delete(); report(if(complete) "Update verification failed. APK discarded." else "Update download failed. Try again.") }
                 }
             }
         }
     }
 
     fun check() {
+        if(closed || !checking.compareAndSet(false,true)) return
         report("Checking for updates…")
         thread(name = "telerc-check-update") {
             try {
@@ -60,7 +78,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
                         return@thread
                     }
                     if (connection.responseCode != 200) error("Release check failed: HTTP ${connection.responseCode}")
-                    val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                    val release = JSONObject(connection.inputStream.use(UpdateMetadata::read))
                     val tag = release.getString("tag_name").removePrefix("v")
                     if (compareVersion(tag, BuildConfig.VERSION_NAME) <= 0) {
                         activity.runOnUiThread { report("TeleRC is up to date (${BuildConfig.VERSION_NAME}).") }
@@ -86,7 +104,8 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
                     val downloadUrl = url ?: return@thread
                     val hash = digest ?: return@thread
                     activity.runOnUiThread {
-                        if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                        if (closed || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                        if(!activity.hasWindowFocus()) { report("Version $tag available. Check again when ready."); return@runOnUiThread }
                         AlertDialog.Builder(activity).setTitle("TeleRC $tag available")
                             .setMessage("Download the verified APK and open Android’s installer? Control will disconnect during installation.")
                             .setNegativeButton("Later", null)
@@ -96,11 +115,14 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
                     }
                 } finally { connection.disconnect() }
             } catch (e: Exception) {
-                activity.runOnUiThread { report("Could not check updates. Check internet access.") }
-            }
+                activity.runOnUiThread { if(!closed) report("Could not check updates. Check internet access.") }
+            } finally { checking.set(false) }
         }
     }
     private fun download(url: String, hash: String) {
+        if (closed) return
+        if (verifying.get()) {report("Verifying the current download. Try again shortly.");return}
+        pendingInstall=null
         val parsed = Uri.parse(url)
         if (parsed.scheme != "https" || parsed.host != "github.com" ||
             !parsed.path.orEmpty().startsWith("/Denberg28/TeleRC/releases/download/")) {
@@ -128,8 +150,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
         } catch (e: Exception) { report("Could not start the update download.") }
     }
     @Suppress("DEPRECATION")
-    private fun verifyApk(): Boolean {
-        val expected = expectedHash ?: return false
+    private fun verifyApk(expected:String): Boolean {
         if (!apk.isFile || apk.length() !in 100_000L..100_000_000L) return false
         val digest = MessageDigest.getInstance("SHA-256")
         apk.inputStream().buffered().use { input ->
@@ -177,6 +198,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
         } catch (e: Exception) { report("Android could not open the APK installer.") }
     }
     fun close() {
+        closed=true
         if (receiverRegistered) { activity.unregisterReceiver(receiver); receiverRegistered = false }
     }
 }

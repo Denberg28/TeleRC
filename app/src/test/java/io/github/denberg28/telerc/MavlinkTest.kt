@@ -115,4 +115,45 @@ class MavlinkTest {
         payload[26] = 0xff.toByte(); payload[27] = 0xff.toByte()
         assertNull(Mavlink.globalPosition(frame())?.headingDegrees)
     }
+    private fun incoming(id:Int,payload:ByteArray,v2:Boolean=true,component:Int=1,flags:Int=0):ByteArray {
+        val header=if(v2) byteArrayOf(253.toByte(),payload.size.toByte(),flags.toByte(),0,1,1,component.toByte(),id.toByte(),0,0)
+            else byteArrayOf(254.toByte(),payload.size.toByte(),1,1,component.toByte(),id.toByte())
+        var crc=65535
+        for(value in (header+payload).drop(1).map{it.toInt() and 255}+mapOf(0 to 50,77 to 143,33 to 104).getValue(id)) {
+            var t=(value xor (crc and 255)) and 255;t=(t xor (t shl 4)) and 255
+            crc=((crc ushr 8) xor (t shl 8) xor (t shl 3) xor (t ushr 4)) and 65535
+        }
+        return header+payload+byteArrayOf(crc.toByte(),(crc ushr 8).toByte())
+    }
+    @Test fun unsupportedFlagsAndOtherComponentsCannotSupplyTelemetry() {
+        val ack=byteArrayOf(0x90.toByte(),1,0)
+        val position=ByteArray(28).apply {this[4]=1}
+        for(flags in listOf(1,2,4,128,255)) {
+            assertNull(Mavlink.heartbeat(incoming(0,ByteArray(9),flags=flags)))
+            assertNull(Mavlink.commandAck(incoming(77,ack,flags=flags)))
+            assertNull(Mavlink.globalPosition(incoming(33,position,flags=flags)))
+        }
+        for(v2 in listOf(false,true)) {
+            assertNotNull(Mavlink.commandAck(incoming(77,ack,v2)))
+            assertNotNull(Mavlink.globalPosition(incoming(33,position,v2)))
+            assertNull(Mavlink.commandAck(incoming(77,ack,v2,component=190)))
+            assertNull(Mavlink.globalPosition(incoming(33,position,v2,component=190)))
+            assertNull(Mavlink.heartbeat(incoming(0,ByteArray(9),v2)+byteArrayOf(0)))
+            assertNull(Mavlink.commandAck(incoming(77,ack,v2)+byteArrayOf(0)))
+            assertNull(Mavlink.globalPosition(incoming(33,position,v2)+byteArrayOf(0)))
+        }
+    }
+    @Test fun v2TrailingZerosAreRestoredButInvalidLengthsAndForeignAckTargetsFail() {
+        val ack=Mavlink.commandAck(incoming(77,byteArrayOf(0x90.toByte(),1)))!!
+        assertEquals(400,ack.command);assertEquals(0,ack.result)
+        val position=ByteArray(12).apply {this[4]=1}
+        assertEquals(0.0,Mavlink.globalPosition(incoming(33,position))!!.headingDegrees!!,0.0)
+        assertNull(Mavlink.globalPosition(incoming(33,position,v2=false)))
+        assertNull(Mavlink.globalPosition(incoming(33,ByteArray(29))))
+        assertNull(Mavlink.commandAck(incoming(77,ByteArray(11))))
+        for(target in listOf(1,254)) {
+            assertNull(Mavlink.commandAck(incoming(77,ByteArray(10).apply {this[8]=target.toByte()})))
+            assertNull(Mavlink.commandAck(incoming(77,ByteArray(10).apply {this[9]=target.toByte()})))
+        }
+    }
 }
