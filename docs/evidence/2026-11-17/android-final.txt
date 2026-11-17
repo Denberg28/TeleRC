@@ -1,0 +1,216 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:buildKotlinToolingMetadata
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:generateReleaseBuildConfig
+> Task :app:generateReleaseResValues
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :app:parseReleaseLocalResources
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:preReleaseUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileRelease
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:desugarReleaseFileDependencies
+> Task :app:mergeReleaseStartupProfile
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseArtProfile
+> Task :app:mergeReleaseNativeLibs
+> Task :app:mergeReleaseResources
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libmaplibre.so.
+
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:processReleaseResources
+> Task :app:collectReleaseDependencies
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:optimizeReleaseResources
+> Task :app:mergeExtDexRelease
+
+> Task :app:compileDebugKotlin
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:222:31 'val systemWindowInsetLeft: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:222:67 'val systemWindowInsetTop: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:223:32 'val systemWindowInsetRight: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:223:72 'val systemWindowInsetBottom: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:251:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:252:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:253:26 'var systemUiVisibility: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:253:74 'static field SYSTEM_UI_FLAG_LIGHT_STATUS_BAR: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:253:114 'static field SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:1126:37 'val allNetworks: Array<(out) Network!>' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:7:8 'class MarkerOptions : BaseMarkerOptions<Marker!, MarkerOptions!>, Parcelable' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:8:8 'class PolylineOptions : Any, Parcelable' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:41:19 'fun setOnMarkerClickListener(p0: MapLibreMap.OnMarkerClickListener?): Unit' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:61:11 'fun clear(): Unit' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:63:31 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:63:41 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:64:45 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:64:55 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:65:45 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:65:55 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:66:39 'fun addPolyline(p0: PolylineOptions): Polyline' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:66:51 'constructor(): PolylineOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:68:39 'fun addPolyline(p0: PolylineOptions): Polyline' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:68:51 'constructor(): PolylineOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:71:28 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:71:38 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:74:30 'fun addPolyline(p0: PolylineOptions): Polyline' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:74:42 'constructor(): PolylineOptions' is deprecated. Deprecated in Java.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:generateDebugLintReportModel
+
+> Task :app:compileReleaseKotlin
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:222:31 'val systemWindowInsetLeft: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:222:67 'val systemWindowInsetTop: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:223:32 'val systemWindowInsetRight: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:223:72 'val systemWindowInsetBottom: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:251:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:252:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:253:26 'var systemUiVisibility: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:253:74 'static field SYSTEM_UI_FLAG_LIGHT_STATUS_BAR: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:253:114 'static field SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR: Int' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/MainActivity.kt:1126:37 'val allNetworks: Array<(out) Network!>' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:7:8 'class MarkerOptions : BaseMarkerOptions<Marker!, MarkerOptions!>, Parcelable' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:8:8 'class PolylineOptions : Any, Parcelable' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:41:19 'fun setOnMarkerClickListener(p0: MapLibreMap.OnMarkerClickListener?): Unit' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:61:11 'fun clear(): Unit' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:63:31 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:63:41 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:64:45 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:64:55 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:65:45 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:65:55 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:66:39 'fun addPolyline(p0: PolylineOptions): Polyline' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:66:51 'constructor(): PolylineOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:68:39 'fun addPolyline(p0: PolylineOptions): Polyline' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:68:51 'constructor(): PolylineOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:71:28 'fun addMarker(p0: MarkerOptions): Marker' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:71:38 'constructor(): MarkerOptions' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:74:30 'fun addPolyline(p0: PolylineOptions): Polyline' is deprecated. Deprecated in Java.
+w: file:///workspace/scratch/d84aa2516566/TeleRC/app/src/main/java/io/github/denberg28/telerc/RouteMapView.kt:74:42 'constructor(): PolylineOptions' is deprecated. Deprecated in Java.
+
+> Task :app:generateDebugAndroidTestLintModel
+> Task :app:generateDebugUnitTestLintModel
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:mergeProjectDexDebug
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:generateReleaseLintReportModel
+> Task :app:bundleReleaseClassesToCompileJar
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:dexBuilderRelease
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+> Task :app:generateReleaseUnitTestLintModel
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:processReleaseJavaRes
+> Task :app:mergeReleaseJavaResource
+> Task :app:mergeDexRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:lintAnalyzeDebug
+> Task :app:lintAnalyzeDebugAndroidTest
+> Task :app:lintAnalyzeDebugUnitTest
+
+> Task :app:lintReportDebug
+Wrote HTML report to file:///workspace/scratch/d84aa2516566/TeleRC/app/build/reports/lint-results-debug.html
+
+> Task :app:lintDebug
+The Daemon will expire after the build after running out of JVM Metaspace.
+The project memory settings are likely not configured or are configured to an insufficient value.
+The daemon will restart for the next build, which may increase subsequent build times.
+These settings can be adjusted by setting 'org.gradle.jvmargs' in 'gradle.properties'.
+The currently configured max heap space is '512 MiB' and the configured max metaspace is '384 MiB'.
+For more information on how to set these values, please refer to https://docs.gradle.org/8.11.1/userguide/build_environment.html#sec:configuring_jvm_memory in the Gradle documentation.
+To disable this warning, set 'org.gradle.daemon.performance.disable-logging=true'.
+> Task :app:lintAnalyzeRelease
+> Task :app:lintAnalyzeReleaseUnitTest
+
+> Task :app:lintReportRelease
+Wrote HTML report to file:///workspace/scratch/d84aa2516566/TeleRC/app/build/reports/lint-results-release.html
+
+> Task :app:lintRelease
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease SKIPPED
+> Task :app:lintVitalRelease SKIPPED
+> Task :app:packageRelease FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:packageRelease'.
+> A failure occurred while executing com.android.build.gradle.tasks.PackageAndroidArtifact$IncrementalSplitterRunnable
+   > SigningConfig "teleRcRelease" is missing required property "storeFile".
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 24s
+105 actionable tasks: 69 executed, 36 up-to-date

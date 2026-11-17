@@ -41,8 +41,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private enum class Page { SETUP, CONTROLS, TEST_DRIVE, LORA }
-    private var page = Page.SETUP
+    private enum class Page { SETUP, CONTROLS, MISSION, LORA }
+    private var page = Page.CONTROLS
     @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
     private var loraStatus: TextView? = null
@@ -100,21 +100,16 @@ class MainActivity : Activity() {
     private var connect: Button? = null
     private var enable: Button? = null
     private var armButton: Button? = null
-    private val functionButtons = mutableMapOf<String, Button>()
     private var steeringStick: JoystickView? = null
     private var driveStick: JoystickView? = null
-    private var testCourse: TestDriveView? = null
     private val route = RouteSession()
+    private var mission = MissionPlan()
+    private var planner: MissionPlannerView? = null
+    private val documentBusy = AtomicBoolean(false)
     private var routeMap: RouteMapView? = null
     private var routeStatus: TextView? = null
     private var mapBadge: TextView? = null
-    private var musicButton: Button? = null
-    private var controlsPlaceholder: View? = null
-    private var controlsLocate: Button? = null
-    private var controlsEstimate: TextView? = null
-    private val deadReckoning = DeadReckoning()
     private var mapActive = false
-    private var showTestMap = true
     private var locationPermissionRequested = false
     private var pendingPhoneLocate = false
     private var started = false
@@ -124,7 +119,6 @@ class MainActivity : Activity() {
         if (!mapActive || !location.hasAccuracy() ||
             SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos !in 0L..10_000_000_000L) return@LocationListener
         if (route.addPhone(TrackPoint(location.latitude, location.longitude, location.time), location.accuracy)) {
-            if (routeMap?.anchorToHomeIfWaiting() == true) deadReckoning.reset()
             updateRoute()
         }
         if (pendingPhoneLocate && location.accuracy.isFinite() && location.accuracy in 0f..50f &&
@@ -182,21 +176,21 @@ class MainActivity : Activity() {
                 route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() })
         } catch (_: Exception) {}
         updater = AppUpdater(this) { updateStatus?.text = it }
-        // Dedicated ARM/DISARM replaces the former Servo button. F1-F3 remain
-        // exclusively available for external servo output assignments.
-        val servoPrefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
-        servoPrefs.edit().apply {
-            remove("Servo")
-            for (label in listOf("F1", "F2", "F3")) {
-                if (servoPrefs.getInt(label, 0) < 0) putInt(label, 0)
-            }
-        }.apply()
+        try {
+            val file = android.util.AtomicFile(getFileStreamPath("mission.csv"))
+            mission = MissionPlan.decode(file.openRead().bufferedReader().use { it.readTextBounded(MissionPlan.MAX_CSV_CHARS) })
+        } catch (_: java.io.FileNotFoundException) {
+            // A fresh install has no plan yet.
+        } catch (_: Exception) {
+            Toast.makeText(this, "Saved mission could not be read. Import a backup to recover it.", Toast.LENGTH_LONG).show()
+        }
         wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
-            "TEST_DRIVE" -> Page.TEST_DRIVE
+            "TEST_DRIVE", "MISSION" -> Page.MISSION
             "LORA" -> Page.LORA
-            else -> Page.SETUP
+            "SETUP" -> Page.SETUP
+            else -> Page.CONTROLS
         }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         render()
@@ -205,12 +199,12 @@ class MainActivity : Activity() {
         outState.putString("page", page.name); super.onSaveInstanceState(outState)
     }
     override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig); disableControl(); testCourse?.stop(); releaseMap(); render()
+        super.onConfigurationChanged(newConfig); disableControl(); releaseMap(); render()
     }
     private fun switchTo(next: Page) {
         if (page == next) return
         disableControl()
-        testCourse?.stop(); testCourse = null; releaseMap()
+        releaseMap()
         page = next
         val orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         requestedOrientation = orientation
@@ -238,36 +232,29 @@ class MainActivity : Activity() {
             PopupMenu(this, anchor).apply {
                 menu.add(0, 1, 0, "Setup")
                 menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test drive")
+                menu.add(0, 3, 2, "Mission")
                 menu.add(0, 4, 3, "LoRa setup")
                 setOnMenuItemClickListener { item ->
-                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; 4 -> Page.LORA; else -> Page.TEST_DRIVE })
+                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; 4 -> Page.LORA; else -> Page.MISSION })
                     true
                 }
             }.show()
         }
         return anchor
     }
-    private fun controlColumn(top: View, joystick: View): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(top, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(8) })
-        addView(joystick, LinearLayout.LayoutParams(-1, 0, 1f))
-    }
-
     private fun render() {
         hideLoRaKey()
         loraStatus = null
         loraRead = null; loraSave = null; loraOperate = null; loraLinkStatus = null
         loraKey = null; loraReveal = null; loraFingerprint = null
-        armButton = null
-        functionButtons.clear()
+        armButton = null; status = null; updateStatus = null
         window.statusBarColor = pale
         window.navigationBarColor = pale
         window.decorView.systemUiVisibility = if (darkTheme) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         when (page) {
             Page.SETUP -> renderSetup()
             Page.CONTROLS -> renderControls()
-            Page.TEST_DRIVE -> renderTestDrive()
+            Page.MISSION -> renderMission()
             Page.LORA -> renderLoRa()
         }
         refreshUi()
@@ -286,19 +273,10 @@ class MainActivity : Activity() {
         contentDescription = "${armCaption()} rover"
     }
 
-    private fun functionCaption(label: String): String {
-        val assignment = getSharedPreferences("servo_assignments", MODE_PRIVATE).getInt(label, 0)
-        return if (assignment == 0) label else "$label · $assignment"
-    }
-
-    private fun refreshFunctionButtons() {
+    private fun refreshArmButton() {
         armButton?.apply {
             text = armCaption()
             contentDescription = "${armCaption()} rover"
-        }
-        functionButtons.forEach { (label, control) ->
-            control.text = functionCaption(label)
-            control.contentDescription = "Assign external servo output to $label"
         }
     }
     private fun sendControlHandoverBlocking(
@@ -328,11 +306,6 @@ class MainActivity : Activity() {
             controlEnabled.disable()
             steering = 1500
             drive = 1500
-        }
-        if (page == Page.CONTROLS && mapActive) {
-            deadReckoning.hold()
-            controlsEstimate?.text = "RC STOPPED · last estimate frozen"
-            updateRoute()
         }
         steeringStick?.isEnabled = false
         driveStick?.isEnabled = false
@@ -408,33 +381,6 @@ class MainActivity : Activity() {
                 }
             }
         }
-    }
-    private fun servoAssignmentButton(label: String): Button {
-        require(label in listOf("F1", "F2", "F3"))
-        val prefs = getSharedPreferences("servo_assignments", MODE_PRIVATE)
-        lateinit var control: Button
-        fun showAssignment() {
-            val labels = listOf("F1", "F2", "F3")
-            val available = listOf(0) + (1..16).filter { output ->
-                output !in 5..8 && labels.none { it != label && prefs.getInt(it, 0) == output }
-            }
-            val names = available.map { if (it == 0) "Unassigned" else "Servo output $it" }.toTypedArray()
-            val current = prefs.getInt(label, 0).takeIf { it in available } ?: 0
-            AlertDialog.Builder(this).setTitle("$label external servo assignment")
-                .setSingleChoiceItems(names, available.indexOf(current)) { dialog, index ->
-                    prefs.edit().putInt(label, available[index]).apply()
-                    refreshFunctionButtons()
-                    dialog.dismiss()
-                }
-                .setView(text("External servo only · M5–M8 reserved for rover drive outputs", 12f, muted)
-                    .apply { setPadding(dp(16), dp(8), dp(16), dp(8)) })
-                .setNegativeButton("Close", null).show()
-        }
-        control = button(functionCaption(label)) { showAssignment() }
-        control.textSize = 11f
-        functionButtons[label] = control
-        refreshFunctionButtons()
-        return control
     }
     private fun hideLoRaKey() {
         loraKey?.transformationMethod = PasswordTransformationMethod.getInstance()
@@ -686,18 +632,7 @@ class MainActivity : Activity() {
             if (usbMode) addView(text("USB OTG → T3-S3 base → LoRa", 12f, muted),
                 LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
             else addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
-            connect = button("Connect") {
-                if (wantsLink) {
-                    wantsLink = false
-                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
-                    reconnectHandler.removeCallbacks(reconnect)
-                    stop(explicitDisconnect = true)
-                } else {
-                    wantsLink = true
-                    getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
-                    start(); scheduleReconnect()
-                }
-            }
+            connect = button("Connect") { toggleConnection() }
             addView(connect, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
         }
         left.addView(connection, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
@@ -765,85 +700,56 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
+    // UI — Single-rover controls. Edit panel weights for joystick/map space, not channel mapping.
     private fun renderControls() {
-        host = null; port = null; connect = null
+        host = null; port = null
         val root = shell()
-        status = text("DISCONNECTED", 12f, accent, true).apply { gravity = Gravity.CENTER }
-        lateinit var pages: Button
-        pages = button("Controls ▾", true) {
-            PopupMenu(this, pages).apply {
-                menu.add(0, 1, 0, "Setup")
-                menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test drive")
-                menu.add(0, 4, 3, "LoRa setup")
-                setOnMenuItemClickListener { item ->
-                    when (item.itemId) {
-                        1 -> switchTo(Page.SETUP)
-                        2 -> Unit
-                        3 -> switchTo(Page.TEST_DRIVE)
-                        4 -> switchTo(Page.LORA)
-                    }
-                    true
-                }
-            }.show()
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(pageDropdown("Controls"), LinearLayout.LayoutParams(dp(130), dp(48)))
+        status = text("DISCONNECTED", 12f, accent, true).apply {
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        val arm = armDisarmButton()
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        fun control(title: String, hint: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
+        header.addView(status, LinearLayout.LayoutParams(0, dp(48), 1f))
+        connect = button("Connect", false) { toggleConnection() }
+        header.addView(connect, LinearLayout.LayoutParams(dp(120), dp(48)))
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
+
+        val row = LinearLayout(this)
+        fun control(title: String, vertical: Boolean, changed: (Int) -> Unit): Pair<LinearLayout, JoystickView> {
             lateinit var stick: JoystickView
             val panel = card().apply {
                 setPadding(dp(8), dp(8), dp(8), dp(8))
-                addView(text(title, 13f, ink, true).apply { gravity = Gravity.CENTER })
-                val feedback = text("$hint  ·  1500", 11f, muted).apply { gravity = Gravity.CENTER }
+                val feedback = text(title, 14f, ink, true)
                 addView(feedback)
                 stick = JoystickView(this@MainActivity, vertical) { value ->
                     if (controlEnabled.get() || value == 1500) {
                         changed(value)
-                        feedback.text = "$hint  ·  $value"
+                        feedback.text = "$title · ${((value - 1500) / 4)}%"
                     }
                 }
                 addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
             }
             return panel to stick
         }
-        val (steerPanel, steerInput) = control("STEER", "CH1 · left / right", false) { steering = it }
-        val (drivePanel, driveInput) = control("DRIVE", "CH2 · forward / reverse", true) { drive = it }
+        val (steerPanel, steerInput) = control("STEER", false) { steering = it }
+        val (drivePanel, driveInput) = control("DRIVE", true) { drive = it }
         steeringStick = steerInput; driveStick = driveInput
-        val actions = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            val scene = FrameLayout(this@MainActivity)
-            controlsPlaceholder = text("Rover · CH1 / CH2\n\nEnable control to show recovery map", 12f, muted).apply {
-                gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
-            }
-            scene.addView(controlsPlaceholder, FrameLayout.LayoutParams(-1, -1))
-            val map = RouteMapView(this@MainActivity, route)
-            map.maxSpeedMetersPerSecond = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-                .getFloat("max_m_s", 2.8f).coerceIn(.1f, 30f).toDouble()
-            routeMap = map
-            map.view.visibility = View.GONE
-            scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
-            val badge = text("CYAN · ESTIMATE FROM SENT RC", 10f, ink, true).apply {
-                background = shape(surface, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
-                visibility = View.GONE
-            }
-            mapBadge = badge
-            scene.addView(badge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT)
-                .apply { leftMargin = dp(4); topMargin = dp(4) })
-            controlsLocate = button("⌖", false) { locatePhone() }.apply {
-                contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
-            }
-            scene.addView(controlsLocate, FrameLayout.LayoutParams(dp(36), dp(34), Gravity.TOP or Gravity.RIGHT)
-                .apply { rightMargin = dp(4); topMargin = dp(4) })
-            controlsEstimate = text("EST 0 m · H 0° · 0 m/s", 10f, ink, true).apply {
-                background = shape(surface, 8); setPadding(dp(5), dp(2), dp(5), dp(2))
-                visibility = View.GONE
-            }
-            scene.addView(controlsEstimate, FrameLayout.LayoutParams(-2, dp(25), Gravity.BOTTOM or Gravity.RIGHT)
-                .apply { rightMargin = dp(4); bottomMargin = dp(4) })
-            if (started) map.onStart()
-            if (resumed) map.onResume()
-            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
+        row.addView(steerPanel, LinearLayout.LayoutParams(0, -1, 2f).apply { rightMargin = dp(8) })
+        val scene = FrameLayout(this)
+        val map = RouteMapView(this, route)
+        routeMap = map; mapActive = true
+        scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
+        mapBadge = text("NO ROVER GPS", 11f, ink, true).apply {
+            background = shape(surface, 8); setPadding(dp(8), dp(4), dp(8), dp(4))
         }
+        scene.addView(mapBadge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+        scene.addView(button("⌖", false) { locatePhone() }.apply {
+            contentDescription = "Locate phone GPS; grant permission while control is stopped"
+        }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM or Gravity.RIGHT))
+        row.addView(scene, LinearLayout.LayoutParams(0, -1, 3f).apply { rightMargin = dp(8) })
+        row.addView(drivePanel, LinearLayout.LayoutParams(0, -1, 2f))
+        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+        val footer = LinearLayout(this)
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (synchronized(commandLock) {
                 val allowed = controlEnabled.enable(target, heartbeatAt, SystemClock.elapsedRealtime())
@@ -851,322 +757,90 @@ class MainActivity : Activity() {
                 allowed
             }) {
                 steeringStick?.isEnabled = true; driveStick?.isEnabled = true
-                if (!mapActive) setControlsMapVisible(true) else {
-                    deadReckoning.hold()
-                    if (routeMap?.livePreviewActive != true) routeMap?.beginLivePreview()
-                    controlsEstimate?.text = "RC ACTIVE · estimate resumes with sent frames"
-                }
                 refreshUi()
-            } else {
-                android.widget.Toast.makeText(this,
-                    "Waiting for rover heartbeat. Check bridge Wi-Fi, UART RX/TX and SERIAL3 settings.",
-                    android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        row.addView(controlColumn(pages, steerPanel), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        row.addView(actions, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
-        row.addView(controlColumn(arm, drivePanel), LinearLayout.LayoutParams(0, -1, 1f))
-        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        // Three-zone footer keeps link state centered and prevents control buttons from
-        // entering its space on narrow landscape screens.
-        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val leftSlot = LinearLayout(this).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL }
-        enable?.textSize = 13f
-        leftSlot.addView(enable, LinearLayout.LayoutParams(dp(156), -1))
-        toolbar.addView(leftSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        status?.apply {
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        toolbar.addView(status, LinearLayout.LayoutParams(dp(156), -1))
-        val rightSlot = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
-        for (label in listOf("F1", "F2", "F3")) {
-            rightSlot.addView(servoAssignmentButton(label),
-                LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
-        }
-        toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
+        footer.addView(enable, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+        footer.addView(armDisarmButton(), LinearLayout.LayoutParams(0, dp(48), 1f))
+        root.addView(footer, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
         setContentView(root)
-        if (route.rover.isNotEmpty() || route.estimated.isNotEmpty()) showRecoveryMap()
-        updateRoute()
-        // Ask while controls are still disabled; a permission dialog must never interrupt driving.
-        if (!locationPermissionRequested && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            locationPermissionRequested = true
-            root.post {
-                if (page == Page.CONTROLS && !controlEnabled.get())
-                    requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
-            }
-        }
+        if (started) map.onStart()
+        if (resumed) map.onResume()
+        startPhoneLocation(); updateRoute()
     }
-    private fun setControlsMapVisible(visible: Boolean) {
-        if (page != Page.CONTROLS) return
-        mapActive = visible
-        routeMap?.view?.visibility = if (visible) View.VISIBLE else View.GONE
-        controlsPlaceholder?.visibility = if (visible) View.GONE else View.VISIBLE
-        controlsLocate?.visibility = if (visible) View.VISIBLE else View.GONE
-        controlsEstimate?.visibility = if (visible) View.VISIBLE else View.GONE
-        mapBadge?.visibility = if (visible) View.VISIBLE else View.GONE
-        if (visible) {
-            deadReckoning.reset()
-            controlsEstimate?.text = "DISP 0 m · H 0° · 0 m/s"
-            deadReckoning.turnDegreesPerSecond = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-                .getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
-            routeMap?.beginLivePreview()
-            startPhoneLocation()
-            routeMap?.view?.post { routeMap?.draw() }
-            updateRoute()
+
+    private fun toggleConnection() {
+        if (wantsLink) {
+            wantsLink = false
+            getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", false).apply()
+            reconnectHandler.removeCallbacks(reconnect)
+            stop(explicitDisconnect = true)
         } else {
-            stopPhoneLocation(); deadReckoning.reset(); routeMap?.endLivePreview()
+            wantsLink = true
+            getSharedPreferences("link", MODE_PRIVATE).edit().putBoolean("auto_connect", true).apply()
+            start(); scheduleReconnect()
         }
     }
 
-    private fun showRecoveryMap() {
-        mapActive = true
-        routeMap?.view?.visibility = View.VISIBLE
-        controlsPlaceholder?.visibility = View.GONE
-        controlsLocate?.visibility = View.VISIBLE
-        controlsEstimate?.visibility = View.VISIBLE
-        controlsEstimate?.text = "RC STOPPED · last estimate frozen"
-        mapBadge?.visibility = View.VISIBLE
-        startPhoneLocation()
-        routeMap?.view?.post { routeMap?.draw() }
-    }
-    private fun renderTestDrive() {
+    // Mission — Local planning only. No planner callback can issue motor or autopilot commands.
+    private fun renderMission() {
         host = null; port = null; connect = null; enable = null
         steeringStick = null; driveStick = null
         val root = shell()
-        lateinit var pages: Button
-        pages = button("Test drive ▾", true) {
-            PopupMenu(this, pages).apply {
-                menu.add(0, 1, 0, "Setup")
-                menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Test drive")
-                menu.add(0, 4, 3, "LoRa setup")
-                setOnMenuItemClickListener { item ->
-                    when (item.itemId) {
-                        1 -> switchTo(Page.SETUP)
-                        2 -> switchTo(Page.CONTROLS)
-                        4 -> switchTo(Page.LORA)
-                    }
-                    true
-                }
-            }.show()
-        }
-        status = text("DISCONNECTED", 11f, accent, true).apply { gravity = Gravity.CENTER }
-        lateinit var bottom: LinearLayout
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val course = TestDriveView(this)
-        testCourse = course
-        val vehiclePrefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-        course.maxYawRateDegrees = vehiclePrefs.getFloat("turn_deg_s", 220f).coerceIn(10f, 360f)
-        val left = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            addView(text("STEER", 16f, ink, true).apply { gravity = Gravity.CENTER })
-            addView(text("CH1  ·  left / right", 11f, muted).apply { gravity = Gravity.CENTER })
-            val stick = JoystickView(this@MainActivity, false) { course.setSteering(it) }
-            stick.isEnabled = true
-            addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
-        }
-        row.addView(controlColumn(pages, left), LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        val middle = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            val scene = FrameLayout(this@MainActivity)
-            scene.addView(course, FrameLayout.LayoutParams(-1, -1))
-            val map = RouteMapView(this@MainActivity, route)
-            map.maxSpeedMetersPerSecond = vehiclePrefs.getFloat("max_m_s", 2.8f).coerceIn(.1f, 30f).toDouble()
-            routeMap = map
-            course.onTestPose = { pose -> if (mapActive) map.updatePreview(pose) }
-            map.view.visibility = View.GONE
-            scene.addView(map.view, FrameLayout.LayoutParams(-1, -1))
-            mapBadge = text("CYAN ROVER · OFFLINE PREVIEW", 10f, ink, true).apply {
-                background = shape(surface, 8)
-                setPadding(dp(6), dp(2), dp(6), dp(2))
-                visibility = View.GONE
-                contentDescription = "Vehicle settings: name, estimated maximum speed and turn rate"
-                setOnClickListener { editTestVehicle(course, map) }
-            }
-            scene.addView(mapBadge, FrameLayout.LayoutParams(-2, dp(25), Gravity.TOP or Gravity.LEFT).apply {
-                leftMargin = dp(6); topMargin = dp(6)
-            })
-            if (started) map.onStart()
-            if (resumed) map.onResume()
-            addView(scene, LinearLayout.LayoutParams(-1, 0, 1f))
-            bottom = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            var testMode = false
-            val modeButton = button("Test", false) { }
-            modeButton.contentDescription = "Open Test mode; tap again to return to Game"
-            modeButton.textSize = 12f
-            bottom.addView(modeButton, LinearLayout.LayoutParams(dp(62), dp(36)).apply { rightMargin = dp(4) })
-            routeStatus = text("", 11f, muted)
-            val locate = button("⌖", false) { locatePhone() }.apply {
-                contentDescription = "Get phone GPS and center map on current phone position"; visibility = View.GONE
-            }
-            lateinit var viewMode: Button
-            viewMode = button(if (showTestMap) "SIM" else "MAP", false) {
-                showTestMap = !showTestMap
-                mapActive = showTestMap
-                course.visibility = if (showTestMap) View.GONE else View.VISIBLE
-                map.view.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                mapBadge?.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                if (showTestMap) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
-                locate.visibility = if (showTestMap) View.VISIBLE else View.GONE
-                viewMode.text = if (showTestMap) "SIM" else "MAP"
-            }.apply { visibility = View.GONE }
-            // The switch also exposes the offline simulator without sending commands.
-            viewMode.textSize = 12f
-            bottom.addView(viewMode, LinearLayout.LayoutParams(dp(52), dp(36)).apply { rightMargin = dp(4) })
-            val reset = button("Reset", false) {
-                if (mapActive) {
-                    route.reset(); map.reset(); updateRoute(); locatePhone()
-                } else course.resetCourse()
-            }.apply { contentDescription = "Clear route and choose new Home from next GPS fix"; visibility = View.GONE }
-            bottom.addView(locate, LinearLayout.LayoutParams(dp(40), dp(36)).apply { rightMargin = dp(4) })
-            reset.textSize = 12f
-            bottom.addView(reset, LinearLayout.LayoutParams(dp(58), dp(36)).apply { rightMargin = dp(4) })
-            val export = button("CSV", false) {
-                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = "text/csv"
-                    putExtra(Intent.EXTRA_TITLE, "telerc-route.csv")
-                }
-                startActivityForResult(intent, 43)
-            }.apply { contentDescription = "Export recorded route and transmitted control commands as CSV"; visibility = View.GONE }
-            export.textSize = 12f
-            bottom.addView(export, LinearLayout.LayoutParams(dp(48), dp(36)))
-            val music = button("♫", false) { }.apply {
-                contentDescription = "Turn game music on or off; uses media volume"
-                setOnClickListener {
-                    isSelected = course.setMusic(!isSelected)
-                    text = if (isSelected) "♫ ON" else "♫"
-                }
-            }
-            musicButton = music
-            modeButton.setOnClickListener {
-                    testMode = !testMode
-                    val checked = testMode
-                    course.setMode(if (checked) TestDriveView.Mode.TEST else TestDriveView.Mode.GAME)
-                    modeButton.text = if (checked) "Game" else "Test"
-                    modeButton.contentDescription = if (checked) "Return to Game" else "Open Test"
-                    music.visibility = if (checked) View.GONE else View.VISIBLE
-                    if (checked) { music.isSelected = false; music.text = "♫" }
-                    mapActive = checked && showTestMap
-                    course.visibility = if (mapActive) View.GONE else View.VISIBLE
-                    map.view.visibility = if (mapActive) View.VISIBLE else View.GONE
-                    mapBadge?.visibility = if (mapActive) View.VISIBLE else View.GONE
-                    locate.visibility = if (mapActive) View.VISIBLE else View.GONE
-                    reset.visibility = if (checked) View.VISIBLE else View.GONE
-                    export.visibility = if (checked) View.VISIBLE else View.GONE
-                    viewMode.visibility = if (checked) View.VISIBLE else View.GONE
-                    routeStatus?.visibility = if (checked) View.VISIBLE else View.GONE
-                    if (mapActive) { startPhoneLocation(); map.view.post { map.draw() } } else stopPhoneLocation()
-            }
-            music.textSize = 12f
-            bottom.addView(music, LinearLayout.LayoutParams(dp(52), dp(36)).apply { leftMargin = dp(4) })
-
-            routeStatus?.visibility = View.GONE
-
-        }
-        row.addView(middle, LinearLayout.LayoutParams(0, -1, 5f).apply { rightMargin = dp(8) })
-        val right = card().apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-
-            addView(text("DRIVE", 16f, ink, true).apply { gravity = Gravity.CENTER })
-            addView(text("CH2  ·  forward / reverse", 11f, muted).apply { gravity = Gravity.CENTER })
-            val stick = JoystickView(this@MainActivity, true) { course.setDrive(it) }
-            stick.isEnabled = true
-            addView(stick, LinearLayout.LayoutParams(-1, 0, 1f))
-        }
-        val arm = armDisarmButton()
-        row.addView(controlColumn(arm, right), LinearLayout.LayoutParams(0, -1, 1f))
-        root.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        // Match Controls: equal side zones + a fixed center status. The left tool
-        // strip may scroll only on unusually narrow displays; it never overlaps status.
-        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val tools = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            addView(bottom)
-        }
-        toolbar.addView(tools, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        status?.apply {
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        toolbar.addView(status, LinearLayout.LayoutParams(dp(156), -1))
-        val rightSlot = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
-        for (label in listOf("F1", "F2", "F3")) {
-            rightSlot.addView(servoAssignmentButton(label),
-                LinearLayout.LayoutParams(dp(46), -1).apply { leftMargin = dp(5) })
-        }
-        toolbar.addView(rightSlot, LinearLayout.LayoutParams(0, -1, 1f).apply { leftMargin = dp(8) })
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(pageDropdown("Mission"), LinearLayout.LayoutParams(dp(130), dp(48)))
+        routeStatus = text("Local waypoint plan", 12f, muted)
+        header.addView(routeStatus, LinearLayout.LayoutParams(0, dp(48), 1f))
+        header.addView(button("Locate phone", false) { locatePhone() }, LinearLayout.LayoutParams(dp(130), dp(48)))
+        root.addView(header)
+        val map = RouteMapView(this, route)
+        routeMap = map; mapActive = true
+        planner = MissionPlannerView(this, mission, map, ::saveMission,
+            { missionDocument(44, true) }, { missionDocument(45, false) })
+        root.addView(planner, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
         setContentView(root)
-        updateRoute()
+        if (started) map.onStart()
+        if (resumed) map.onResume()
+        startPhoneLocation(); updateRoute()
     }
+
+    private fun missionDocument(request: Int, export: Boolean) {
+        val intent = Intent(if (export) Intent.ACTION_CREATE_DOCUMENT else Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = if (export) "text/csv" else "*/*"
+            if (export) putExtra(Intent.EXTRA_TITLE, "TeleRC-mission.csv")
+        }
+        try { startActivityForResult(intent, request) }
+        catch (_: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, "No document provider available", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun saveMission() {
+        val file = android.util.AtomicFile(getFileStreamPath("mission.csv"))
+        var output: java.io.FileOutputStream? = null
+        try {
+            output = file.startWrite()
+            output.write(mission.encode().toByteArray(Charsets.UTF_8))
+            file.finishWrite(output)
+        } catch (_: Exception) {
+            file.failWrite(output)
+            Toast.makeText(this, "Could not save mission. Export a backup before closing.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun updateRoute() {
         routeMap?.draw()
-        val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-        val vehicle = prefs.getString("name", "Rover") ?: "Rover"
-        val maxSpeed = prefs.getFloat("max_m_s", 2.8f)
-        val lastGps = route.rover.lastOrNull()?.timeMs
-        val gpsAge = lastGps?.let {
-            val seconds = ((System.currentTimeMillis() - it).coerceAtLeast(0L) / 1000L)
-            if (seconds < 60) "${seconds}s" else "${seconds / 60}m"
-        }
-        mapBadge?.text = when {
-            page == Page.CONTROLS -> "${if (gpsAge == null) "NO GPS · ${if (route.home == null) "SAMPLE" else "PHONE HOME"}" else "LAST GPS $gpsAge AGO"} · " +
-                if (controlEnabled.get()) "CYAN RC ESTIMATE" else "CYAN ESTIMATE FROZEN"
-            route.rover.isEmpty() -> "$vehicle · SIM ${"%.1f".format(maxSpeed)} m/s · TAP TO EDIT"
-            else -> "$vehicle · LIVE ROVER · TAP TO EDIT SIM"
-        }
-        routeStatus?.text = "HOME ${if (route.home == null) "GPS pending · SAMPLE MAP" else "GPS fixed"}  ·  " +
-            "PHONE ${route.phone.size}  ·  ROVER ${route.rover.size}" +
-            (route.rover.lastOrNull()?.headingDegrees?.let { " H ${it.toInt()}°" } ?: "") +
-            "  ·  SENT ${route.commands.size}"
+        refreshGpsLabel()
     }
 
-    private fun editTestVehicle(course: TestDriveView, map: RouteMapView) {
-        val prefs = getSharedPreferences("test_vehicle", MODE_PRIVATE)
-        fun field(label: String, value: String, decimal: Boolean): EditText = EditText(this).apply {
-            hint = label; setSingleLine(); setText(value); textSize = 15f
-            inputType = if (decimal) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-                else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        }
-        val name = field("Vehicle name", prefs.getString("name", "Rover") ?: "Rover", false)
-        val speed = field("Maximum speed (m/s)", prefs.getFloat("max_m_s", 2.8f).toString(), true)
-        val turn = field("Pivot turn rate (°/s)", prefs.getFloat("turn_deg_s", 220f).toString(), true)
-        val form = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(4), dp(22), 0)
-            addView(name); addView(speed); addView(turn)
-        }
-        val dialog = AlertDialog.Builder(this).setTitle("Offline vehicle estimate")
-            .setMessage("Simulated map movement only. No values are sent to the rover.")
-            .setView(form).setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val label = name.text.toString().trim()
-                val metersPerSecond = speed.text.toString().toFloatOrNull()
-                val degreesPerSecond = turn.text.toString().toFloatOrNull()
-                when {
-                    label.isBlank() || label.length > 24 -> name.error = "Enter a name up to 24 characters"
-                    metersPerSecond == null || !metersPerSecond.isFinite() || metersPerSecond !in .1f..30f ->
-                        speed.error = "Enter 0.1–30 m/s"
-                    degreesPerSecond == null || !degreesPerSecond.isFinite() || degreesPerSecond !in 10f..360f ->
-                        turn.error = "Enter 10–360 °/s"
-                    else -> {
-                        prefs.edit().putString("name", label).putFloat("max_m_s", metersPerSecond)
-                            .putFloat("turn_deg_s", degreesPerSecond).apply()
-                        map.maxSpeedMetersPerSecond = metersPerSecond.toDouble()
-                        course.maxYawRateDegrees = degreesPerSecond
-                        map.resetPreview(); updateRoute(); dialog.dismiss()
-                    }
-                }
-            }
-        }
-        dialog.show()
+    private fun refreshGpsLabel() {
+        val gps = route.rover.lastOrNull()
+        val seconds = gps?.let { ((System.currentTimeMillis() - it.timeMs).coerceAtLeast(0L) / 1000L) }
+        val locationLabel = if (seconds != null) "LAST ROVER GPS · ${seconds}s ago"
+            else if (route.home != null) "PHONE MAP · NO ROVER GPS" else "NO GPS · SAMPLE AREA"
+        mapBadge?.text = locationLabel
+        routeStatus?.text = "LOCAL PLAN · $locationLabel"
     }
 
     private fun locatePhone() {
@@ -1236,21 +910,63 @@ class MainActivity : Activity() {
     @Deprecated("Activity result used for the Android document picker")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 43 && resultCode == RESULT_OK) {
-            try {
-                val uri = data?.data ?: return
-                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(route.encode()) }
-                routeStatus?.text = "Route exported"
-            } catch (_: Exception) { routeStatus?.text = "Could not export route" }
+        if (resultCode != RESULT_OK || requestCode !in 44..45) return
+        val uri = data?.data ?: return
+        if (!documentBusy.compareAndSet(false, true)) {
+            Toast.makeText(this, "A mission file operation is still running", Toast.LENGTH_SHORT).show()
+            return
         }
+        // Mission — Document I/O stays off the UI/control threads; admit only one operation at a time.
+        val exportSnapshot = mission.encode()
+        thread(name = "telerc-mission-document", isDaemon = true) {
+            try {
+                val imported = if (requestCode == 44) {
+                    val output = contentResolver.openOutputStream(uri, "wt") ?: error("No output stream")
+                    output.bufferedWriter().use { it.write(exportSnapshot) }
+                    null
+                } else {
+                    val input = contentResolver.openInputStream(uri) ?: error("No input stream")
+                    val csv = input.bufferedReader().use { it.readTextBounded(MissionPlan.MAX_CSV_CHARS) }
+                    MissionPlan.decode(csv)
+                }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    when {
+                        imported == null -> Toast.makeText(this, "Mission exported", Toast.LENGTH_SHORT).show()
+                        page != Page.MISSION -> Toast.makeText(this, "Import cancelled: reopen Mission and retry", Toast.LENGTH_LONG).show()
+                        else -> AlertDialog.Builder(this).setTitle("Replace local plan?")
+                            .setMessage("Import ${imported.waypoints.size} waypoints? Export your current plan first if needed.")
+                            .setNegativeButton("Cancel", null).setPositiveButton("Import") { _, _ ->
+                                mission.replaceWith(imported); saveMission(); planner?.refresh(fit = true)
+                            }.show()
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) Toast.makeText(this,
+                        "Could not read or write mission. Use TeleRC waypoint CSV (up to 100 points).", Toast.LENGTH_LONG).show()
+                }
+            } finally { documentBusy.set(false) }
+        }
+    }
+
+    private fun java.io.Reader.readTextBounded(limit: Int): String {
+        val buffer = CharArray(limit + 1)
+        var used = 0
+        while (used < buffer.size) {
+            val count = read(buffer, used, buffer.size - used)
+            if (count < 0) break
+            used += count
+        }
+        require(used <= limit) { "Mission file too large" }
+        return String(buffer, 0, used)
     }
     private fun stopPhoneLocation() { try { locationManager.removeUpdates(phoneListener) } catch (_: Exception) {} }
     private fun releaseMap() {
         pendingPhoneLocate = false
         stopPhoneLocation(); mapActive = false
         routeMap?.let { if (resumed) it.onPause(); if (started) it.onStop(); it.onDestroy() }
-        routeMap = null; routeStatus = null; mapBadge = null; musicButton = null
-        controlsPlaceholder = null; controlsLocate = null; controlsEstimate = null; deadReckoning.reset()
+        routeMap = null; routeStatus = null; mapBadge = null; planner = null
     }
     private fun saveRoute() {
         try { openFileOutput("route-session.csv", MODE_PRIVATE).bufferedWriter().use { it.write(route.encode()) } }
@@ -1284,6 +1000,7 @@ class MainActivity : Activity() {
             (if (lastArmAck.isNotBlank()) " Last ARM/DISARM result: $lastArmAck." else "")
     }
     private fun refreshUi() {
+        refreshGpsLabel()
         val now = SystemClock.elapsedRealtime()
         status?.text = when {
             page == Page.LORA && usbPermissionPending -> "USB PERMISSION PENDING"
@@ -1320,7 +1037,7 @@ class MainActivity : Activity() {
             !linkFresh() -> "BASE radio active · waiting for a fresh rover heartbeat. Check partner settings, UART and motor MCU."
             else -> "BASE connected · rover heartbeat fresh. Control remains disabled until you enable it."
         }
-        refreshFunctionButtons()
+        refreshArmButton()
     }
     private fun disableControl(releaseToReceiver: Boolean = false) {
         // State changes are immediate; UDP safety/handover packets run on the dedicated TX thread.
@@ -1548,7 +1265,6 @@ class MainActivity : Activity() {
                                         val point = TrackPoint(position.latitude, position.longitude,
                                             System.currentTimeMillis(), position.headingDegrees)
                                         if (route.addRover(point)) {
-                                            if (routeMap?.anchorToRoverIfWaiting(point) == true) deadReckoning.reset()
                                             updateRoute()
                                         }
                                     }
@@ -1584,17 +1300,6 @@ class MainActivity : Activity() {
                         runOnUiThread {
                             if (socket === udp) {
                                 route.addCommand(sent)
-                                if (page == Page.CONTROLS && mapActive && controlEnabled.get()) {
-                                    val pose = deadReckoning.accept(now, rc.one, rc.two)
-                                    routeMap?.updatePreview(pose)
-                                    val metersPerUnit = (routeMap?.maxSpeedMetersPerSecond ?: 2.8) / .7
-                                    val distance = kotlin.math.hypot((pose.x - .5f).toDouble(),
-                                        (pose.y - .76f).toDouble()) * metersPerUnit
-                                    val heading = (Math.toDegrees(pose.heading.toDouble()) + 360.0) % 360.0
-                                    controlsEstimate?.text = "DISP ${"%.1f".format(distance)} m · H ${heading.toInt()}° · " +
-                                        "${"%.1f".format(kotlin.math.abs(pose.speed) * metersPerUnit)} m/s"
-                                }
-                                // A sent frame changes only the cyan estimate; avoid redrawing GPS layers at 10 Hz.
                             }
                         }
                     } catch (e: Exception) {
@@ -1631,7 +1336,6 @@ class MainActivity : Activity() {
         if (expired) runOnUiThread {
             if (socket === transport && !controlEnabled.get()) {
                 disableControl()
-                controlsEstimate?.text = "RC STOPPED · heartbeat lost · enable again when ready"
             }
         }
     }
@@ -1683,8 +1387,8 @@ class MainActivity : Activity() {
             udp?.close()
         }
     }
-    override fun onPause() { hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); testCourse?.stop(); musicButton?.apply { isSelected = false; text = "♫" }; saveRoute(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); testCourse?.resume(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
+    override fun onPause() { hideLoRaKey(); resumed = false; reconnectHandler.removeCallbacks(reconnect); disableControl(); stopPhoneLocation(); routeMap?.onPause(); saveRoute(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; routeMap?.onResume(); startPhoneLocation(); scheduleReconnect(); if (::updater.isInitialized) updater.resumePendingInstall() }
     override fun onStart() { super.onStart(); started = true; routeMap?.onStart() }
     override fun onStop() { started = false; routeMap?.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); routeMap?.onLowMemory() }

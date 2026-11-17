@@ -1,5 +1,13 @@
 # TeleRC control and compatibility
 
+## 0.8.54 simplification
+
+Single-rover screens: Controls (default), Mission, Setup, LoRa setup. `MissionPlan` owns validated bounded planning data; `MissionPlannerView` owns map/list editing; MainActivity owns atomic private persistence and Android document pickers. `RouteMapView` displays measured tracks and local planned waypoints only. The old game, simulation/RC inference and servo-assignment UI are removed; old track files including estimate rows still decode for upgrade compatibility, but estimates are no longer displayed or generated.
+
+Mission actions do not call LinkTransport, MAVLink, Enable, ARM or any vehicle-mode API. CSV is a local planning exchange, not a QGroundControl/MAVLink mission protocol. Import validates fully before confirmation/replacement; save uses AtomicFile. Up to 100 waypoints, 16,384 CSV characters, decimal-degree coordinate validation; no change to firmware, telemetry, channel mapping, sensitivity, arm cancellation, freshness, STOP/release or watchdog semantics. No paired firmware update is required for this Android-only feature change. Use the existing matched hardware role firmware; actual phone/USB/radio/PC operation remains unverified.
+
+Current software validation is recorded in TESTING.md. Prior-version notes below are historical evidence, not validation of the new UI.
+
 ## Scope and baseline
 
 Current release candidate: **0.8.53 / code 71**, published from `0f7272da0d30b398dfe13c0a1008afca93f24c5c`. It packages the LoRa setup and four-driver review plus matched binary/source firmware. Release workflow [37619553457](https://github.com/Denberg28/TeleRC/actions/runs/37619553457) passed signing continuity/version progression, JVM tests, debug/release lint/build, full host sanitizers, ten actual firmware configurations and archive verification. Baseline retained for rollback: 0.8.52 commit `51e98a0797c476647dea88cbebdee6a52503c2a6`. Physical operation remains unverified; compatibility details for 0.8.53 are below.

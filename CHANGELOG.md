@@ -1,3 +1,11 @@
+## 0.8.54
+
+- Simplify TeleRC toward TeleRC Go: start on single-rover Controls with Connect, larger steer/drive panels, explicit Enable and ARM/DISARM; shared navigation to Mission, Setup and LoRa setup.
+- Replace the offline game/test course with a local waypoint planner: map placement, coordinate editing, reordering/deletion, surface distance, atomic autosave and bounded CSV import/export (100 points). Plans are not uploaded or executed by the rover.
+- Remove music/effects, simulated vehicle tuning, inferred RC map positions and unused F1–F3 servo assignments. Retain measured phone/rover tracks and existing private track/settings data.
+- Adopt AGENTS 1.4, Kickoff Template 1.3 and Constitution 3.2 (17 November 2026), preserving TeleRC-specific hardware constraints and adding a targeted code-edit guide.
+- Firmware/protocols, package identity, signer, channel mapping, heartbeat gate, watchdogs and handover semantics remain unchanged. Requires device/USB/LoRa, installation and restrained-wheel HIL validation; test candidate only. Import/export uses TeleRC CSV, not an autopilot mission format.
+
 ## 0.8.53
 
 - Signed test candidate, versionCode 71, with matching compiled ESP32-S3 and LILYGO T3-S3 binaries, source sketches, flash instructions, build evidence and checksums.
