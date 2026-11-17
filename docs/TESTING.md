@@ -1,5 +1,11 @@
 # TeleRC QA gates and bench procedure
 
+## Current published software evidence — 1.2.0rc1
+
+Signed candidate at https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc1; source/tag `3f6d0adc059827a9b527d26ac1e352841c7125f1`, successful run `44086597994`. 68 JVM tests (0 failures/errors/skips), both lint/build variants, full host/default ASan/UBSan, ten actual firmware configurations, signer continuity and upgrade code 1100→1200 PASS. Downloaded assets independently pass all five GitHub digests, SHA256SUMS, APK identity/signer, bridge source comment, firmware manifest/source and all 40 binary digest/offset checks. See release BUILD_INFO and current STATUS.md.
+
+A/C software/build scope PASS. B device UI, D actual USB/RF/PC integration, E physical HIL, and F installation/upgrade/rollback remain NOT TESTED/BLOCKED; F signed publication/package/checksum portion PASS. Test candidate only. The historical local/prototype records below are not the final release verdict. Follow the current 1.2.0rc1 procedures plus the retained restrained-wheel tests before stable promotion.
+
 ## Acceptance criteria for 0.8.52
 
 1. CH1 steering and CH2 drive retain 1500 µs neutral and existing sensitivity/range. No output before fresh verified heartbeat and explicit Enable Control.
