@@ -1,5 +1,7 @@
 # TeleRC control and compatibility
 
+Published 1.2.0rc1/code 1200: source/tag `3f6d0adc059827a9b527d26ac1e352841c7125f1`, successful signed run `44086597994`. Release assets and current STATUS.md record verified package/signature/checksums and remaining physical validation.
+
 Release inventory checked 17 November: published baseline is `v1.1.0rc1` / code 1100 / source `03b5b69ff39487678d25a8023c5438a773ca3d51`. The old default branch and 0.8.x artifact references were stale. Final 1.2.0rc1/code 1200 preserves the relevant released safety/parser/updater/response checks while removing feature UI. Historical records below are not proof that old assets remain downloadable.
 
 ## 1.2.0rc1 simplification
