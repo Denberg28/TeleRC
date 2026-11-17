@@ -116,7 +116,7 @@ Release source `0f7272da0d30b398dfe13c0a1008afca93f24c5c`, tag [v0.8.53](https:/
 Next concrete check: manually install over 0.8.52, verify retained settings, flash the matching dedicated motor/BASE/ROVER images with default-layout NVS preserved, and execute provisioning/mapping/loss/recovery HIL. Stable promotion remains blocked.
 
 
-## 0.8.54 single-rover / local planning verification — 17 November 2026
+## Unpublished 0.8.54 source-prototype verification — 17 November 2026
 
 Source baseline `67b2cf5`; branch `simplify-go-lora-missions`; final source is the commit attached to the release BUILD_INFO/CI run. No firmware source changed. Supersedes old Test-map/game UI criteria; control/failsafe and restrained-wheel criteria above remain required.
 
@@ -145,3 +145,16 @@ Additional device checks (expected results; NOT TESTED until observations record
 
 
 Debug APK SHA-256 (review/testing only, Android Debug certificate; not an upgrade signed with the release identity): `a74ac2c446e3e913e2c8b02160e5827ee75eabea569392e96fe44c9be9ed48c0`.
+
+
+## 1.2.0rc1 release continuity — current checks
+
+The published baseline is v1.1.0rc1/code 1100/source `03b5b69ff39487678d25a8023c5438a773ca3d51`; default main's old 0.8.x release inventory was stale. Final candidate code 1200 keeps the compact UI/local planner plus relevant published safety/parser/recovery/updater/control-response checks. The 0.8.54 attempt `44083882236` fails publication on unavailable historical baseline APK URLs and publishes nothing. It is not the final source.
+
+Local Java 17 final build: 68 JVM tests, debug APK, debug/release compilation and both lint variants PASS; 0 errors, 33 warnings. Log: [android-120-final.txt](evidence/2026-11-17/android-120-final.txt). Host field protocol, motor/LoRa/gateway/parser/provisioning suite and packaging tests PASS. ASan/UBSan PASS with local leak detection disabled; full leak-enabled CI and signed actual-board packaging remain required on final source. Earlier 47-test evidence is historical only.
+
+Relevant regressions retained from released tag: RcTakeoverTest (CRC/source/time/freshness/CH7 fail-closed), LiveControlGateTest (neutral-only enable and heartbeat expiry), MiniRoverWifiTest (sent-neutral dwell, interruption/clock reset, golden MAVLink interoperability), BackpackRecoveryTest's applicable Wi-Fi cases (bounded network checks, lifecycle/rebind without authority restoration), ControlResponseTest/JoystickMathTest (axis preferences/expo), strict MavlinkTest and bounded UpdateMetadataTest. Native ELRS Backpack transport test is not copied because that profile is excluded and unknown saved profiles reset to disconnected Setup.
+
+Additional HIL acceptance: FC Wi-Fi CH7 missing/stale ≥750 ms must prevent enable/new ARM and revoke live authority; restoring permission must not re-enable or replay ARM. A fresh-heartbeat DISARM remains available after CH7 permission expires. Request RC_CHANNELS and verify source/monotonic timestamps. Mini Wi-Fi must send fresh neutral frames for ≥300 ms before ARM; interrupted/stale/moving frames reset dwell. Network removal must create a new disabled session. Exercise upgrades from actual signed 1.1.0rc1, removed saved profiles, separate sensitivity/expo retention, all tab/background paths, native USB/LoRa and legacy FC bridge gates. These are executable expected results, not measured physical evidence. Keep the original restrained-wheel timing/watchdog and independent power-cutoff checks.
+
+Current gates: A/C automated software checks PASS locally; B UI/device, D real integration, E HIL and F signed/installed delivery remain BLOCKED until respective observations/CI packaging. The final release BUILD_INFO will identify the signed source commit and cloud gates; it cannot establish physical readiness.

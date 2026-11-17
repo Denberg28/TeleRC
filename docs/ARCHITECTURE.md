@@ -1,6 +1,8 @@
 # TeleRC control and compatibility
 
-## 0.8.54 simplification
+Release inventory checked 17 November: published baseline is `v1.1.0rc1` / code 1100 / source `03b5b69ff39487678d25a8023c5438a773ca3d51`. The old default branch and 0.8.x artifact references were stale. Final 1.2.0rc1/code 1200 preserves the relevant released safety/parser/updater/response checks while removing feature UI. Historical records below are not proof that old assets remain downloadable.
+
+## 1.2.0rc1 simplification
 
 Single-rover screens: Controls (default), Mission, Setup, LoRa setup. `MissionPlan` owns validated bounded planning data; `MissionPlannerView` owns map/list editing; MainActivity owns atomic private persistence and Android document pickers. `RouteMapView` displays measured tracks and local planned waypoints only. The old game, simulation/RC inference and servo-assignment UI are removed; old track files including estimate rows still decode for upgrade compatibility, but estimates are no longer displayed or generated.
 
@@ -8,9 +10,9 @@ Mission actions do not call LinkTransport, MAVLink, Enable, ARM or any vehicle-m
 
 Current software validation is recorded in TESTING.md. Prior-version notes below are historical evidence, not validation of the new UI.
 
-## Scope and baseline
+## Historical source baseline records
 
-Current release candidate: **0.8.53 / code 71**, published from `0f7272da0d30b398dfe13c0a1008afca93f24c5c`. It packages the LoRa setup and four-driver review plus matched binary/source firmware. Release workflow [37619553457](https://github.com/Denberg28/TeleRC/actions/runs/37619553457) passed signing continuity/version progression, JVM tests, debug/release lint/build, full host sanitizers, ten actual firmware configurations and archive verification. Baseline retained for rollback: 0.8.52 commit `51e98a0797c476647dea88cbebdee6a52503c2a6`. Physical operation remains unverified; compatibility details for 0.8.53 are below.
+Historical source-record candidate: **0.8.53 / code 71**, published from `0f7272da0d30b398dfe13c0a1008afca93f24c5c`. It packages the LoRa setup and four-driver review plus matched binary/source firmware. Release workflow [37619553457](https://github.com/Denberg28/TeleRC/actions/runs/37619553457) passed signing continuity/version progression, JVM tests, debug/release lint/build, full host sanitizers, ten actual firmware configurations and archive verification. Baseline retained for rollback: 0.8.52 commit `51e98a0797c476647dea88cbebdee6a52503c2a6`. Physical operation remains unverified; compatibility details for 0.8.53 are below.
 
 ## Signal paths
 
@@ -56,3 +58,6 @@ No paired firmware upgrade is required by the unchanged 0.8.52 wire format. The 
 ## 0.8.53 candidate compatibility
 
 Android versionCode 71 packages reviewed source `8e2e6df550f919d27d9ee00c5a6dc0ed45e9c9d2` plus release metadata/build tooling. CH1/CH2, 1500 µs neutral, UART/radio format, pins, profile, key and NVS schema remain compatible. Updated BASE preserves sparse axes and stop priority; updated ROVER latches RX restart failures; dedicated motor initializes output GPIOs before delays. PWM-only users require 300 ms fresh neutral at startup/recovery and get immediate invalid/stale-input stop. Deploy and bench-test the intended firmware roles together. The binary package uses explicit generic motor and manufacturer T3-S3 profiles, rather than treating host tests as target compilation. See `bridge/FIRMWARE_FLASHING.md` and `docs/LORA_MOTOR_REVIEW.md`.
+
+
+Final release continuity: FC Wi-Fi uses RcTakeover's checksum/source/monotonic-time checks and 750 ms CH7 permission lifetime; live sends and queued ARM recheck permission, foreground Controls and captured session. LiveControlGate requires neutral axes. Mini Wi-Fi uses MiniRoverArmGate (300 ms sent-neutral dwell, fresh last sent frame), separate from FC permission. Unsupported saved transport profiles are reset to Setup with auto-connect disabled. Wi-Fi loss rebinds a new socket with control disabled. AppUpdater retains bounded metadata and DownloadManager completion verification; native dialogs replace its former custom dialog UI. These components and regression tests come from the published 1.1.0rc1 tag. Legacy FC bridge carries that tag's FieldProtocol/ARM permission checks; use the matching updated bridge for that path. Dedicated motor/LoRa formats and provisioning are unchanged.

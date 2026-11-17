@@ -9,8 +9,13 @@ internal class LiveControlGate {
     fun get(): Boolean = enabled.get()
     fun disable() { enabled.set(false) }
 
-    fun enable(system: Int, heartbeatAt: Long, now: Long): Boolean {
-        if (!HeartbeatHealth.isFresh(system, heartbeatAt, now)) return false
+    fun enable(system: Int, heartbeatAt: Long, now: Long,
+               steering: Int = 1500, drive: Int = 1500): Boolean {
+        if (!HeartbeatHealth.isFresh(system, heartbeatAt, now) ||
+            steering !in 1475..1525 || drive !in 1475..1525) {
+            disable()
+            return false
+        }
         enabled.set(true)
         return true
     }

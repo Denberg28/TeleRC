@@ -45,6 +45,11 @@ class MainActivity : Activity() {
     private var page = Page.CONTROLS
     @Volatile private var socket: LinkTransport? = null
     private val usbMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == "lora_usb"
+    // Control — Match the released 1.1 permission and standalone-neutral gates.
+    private val miniRoverMode get() = getSharedPreferences("link", MODE_PRIVATE).getString("transport", "wifi") == MiniRoverWifi.TRANSPORT
+    private val miniArmGate = MiniRoverArmGate()
+    private val rcTakeover = RcTakeover()
+    private val fieldControlAllowed get() = miniRoverMode || usbMode || rcTakeover.allowed(SystemClock.elapsedRealtime())
     private var loraStatus: TextView? = null
     private var loraInfo = "Attach one T3-S3 by native USB, connect, then read board settings."
     private val loraExchange = LoRaSetupExchange()
@@ -175,6 +180,7 @@ class MainActivity : Activity() {
             if (session.length() <= 16_000_000L)
                 route.decode(openFileInput("route-session.csv").bufferedReader().use { it.readText() })
         } catch (_: Exception) {}
+        ControlResponseStore.migrate(this)
         updater = AppUpdater(this) { updateStatus?.text = it }
         try {
             val file = android.util.AtomicFile(getFileStreamPath("mission.csv"))
@@ -184,7 +190,13 @@ class MainActivity : Activity() {
         } catch (_: Exception) {
             Toast.makeText(this, "Saved mission could not be read. Import a backup to recover it.", Toast.LENGTH_LONG).show()
         }
-        wantsLink = getSharedPreferences("link", MODE_PRIVATE).getBoolean("auto_connect", false)
+        val savedLink = getSharedPreferences("link", MODE_PRIVATE)
+        val unsupportedLink = savedLink.getString("transport", "wifi") !in setOf("wifi", "lora_usb", MiniRoverWifi.TRANSPORT)
+        if (unsupportedLink) {
+            savedLink.edit().putString("transport", "wifi").putBoolean("auto_connect", false).apply()
+            Toast.makeText(this, "Select a supported link in Setup before connecting. The previous profile was removed.", Toast.LENGTH_LONG).show()
+        }
+        wantsLink = savedLink.getBoolean("auto_connect", false)
         page = when (savedInstanceState?.getString("page")) {
             "CONTROLS" -> Page.CONTROLS
             "TEST_DRIVE", "MISSION" -> Page.MISSION
@@ -192,6 +204,7 @@ class MainActivity : Activity() {
             "SETUP" -> Page.SETUP
             else -> Page.CONTROLS
         }
+        if (unsupportedLink) page = Page.SETUP
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         render()
     }
@@ -261,7 +274,7 @@ class MainActivity : Activity() {
     }
     private fun armCaption(): String = when (vehicleArmed) {
         true -> "DISARM"
-        false -> "ARM"
+        false -> if (!miniRoverMode) "ARM" else if (controlEnabled.get() && miniArmGate.ready(SystemClock.elapsedRealtime())) "ARM · READY" else "ARM · CENTER"
         null -> "ARM / DISARM"
     }
 
@@ -304,6 +317,7 @@ class MainActivity : Activity() {
         synchronized(commandLock) {
             commandEpoch++
             controlEnabled.disable()
+            miniArmGate.reset()
             steering = 1500
             drive = 1500
         }
@@ -315,6 +329,10 @@ class MainActivity : Activity() {
     }
 
     private fun toggleArmDisarm() {
+        if (vehicleArmed != true && !fieldControlAllowed) {
+            Toast.makeText(this, "RC permission unavailable or transmitter selected", Toast.LENGTH_SHORT).show()
+            return
+        }
         val armed = vehicleArmed
         val udp = socket
         val remote = endpoint
@@ -323,6 +341,13 @@ class MainActivity : Activity() {
         if (!linkFresh() || armed == null || udp == null || remote == null || system == 0) {
             android.widget.Toast.makeText(this, "ARM state unavailable · wait for a fresh rover heartbeat",
                 android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val mini = miniRoverMode
+        if (mini && !armed && (!controlEnabled.get() || steering !in 1475..1525 ||
+                drive !in 1475..1525 || !miniArmGate.ready(SystemClock.elapsedRealtime()))) {
+            Toast.makeText(this, "Enable control and center both sticks until ARM · READY", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -344,7 +369,8 @@ class MainActivity : Activity() {
                 repeat(3) { attempt ->
                     synchronized(commandLock) {
                         if (socket !== udp || !connected.get() || target != system ||
-                            (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                            (!armed && (commandEpoch != epoch || !resumed || page != Page.CONTROLS || !linkFresh() || !fieldControlAllowed ||
+                                (mini && !miniArmGate.ready(SystemClock.elapsedRealtime())) ||
                                 SystemClock.elapsedRealtime() - requestedAt >= 500))) {
                             runOnUiThread {
                                 if (socket === udp) { pendingArmState = null; lastArmAck = "COMMAND CANCELLED"; refreshUi() }
@@ -353,7 +379,8 @@ class MainActivity : Activity() {
                         }
                         if (attempt == 0) sendControlHandoverBlocking(udp, remote, system, remotePort, releaseToReceiver = false)
                         // USB neutral writes can consume the remaining request lifetime.
-                        if (!armed && (commandEpoch != epoch || !resumed || !linkFresh() ||
+                        if (!armed && (commandEpoch != epoch || !resumed || page != Page.CONTROLS || !linkFresh() || !fieldControlAllowed ||
+                                (mini && !miniArmGate.ready(SystemClock.elapsedRealtime())) ||
                                 SystemClock.elapsedRealtime() - requestedAt >= 500)) {
                             runOnUiThread {
                                 if (socket === udp) { pendingArmState = null; lastArmAck = "COMMAND CANCELLED"; refreshUi() }
@@ -602,11 +629,11 @@ class MainActivity : Activity() {
 
         val connection = card().apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            addView(button(if (usbMode) "LoRa USB ▾" else "Wi-Fi UDP ▾", true) {
+            addView(button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini Wi-Fi ▾" else "ArduRover Wi-Fi ▾", true) {
                 if (!wantsLink) AlertDialog.Builder(this@MainActivity).setTitle("Control link")
-                    .setItems(arrayOf("LoRa via USB base", "Legacy Wi-Fi UDP")) { _, choice ->
+                    .setItems(arrayOf("LoRa via USB base", "ArduRover Wi-Fi", "Mini rover Wi-Fi")) { _, choice ->
                         getSharedPreferences("link", MODE_PRIVATE).edit()
-                            .putString("transport", if (choice == 0) "lora_usb" else "wifi").apply()
+                            .putString("transport", when (choice) { 0 -> "lora_usb"; 2 -> MiniRoverWifi.TRANSPORT; else -> "wifi" }).apply()
                         render()
                     }.show()
             }, LinearLayout.LayoutParams(-1, dp(30)))
@@ -631,6 +658,7 @@ class MainActivity : Activity() {
             endpointRow.addView(port, LinearLayout.LayoutParams(0, dp(36), 1f))
             if (usbMode) addView(text("USB OTG → T3-S3 base → LoRa", 12f, muted),
                 LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
+            else if (miniRoverMode) addView(text("Standalone MiniRover · 192.168.4.1:14550", 12f, muted), LinearLayout.LayoutParams(-1, dp(36)))
             else addView(endpointRow, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
             connect = button("Connect") { toggleConnection() }
             addView(connect, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(4) })
@@ -664,21 +692,8 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
             }
             addView(choices, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
-            val sensitivityLabel = text("Sensitivity · ${appearance.getInt("sensitivity", 100)}%", 11f, muted)
-            addView(SeekBar(this@MainActivity).apply {
-                max = 75; progress = appearance.getInt("sensitivity", 100).coerceIn(25, 100) - 25
-                progressTintList = android.content.res.ColorStateList.valueOf(accent)
-                thumbTintList = android.content.res.ColorStateList.valueOf(accent)
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
-                        sensitivityLabel.text = "Sensitivity · ${value + 25}%"
-                        if (fromUser) appearance.edit().putInt("sensitivity", value + 25).apply()
-                    }
-                    override fun onStartTrackingTouch(bar: SeekBar?) {}
-                    override fun onStopTrackingTouch(bar: SeekBar?) {}
-                })
-            }, LinearLayout.LayoutParams(-1, dp(28)).apply { topMargin = dp(2) })
-            addView(sensitivityLabel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(1) })
+            addView(button("Steering / drive sensitivity", false) { showControlResponse() },
+                LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
         }
         right.addView(theme, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(8) })
         val updates = card().apply {
@@ -698,6 +713,42 @@ class MainActivity : Activity() {
 
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+    }
+
+    private fun showControlResponse() {
+        // Never edit gains while a live command is held. Setup is the only entry.
+        disableControl()
+        var draft = ControlResponseStore.read(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        fun slider(name: String, minimum: Int, maximum: Int, initial: Int, update: (Int) -> Unit) {
+            val label = text("$name · $initial%", 14f, ink, true)
+            content.addView(label, LinearLayout.LayoutParams(-1, -2))
+            content.addView(SeekBar(this).apply {
+                max = maximum - minimum; progress = initial - minimum
+                contentDescription = "$name percentage"
+                progressTintList = android.content.res.ColorStateList.valueOf(accent)
+                thumbTintList = android.content.res.ColorStateList.valueOf(accent)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                        label.text = "$name · ${value + minimum}%"
+                        if (fromUser) update(value + minimum)
+                    }
+                    override fun onStartTrackingTouch(bar: SeekBar?) {}
+                    override fun onStopTrackingTouch(bar: SeekBar?) {}
+                })
+            }, LinearLayout.LayoutParams(-1, dp(48)))
+        }
+        slider("Steering sensitivity", 25, 100, draft.steeringPercent) { draft = draft.copy(steeringPercent = it) }
+        slider("Drive sensitivity", 25, 100, draft.drivePercent) { draft = draft.copy(drivePercent = it) }
+        slider("Expo", 0, 100, draft.expoPercent) { draft = draft.copy(expoPercent = it) }
+        content.addView(text("Sensitivity limits each axis; expo softens the response near center.", 12f, muted))
+        val scroll = ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this).setTitle("Control response").setView(scroll)
+            .setPositiveButton("Apply") { _, _ -> ControlResponseStore.save(this, draft); render() }
+            .setNegativeButton("Cancel", null).show()
     }
 
     // UI — Single-rover controls. Edit panel weights for joystick/map space, not channel mapping.
@@ -752,7 +803,8 @@ class MainActivity : Activity() {
         val footer = LinearLayout(this)
         enable = button("Enable control") {
             if (controlEnabled.get()) disableControl(releaseToReceiver = true) else if (synchronized(commandLock) {
-                val allowed = controlEnabled.enable(target, heartbeatAt, SystemClock.elapsedRealtime())
+                val allowed = resumed && page == Page.CONTROLS && fieldControlAllowed &&
+                    controlEnabled.enable(target, heartbeatAt, SystemClock.elapsedRealtime(), steering, drive)
                 if (allowed) commandEpoch++
                 allowed
             }) {
@@ -1017,7 +1069,9 @@ class MainActivity : Activity() {
         connect?.text = if (page == Page.LORA) {
             if (wantsLink) { if (usbMode) "Disconnect USB" else "Disconnect Wi-Fi" } else "Connect USB board"
         } else if (wantsLink) "Disconnect" else "Connect"
-        enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh())
+        enable?.isEnabled = connected.get() && (controlEnabled.get() || linkFresh() && fieldControlAllowed)
+        armButton?.isEnabled = linkFresh() && vehicleArmed != null && (vehicleArmed == true || fieldControlAllowed)
+        if (!usbMode && !miniRoverMode && target != 0) status?.append(" · " + rcTakeover.label(now))
         enable?.text = if (controlEnabled.get()) "STOP CONTROL" else "ENABLE CONTROL"
         val localUsb = usbMode && connected.get()
         loraRead?.isEnabled = localUsb && loraExchange.pending == null && !loraExchange.blocked
@@ -1094,11 +1148,11 @@ class MainActivity : Activity() {
     private fun start() {
         if (connected.get()) return
         val saved = getSharedPreferences("link", MODE_PRIVATE)
-        val address = if (usbMode) "127.0.0.1" else
+        val address = if (miniRoverMode) MiniRoverWifi.HOST else if (usbMode) "127.0.0.1" else
             (host?.text?.toString() ?: saved.getString("host", "192.168.4.1")).orEmpty().trim()
         val valid = Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$").matches(address) &&
             address.split('.').all { it.toInt() in 0..255 }
-        val number = if (usbMode) 14550 else
+        val number = if (miniRoverMode) MiniRoverWifi.PORT else if (usbMode) 14550 else
             (port?.text?.toString() ?: saved.getInt("port", 14550).toString()).toIntOrNull()
         if (!valid || number == null || number !in 1..65535) {
             wantsLink = false
@@ -1106,7 +1160,9 @@ class MainActivity : Activity() {
             refreshUi(); status?.text = "INVALID ADDRESS OR PORT"; return
         }
         val remote = InetAddress.getByName(address)
-        val udp: LinkTransport = if (usbMode) {
+        val usbSession = usbMode
+        var boundWifi: android.net.Network? = null
+        val udp: LinkTransport = if (usbSession) {
             val manager = getSystemService(USB_SERVICE) as UsbManager
             val devices = UsbLoRaTransport.candidates(manager)
             if (devices.size != 1) {
@@ -1121,7 +1177,7 @@ class MainActivity : Activity() {
             try { UsbLoRaTransport.open(manager, device) }
             catch (error: Exception) { lastLinkError = "USB open failed. Close other serial apps and reconnect the data cable."; refreshUi(); status?.text = "USB LoRa OPEN FAILED"; return }
         } else {
-            saved.edit().putString("host", address).putInt("port", number).apply()
+            if (!miniRoverMode) saved.edit().putString("host", address).putInt("port", number).apply()
             val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
             val wifi = connectivity.allNetworks.firstOrNull {
                 connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
@@ -1129,7 +1185,7 @@ class MainActivity : Activity() {
             if (wifi == null) { status?.text = "CONNECT PHONE TO ROVER WI-FI"; return }
             try {
                 UdpTransport(DatagramSocket(number).also { transport ->
-                    try { wifi.bindSocket(transport); transport.soTimeout = 50 }
+                    try { wifi.bindSocket(transport); transport.soTimeout = 50; boundWifi = wifi }
                     catch (error: Exception) { transport.close(); throw error }
                 })
             } catch (error: Exception) { status?.text = "WI-FI UDP PORT UNAVAILABLE"; return }
@@ -1138,6 +1194,7 @@ class MainActivity : Activity() {
         reconnectHandler.removeCallbacks(loraTimeout); loraExchange.reset()
         loraInfo = if (usbMode) "USB connected. Read settings to identify BASE or ROVER." else "Disconnect Wi-Fi, then connect a USB board for setup."
         loraStatus?.text = loraInfo
+        rcTakeover.reset()
         target = 0; vehicleArmed = null; lastArmAck = ""; lastLinkError = ""; heartbeatAt = 0; bridgeStatusAt = 0; bridgeRxBytes = 0; bridgeFrames = 0
         bridgeAccepted = -1; bridgeRejected = -1; bridgeCommandBytes = -1
         disableControl(); connected.set(true)
@@ -1146,6 +1203,7 @@ class MainActivity : Activity() {
         thread(name = "telerc-link") {
             val input = ByteArray(512); var sequence = 0; var lastSend = 0L; var lastDiscovery = 0L; var lastUiRefresh = 0L
             val discovery = "TELERC_DISCOVER_V1".toByteArray(Charsets.US_ASCII)
+            val recovery = BackpackRecovery()
             while (connected.get() && socket === udp) {
                 revokeExpiredControl(udp)
                 // Do not tear down the socket because Android temporarily changes
@@ -1153,6 +1211,13 @@ class MainActivity : Activity() {
                 // is authoritative: only an actual UDP failure or explicit
                 // Disconnect tears down the transport.
                 val discoveryNow = SystemClock.elapsedRealtime()
+                if (!usbSession && recovery.poll(discoveryNow, resumed, wantsLink) {
+                    val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+                    boundWifi != null && manager.allNetworks.any { it == boundWifi }
+                } == BackpackRecovery.Action.REBIND) {
+                    lastLinkError = "Rover Wi-Fi network lost; waiting to rebind"
+                    break
+                }
                 if (discoveryNow - lastDiscovery >= 1000) {
                     try {
                         udp.send(DatagramPacket(discovery, discovery.size, remote, number))
@@ -1222,6 +1287,10 @@ class MainActivity : Activity() {
                                     pendingArmState = null
                                     lastArmAck = if (heartbeat.armed) "ARMED CONFIRMED" else "DISARMED CONFIRMED"
                                 }
+                                if (previousSystem == 0 && !miniRoverMode && !usbSession) {
+                                    val request = Mavlink.requestMessage(sequence++, target, 65, 200000)
+                                    udp.send(DatagramPacket(request, request.size, remote, number))
+                                }
                                 // Heartbeat is authoritative for the final armed state.
                                 if (previousSystem != heartbeat.system || previousArmed != heartbeat.armed || armStateConfirmed) {
                                     runOnUiThread {
@@ -1239,6 +1308,7 @@ class MainActivity : Activity() {
                                     }
                                 }
                             }
+                            if (!miniRoverMode && !usbSession) rcTakeover.receive(frame, target, SystemClock.elapsedRealtime())
                             val ack = Mavlink.commandAck(frame)
                             if (ack != null && ack.system == target && ack.command == 400) {
                                 lastArmAck = ack.resultText
@@ -1287,11 +1357,13 @@ class MainActivity : Activity() {
                 if (now - lastSend >= 100 && fresh && controlEnabled.get()) {
                     try {
                         val rc = synchronized(commandLock) {
-                            if (!controlEnabled.get() || !linkFresh()) null else {
+                            if (socket !== udp || !connected.get() || !resumed || page != Page.CONTROLS ||
+                                !controlEnabled.get() || !linkFresh() || !fieldControlAllowed) null else {
                                 val channels = RoverControls.channels(steering, drive)
                                 val bytes = Mavlink.override(sequence++, target, 1,
                                     channels.one, channels.two, channels.three, channels.four)
                                 udp.send(DatagramPacket(bytes, bytes.size, remote, number))
+                                if (miniRoverMode) miniArmGate.sent(channels.one, channels.two, SystemClock.elapsedRealtime())
                                 lastSend = now
                                 channels
                             }
@@ -1325,8 +1397,10 @@ class MainActivity : Activity() {
     }
     private fun revokeExpiredControl(transport: LinkTransport) {
         val expired = synchronized(commandLock) {
-            if (socket !== transport || !controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime())) false
+            val lostPermission = controlEnabled.get() && !fieldControlAllowed
+            if (socket !== transport || !(lostPermission || controlEnabled.expire(target, heartbeatAt, SystemClock.elapsedRealtime()))) false
             else {
+                controlEnabled.disable(); miniArmGate.reset()
                 commandEpoch++
                 steering = 1500
                 drive = 1500
@@ -1345,6 +1419,7 @@ class MainActivity : Activity() {
         val system = target
         val remotePort = endpointPort
         disableControlState()
+        rcTakeover.reset()
         connected.set(false)
         socket = null
         hideLoRaKey()
