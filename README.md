@@ -2,6 +2,8 @@
 
 TeleRC is the Android controller in the TeleRC ecosystem, simplified around TeleRC Go's connect-and-drive workflow while retaining native USB LoRa and waypoint planning with acknowledged ArduRover Wi-Fi upload. PC-TeleRC owns fleet operations.
 
+Signed test candidate: [TeleRC v1.2.0rc2 APK](https://github.com/Denberg28/TeleRC/releases/download/v1.2.0rc2/TeleRC-v1.2.0rc2.apk) · [matched firmware, source and checksums](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2). Device/HIL validation remains pending.
+
 ## Use
 
 - **Controls:** Connect the saved Wi-Fi or USB LoRa link, wait for a rover heartbeat, Enable Control, then ARM when required. Large spring-return sticks control CH1 steering and CH2 drive. STOP CONTROL releases to the receiver; Disconnect closes the link. The center map shows measured phone/rover positions, not simulated motion.
