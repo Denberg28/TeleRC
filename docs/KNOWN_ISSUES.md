@@ -1,3 +1,13 @@
+# 1.2.0rc2 current limits — 18 November 2026
+
+- **BLOCKED — device/HIL:** no phone, T3-S3 pair, FC or wheels attached. Gradient/Setup layout, USB scheduling, FC mission transfer, CH7 loss, installation and actual onboard route verification need the executable tests in TESTING.md. Prerelease only.
+- **Compatibility:** Wi-Fi mission upload needs the new `legacy-bridge` / `TeleRCBridge` firmware wired directly to the ArduRover FC UART. Existing dedicated Wi-Fi-to-motor and USB LoRa paths do not support mission messages. Upload over an older bridge times out and never reports success.
+- **Mission recovery:** cancelled/failed uploads do not prove the old onboard mission survived; no rollback/clear/start is sent. Verify/download the onboard route in a capable GCS before AUTO. The app uploads only while disarmed; transmitter handles subsequent execution. No app mission-start/AUTO action is implemented.
+- **Freshness:** the 250 ms bound applies only to Android's pending USB batches. Device/FC USB buffering and unsigned Wi-Fi replay limitations remain. It is not measured radio reliability or end-to-end stop latency.
+- Local full LeakSanitizer is blocked by the execution sandbox's ptrace/process-inspection restriction; address/undefined checks can run with leak detection disabled. Full default sanitizer CI remains required. Signing uses the existing protected CI identity.
+
+Historical release evidence below does not verify this change.
+
 # Verification limits and next work
 
 Current candidate 1.2.0rc1 is published from `3f6d0adc059827a9b527d26ac1e352841c7125f1` with successful workflow `44086597994`. Software, signed packaging, identity/version/signature, all asset digests and firmware-source checks PASS. The old local SDK/signing/publication blockers below are historical and resolved for cloud delivery. Actual device UI, installed upgrade/migration, native USB/RF/PC integration and physical HIL remain untested/blocked. Stable promotion is blocked; local planning does not execute missions. See STATUS.md and TESTING.md for exact evidence and next checks.

@@ -1,3 +1,13 @@
+# Active scope — 18 November 2026
+
+User requested TeleRC Go-style gradient joystick, simpler Setup, stronger LoRa and mission planning via Wi-Fi. Repository Denberg28/TeleRC, review branch `update-joystick-setup-wifi-missions`, baseline main `2375fc6` / retained published v1.2.0rc1. Standing constitution authorization covers commit/push and eligible GitHub prerelease delivery.
+
+Implement Android UI/input-pointer recovery, bounded/age-limited USB telemetry and explicit acknowledged disarmed Wi-Fi mission upload through the paired legacy FC bridge. Acceptance: same control mapping/range/neutral; compact reachable settings; expired/overflow USB batches discarded; protocol requests source/target/CRC/type/sequence checked; upload succeeds only after all items and final ACK; bounded retries; no upload resume/arm/AUTO/start on recovery; original plan/settings schema retained. Mini/dedicated USB LoRa keep local planning. No mission execution UI is added. Tests and limitations belong in TESTING.md; signal path/compatibility in ARCHITECTURE.md. No physical reliability claim without HIL.
+
+Rollback: retain signed v1.2.0rc1 plus matching firmware/settings and export CSV before uninstalling. Android code downgrade may require uninstall/data loss. The new bridge retains prior command formats; restore only the intended legacy FC bridge if necessary, preserving other roles and NVS.
+
+Historical kickoff follows.
+
 # TeleRC simplification kickoff — 17 November 2026
 
 Based on Project Kickoff Template 1.3, AGENTS 1.4 and Constitution 3.2 from Denberg28/Agents_md commit `012797d58ae19c713b7051f233d4023db94afd67`.

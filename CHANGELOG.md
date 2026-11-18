@@ -1,3 +1,12 @@
+## 1.2.0rc2
+
+- Replace the large joystick knob with Go-style axis ticks, a gradient command line and position light. Visible travel and existing CH1/CH2 response/neutral mapping remain unchanged; missing touch pointers reset to neutral.
+- Simplify Setup into Connection and Preferences. Endpoint editing, accent and diagnostics open on demand; version text checks updates. Preserve saved endpoint, theme, sensitivity/expo, routes and plans.
+- Bound native USB LoRa telemetry to 16 pending frames and 250 ms local queue age so an app stall cannot renew freshness from a retained batch. Radio authentication, profiles and independent motor watchdogs remain unchanged.
+- Add confirmed ArduRover Wi-Fi mission upload (1–100 waypoints plus ArduPilot Home slot), integer/legacy request handling, final acknowledgement, 1.5-second bounded retries and a 120-second transfer deadline. Cancellation, edits, tab/background, reconnect, heartbeat/CH7 loss or arming stop the transfer; failed/cancelled onboard contents must be checked. No automatic resume, arm, AUTO, mission start or onboard clear command.
+- Paired upgrade: flash this release's **legacy-bridge / TeleRCBridge** on the FC Wi-Fi ESP32-S3 for mission transfer. It accepts only bounded navigation waypoints while the FC is disarmed with fresh physical CH7 permission; old bridges reject the new transfer. The dedicated Wi-Fi motor gateway, Mini rover and USB LoRa do not support uploads. Use a configured transmitter for AUTO after verifying the onboard route.
+- VersionCode 1201, same application ID/signing identity. Test candidate only; phone layout, installed upgrade, actual Wi-Fi/USB/RF/FC integration and restrained-wheel/HIL validation remain pending. Retain v1.2.0rc1 and export data before any uninstall/downgrade.
+
 ## 1.2.0rc1
 
 - Deliver the compact Controls/Mission/Setup/LoRa layout and local 100-waypoint editor prepared during the unpublished 0.8.54 source review below. Mission upload/AUTO/execution are unavailable.

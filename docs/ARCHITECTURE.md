@@ -1,3 +1,24 @@
+# Current change: 1.2.0rc2
+
+Baseline `2375fc6` / published v1.2.0rc1. Joystick presentation now uses Go-style ticks, a gradient center-to-position line and a small position light; touch travel, response preferences and channel mapping remain authoritative in the existing input code. Setup uses two compact scrollable panels; advanced endpoint and diagnostic details open on demand.
+
+`MissionPlan` retains the same private CSV schema. `MissionTransfer` owns a copied upload snapshot under MainActivity's `commandLock`; only the captured link worker sends its packets. An explicit confirmation starts MISSION_COUNT, sequential requested MISSION_ITEM_INT (or legacy MISSION_ITEM), then final MISSION_ACK. Source system/component, GCS target, mission type, frame length/flags and CRC are checked. Sequence 0 is ArduPilot's reserved Home slot; route items use sequences 1–N, relative global frame and NAV_WAYPOINT only. No SET_HOME, clear, ARM, AUTO or MISSION_START is emitted. Transfer can retry a step three times at 1500 ms, with an overall 120 s deadline. Duplicate requests are bounded; invalid/out-of-order requests cannot advance the transfer. There is no automatic continuation after cancellation/reconnect. MAVLink has no transaction identifier here: the ACK confirms protocol acceptance, not downloaded route verification or physical readiness. A failed/cancelled transfer can leave changed/partial onboard contents; verify before AUTO.
+
+Upload requires the Mission page foreground, control disabled, no pending ARM, fresh FC heartbeat, disarmed state and fresh physical CH7 permission. The bridge independently requires its observed disarmed FC/CH7 gate. `TeleRCBridge/FieldProtocol.h` admits only bounded COUNT and waypoint ITEM forms; PC sparse overrides and all existing downstream timeouts remain unchanged. App session/background/edit/loss invalidates transfer state without sending an arm, clear or start. The FC/transmitter remains responsible for execution and failsafes.
+
+| Pair | Compatibility / upgrade |
+| --- | --- |
+| Android 1.2.0rc2 ↔ this release's legacy-bridge TeleRCBridge ↔ ArduRover | New disarmed Wi-Fi upload path; paired bridge upgrade required. Physical integration pending. |
+| Android 1.2.0rc2 ↔ old TeleRCBridge | Existing driving/control formats retained; upload rejected/timeouts; upgrade only the intended FC bridge. |
+| Android 1.2.0rc2 ↔ dedicated Wi-Fi gateway/motor, Mini rover or USB LoRa | Existing control paths retained; no mission transfer support; local plan editor remains usable. |
+| Android 1.2.0rc2 ↔ LoRa BASE/ROVER/motor ↔ PC client | Radio/UART formats, provisioning and firmware unchanged. Android USB receive batches now cap at 16 pending frames, expiring after 250 ms local age. Actual PC/USB/RF regression pending. |
+
+`TelemetryMailbox` bounds only the Android USB receive backlog, not radio latency or the motor watchdog. It drops oldest overflow and expired/backwards-time entries before delivery. Frames still waiting in device/USB/FC buffers lack creation timestamps; this change cannot establish full-stack freshness/replay protection. Wi-Fi remains unsigned, endpoint/CRC-checked, not authenticated MAVLink.
+
+References: [MAVLink mission protocol](https://mavlink.io/en/services/mission.html), [ArduPilot mission transfer](https://ardupilot.org/dev/docs/mavlink-mission-upload-download.html). ArduRover 4.6.3 source review: [reserved Home read behavior](https://github.com/ArduPilot/ardupilot/blob/Rover-4.6.3/libraries/AP_Mission/AP_Mission.cpp). Golden frame vectors are generated independently with pymavlink; it is a validation aid, not a runtime dependency.
+
+Historical baseline architecture/evidence follows; statements about local-only planning below describe prior releases.
+
 # TeleRC control and compatibility
 
 Published 1.2.0rc1/code 1200: source/tag `3f6d0adc059827a9b527d26ac1e352841c7125f1`, successful signed run `44086597994`. Release assets and current STATUS.md record verified package/signature/checksums and remaining physical validation.

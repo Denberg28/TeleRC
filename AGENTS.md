@@ -218,4 +218,4 @@ Shared source: Denberg28/Agents_md at `012797d58ae19c713b7051f233d4023db94afd67`
 
 ## Product boundary
 
-TeleRC is a single-rover Android controller aligned with TeleRC Go: Controls, Mission, Setup and LoRa setup. Mission planning is local-only; no mission upload, AUTO-mode command or onboard execution is implemented. Keep fleet/relay management, games, simulated RC positions and external-servo assignment UI out of this app. Preserve existing saved tracks and settings on upgrade.
+TeleRC is a single-rover Android controller aligned with TeleRC Go: Controls, Mission, Setup and LoRa setup. Mission editing is local; explicitly confirmed uploads are available only for disarmed ArduRover through the matched TeleRCBridge Wi-Fi firmware. No app AUTO/start command is implemented. Mini and USB LoRa plans remain local-only. Keep fleet/relay management, games, simulated RC positions and external-servo assignment UI out of this app. Preserve existing saved tracks and settings on upgrade.

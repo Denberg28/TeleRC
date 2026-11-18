@@ -402,7 +402,9 @@ void loop() {
     else if (sourceOk && count==packetSize && fieldAuthority.fresh(millis())) {
       const auto kind=field::classify(p,size_t(count),fieldAuthority.system);
       const bool readOnly=kind==field::Kind::HEARTBEAT||kind==field::Kind::READ;
-      if(kind!=field::Kind::REJECT && (readOnly||fieldAuthority.phoneAllowed(millis()))) {
+      const bool permitted=kind==field::Kind::MISSION ? fieldAuthority.missionAllowed(millis()) :
+          (readOnly||fieldAuthority.phoneAllowed(millis()));
+      if(kind!=field::Kind::REJECT && permitted) {
         // Guided/HOLD takes over from RC overrides, not from a retained neutral
         // override refresh. ArduRover executes navigation and loss policy locally.
         if(kind==field::Kind::DESTINATION||kind==field::Kind::HOLD)releaseReceiver();

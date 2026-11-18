@@ -9,7 +9,7 @@ data class Waypoint(val latitude: Double, val longitude: Double) {
     }
 }
 
-/** Local planning data; deliberately independent of transport and motor authority. */
+/** Planning data stays independent of transport; explicit upload uses a validated snapshot. */
 class MissionPlan {
     private val points = mutableListOf<Waypoint>()
     val waypoints: List<Waypoint> get() = points.toList()
