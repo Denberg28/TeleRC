@@ -631,13 +631,14 @@ class MainActivity : Activity() {
         val connection = panel().apply {
             addView(text("CONNECTION", 12f, accent, true))
             row(button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini Wi-Fi ▾" else "ArduRover Wi-Fi ▾") {
-                if (!wantsLink) AlertDialog.Builder(this@MainActivity).setTitle("Rover connection")
+                if (wantsLink) Toast.makeText(this@MainActivity, "Disconnect before changing the connection", Toast.LENGTH_SHORT).show()
+                else AlertDialog.Builder(this@MainActivity).setTitle("Rover connection")
                     .setItems(arrayOf("ArduRover Wi-Fi", "Mini rover Wi-Fi", "LoRa via USB base")) { _, choice ->
                         getSharedPreferences("link", MODE_PRIVATE).edit().putString("transport",
                             when (choice) { 1 -> MiniRoverWifi.TRANSPORT; 2 -> "lora_usb"; else -> "wifi" }).apply()
                         render()
                     }.show()
-            }.apply { isEnabled = !wantsLink })
+            })
             status = text("DISCONNECTED", 13f, ink, true).apply { maxLines = 2 }
             row(status!!)
             connect = button("Connect") { toggleConnection() }
@@ -646,8 +647,7 @@ class MainActivity : Activity() {
                 if (usbMode) switchTo(Page.LORA)
                 else startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
             })
-            if (!usbMode && !miniRoverMode) row(button("Wi-Fi endpoint", false) { showWifiEndpoint() }
-                .apply { isEnabled = !wantsLink })
+            if (!usbMode && !miniRoverMode) row(button("Wi-Fi endpoint", false) { showWifiEndpoint() })
         }
         val preferences = panel().apply {
             addView(text("PREFERENCES", 12f, accent, true))
@@ -677,7 +677,10 @@ class MainActivity : Activity() {
 
     // Connection — Saved endpoint. Editing never interrupts or silently reconnects a live session.
     private fun showWifiEndpoint() {
-        if (wantsLink) return
+        if (wantsLink) {
+            Toast.makeText(this, "Disconnect before editing the Wi-Fi endpoint", Toast.LENGTH_SHORT).show()
+            return
+        }
         val prefs = getSharedPreferences("link", MODE_PRIVATE)
         val address = EditText(this).apply {
             hint = "Bridge IPv4"; setSingleLine(); setText(prefs.getString("host", "192.168.4.1"))
