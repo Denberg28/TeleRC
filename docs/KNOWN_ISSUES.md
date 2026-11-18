@@ -1,5 +1,7 @@
 # 1.2.0rc2 current limits — 18 November 2026
 
+Published [v1.2.0rc2](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2), source `e667d92`; signed workflow 44287143408 and independent asset/manifest digest checks PASS. Software/package gates are resolved for this candidate; physical/installed checks below remain open.
+
 - **BLOCKED — device/HIL:** no phone, T3-S3 pair, FC or wheels attached. Gradient/Setup layout, USB scheduling, FC mission transfer, CH7 loss, installation and actual onboard route verification need the executable tests in TESTING.md. Prerelease only.
 - **Compatibility:** Wi-Fi mission upload needs the new `legacy-bridge` / `TeleRCBridge` firmware wired directly to the ArduRover FC UART. Existing dedicated Wi-Fi-to-motor and USB LoRa paths do not support mission messages. Upload over an older bridge times out and never reports success.
 - **Mission recovery:** cancelled/failed uploads do not prove the old onboard mission survived; no rollback/clear/start is sent. Verify/download the onboard route in a capable GCS before AUTO. The app uploads only while disarmed; transmitter handles subsequent execution. No app mission-start/AUTO action is implemented.

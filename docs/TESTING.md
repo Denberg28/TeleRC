@@ -1,6 +1,6 @@
 # 1.2.0rc2 acceptance and verification — 18 November 2026
 
-Baseline `2375fc6` / published v1.2.0rc1; review branch `update-joystick-setup-wifi-missions`. Final commit and actual results will be recorded below after checks. New behavior tests: MissionTransferTest (golden pymavlink frames, source/target/type/CRC, ordered/duplicate requests, integer/float requests, final/error ACK, retries/overall deadline, cancel/edit/reconnect, malformed input); TelemetryMailboxTest (capacity, expiry, clock boundary); bridge field_protocol_test (restricted waypoint schema, disarmed/CH7, no AUTO/start/servo). Existing suites remain required. No runtime dependency was added.
+Baseline `2375fc6` / published v1.2.0rc1; review branch `update-joystick-setup-wifi-missions`. Released source/tag `e667d926ce4446faa808ddc40dd78a14223f3973`; successful signed run [44287143408](https://github.com/Denberg28/TeleRC/actions/runs/44287143408). Final cloud and delivery evidence below supersedes pending local statuses. New behavior tests: MissionTransferTest (golden pymavlink frames, source/target/type/CRC, ordered/duplicate requests, integer/float requests, final/error ACK, retries/overall deadline, cancel/edit/reconnect, malformed input); TelemetryMailboxTest (capacity, expiry, clock boundary); bridge field_protocol_test (restricted waypoint schema, disarmed/CH7, no AUTO/start/servo). Existing suites remain required. No runtime dependency was added.
 
 New executable device/HIL procedure (all NOT TESTED until observations recorded):
 
@@ -18,14 +18,21 @@ Local log source: `056b71a`; subsequent Setup guard-feedback correction is cover
 
 `python bridge/sync_motor_core.py --check`, `bridge/tests/run.sh`, `ASAN_OPTIONS=detect_leaks=0 SANITIZE=1 bridge/tests/run.sh`, and three firmware packaging tests PASS. [Host log](evidence/2026-11-18/host-final.txt). Exact required default `SANITIZE=1 bridge/tests/run.sh` was attempted and BLOCKED locally by LeakSanitizer's ptrace restriction, not a source-test failure; default leak-enabled CI is required before candidate publication. Golden MISSION_COUNT/ITEM_INT/request/ACK frames were independently generated with pymavlink, then checked in JVM tests and the bridge classifier. This is protocol/unit/host simulation, not a running ArduRover SITL or actual phone/FC test.
 
-| Gate | Current evidence / status | Remaining requirement |
+## Final published software/package evidence
+
+[Final Android PR checks](https://github.com/Denberg28/TeleRC/actions/runs/44286317038), [final host/default sanitizer and ESP32 checks](https://github.com/Denberg28/TeleRC/actions/runs/44286317032), and [signed release run](https://github.com/Denberg28/TeleRC/actions/runs/44287143408) PASS. Final PR head `8937393`, merged release/tag `e667d92`; identical reviewed app/firmware tree. The protected release compiles the manufacturer T3-S3 profiles, builds both APK variants, checks debug/release lint, 83 JVM tests, default full sanitizers, signer continuity and code 1201 > retained code 1200 before publication. BUILD_INFO/SHA256SUMS are [release assets](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2). No replaced signer or stable promotion.
+
+Independent post-publication download verification PASS: all five sizes/GitHub digests, top-level checksums, release/tag source, BUILD_INFO package/version/83-test/certificate statements, bridge archive commit, ten firmware profiles, 40 binary sizes/digests/offsets and all archive members. [Verification record](evidence/2026-11-18/release-verification.json). APK signature/package validation itself is CI apksigner/aapt evidence; downloading and hashing are not installation or HIL.
+
+| Gate | Final candidate evidence / status | Remaining requirement |
 | --- | --- | --- |
-| A — source/build | PASS — local Android build/lint + host; actual-target CI NOT TESTED | Compile affected TeleRCBridge and retained firmware targets using pinned CI; full default sanitizers |
-| B — behavior | PASS — 83 JVM / host simulated checks; device BLOCKED | Native layout, lifecycle, USB, FC upload and onboard route readback |
-| C — regression | PASS — automated source scope | Actual phone/PC/transmitter integration remains NOT TESTED |
-| D — integration | PASS — independent wire vectors and host allowlist; real chain BLOCKED | Install matched FC bridge and compare downloaded onboard mission/Home |
+| A — source/build | PASS — build verified | Final Android/firmware/source/lint and full default sanitizer gates pass |
+| B — behavior | PASS — JVM/host simulated scope; device BLOCKED | Native layout, lifecycle, USB, FC upload and onboard route readback |
+| C — regression | PASS — automated scope | Actual phone/PC/transmitter integration NOT TESTED |
+| D — integration | PASS — golden wire/host/package; real chain BLOCKED | Matched FC bridge and downloaded onboard mission/Home comparison |
 | E — HIL | BLOCKED | No attached hardware; execute restrained procedures above and below |
-| F — delivery | NOT TESTED — protected signed CI / publication pending | Verify existing signer, code 1201 > 1200, assets/hashes, installation and rollback; candidates only |
+| F — delivery | PASS — signed prerelease packaging/digests; installation BLOCKED | Existing signer and code progression verified; actual installed upgrade/rollback NOT TESTED |
+
 
 Historical test evidence follows; it is not verification of rc2.
 

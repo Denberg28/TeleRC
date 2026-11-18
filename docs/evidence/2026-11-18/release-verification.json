@@ -1,0 +1,14 @@
+{
+  "release": "https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2",
+  "source": "e667d926ce4446faa808ddc40dd78a14223f3973",
+  "asset_sha256": {
+    "BUILD_INFO.txt": "7e0d7220b93bf4e04efed44c7df95e7fc1f3f8db9636f90310854edf044bb859",
+    "SHA256SUMS.txt": "df50af5a088c15576f27133cafde22f4884d6698122ba4be0d4b195417c4b645",
+    "TeleRC-bridge-v1.2.0rc2.zip": "58cddf68887f33d948bd962a87b7b42675980b0a2a797c7a9f6ab52e1405177c",
+    "TeleRC-firmware-v1.2.0rc2.zip": "5bf84569e31c0bd63861cd85e91b205b1c30653cecce16b09d067681ee7466c3",
+    "TeleRC-v1.2.0rc2.apk": "1a611d0de256ecea86cf1a2e92a39ba1f1907fa03696398b23a38b05411e2710"
+  },
+  "package_version_signer": "CI apksigner/package checks PASS; BUILD_INFO identity matched",
+  "firmware_manifest": "PASS ten exact targets, 40 binary sizes/digests/offsets and all members",
+  "hardware": "NOT TESTED"
+}
