@@ -11,7 +11,6 @@ import java.net.DatagramPacket
 import java.net.InetAddress
 import java.net.SocketException
 import java.net.SocketTimeoutException
-import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Native ESP32-S3 USB CDC ACM only; external CH340/CP210x UART adapters are not supported. */
@@ -27,7 +26,7 @@ class UsbLoRaTransport private constructor(
     private val closed = AtomicBoolean(false)
     private val writeLock = Any()
     private val parser = SerialDatagram.Parser()
-    private val pending = ArrayDeque<ByteArray>()
+    private val pending = TelemetryMailbox()
     private val loopback = InetAddress.getByName("127.0.0.1")
 
     override fun send(packet: DatagramPacket) {
@@ -41,14 +40,19 @@ class UsbLoRaTransport private constructor(
     }
     override fun receive(packet: DatagramPacket) {
         if (closed.get()) throw SocketException("USB link closed")
-        if (pending.isEmpty()) {
+        var payload = pending.poll(SystemClock.elapsedRealtime())
+        if (payload == null) {
             val bytes = ByteArray(512)
             val count = connection.bulkTransfer(input, bytes, bytes.size, 50)
             if (closed.get() || manager.deviceList.values.none { it.deviceName == device.deviceName })
                 throw SocketException("LoRa USB base detached")
-            if (count > 0) pending.addAll(parser.feed(bytes, count, SystemClock.elapsedRealtime()))
+            if (count > 0) {
+                val now = SystemClock.elapsedRealtime()
+                pending.offer(parser.feed(bytes, count, now), now)
+                payload = pending.poll(now)
+            }
         }
-        val payload = pending.pollFirst() ?: throw SocketTimeoutException("No rover frame")
+        payload = payload ?: throw SocketTimeoutException("No fresh rover frame")
         if (payload.size > packet.length) throw SocketException("USB telemetry exceeds receive capacity")
         payload.copyInto(packet.data, packet.offset)
         packet.length = payload.size; packet.address = loopback; packet.port = 14550

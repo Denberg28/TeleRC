@@ -15,12 +15,17 @@ class MissionPlannerView(
     private val map: RouteMapView,
     private val save: () -> Unit,
     exportPlan: () -> Unit,
-    importPlan: () -> Unit
+    importPlan: () -> Unit,
+    uploadPlan: () -> Unit,
+    cancelUpload: () -> Unit
 ) : LinearLayout(context) {
     private val dark = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getBoolean("dark", false)
     private val ink = if (dark) Color.WHITE else Color.rgb(27, 38, 49)
     private val rows = LinearLayout(context).apply { orientation = VERTICAL }
     private val summary = label("")
+    private val transferStatus = label("Plan saved on phone").apply { textSize = 12f }
+    private val upload = action("Upload Wi-Fi", uploadPlan)
+    private val cancel = action("Cancel", cancelUpload)
     private var coordinateDialog: AlertDialog? = null
     private fun dp(n: Int) = (n * resources.displayMetrics.density + .5f).toInt()
     private fun label(value: String) = TextView(context).apply {
@@ -57,10 +62,21 @@ class MissionPlannerView(
         files.addView(action("Import", importPlan), LayoutParams(0, dp(48), 1f))
         files.addView(action("Export", exportPlan), LayoutParams(0, dp(48), 1f))
         sidebar.addView(files)
+        sidebar.addView(transferStatus)
+        sidebar.addView(LinearLayout(context).apply {
+            addView(upload, LayoutParams(0, dp(48), 2f))
+            addView(cancel, LayoutParams(0, dp(48), 1f))
+        })
         addView(sidebar, LayoutParams(0, -1, 2f).apply { leftMargin = dp(8) })
         map.onAddWaypoint = { editPoint(point = it) }
         map.onEditWaypoint = { editPoint(it) }
         refresh(fit = true)
+    }
+
+    fun transferState(message: String, active: Boolean, ready: Boolean) {
+        transferStatus.text = message
+        upload.isEnabled = ready && !active && plan.waypoints.isNotEmpty()
+        cancel.isEnabled = active
     }
 
     fun refresh(fit: Boolean = false) {

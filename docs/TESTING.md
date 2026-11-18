@@ -1,3 +1,34 @@
+# 1.2.0rc2 acceptance and verification — 18 November 2026
+
+Baseline `2375fc6` / published v1.2.0rc1; review branch `update-joystick-setup-wifi-missions`. Final commit and actual results will be recorded below after checks. New behavior tests: MissionTransferTest (golden pymavlink frames, source/target/type/CRC, ordered/duplicate requests, integer/float requests, final/error ACK, retries/overall deadline, cancel/edit/reconnect, malformed input); TelemetryMailboxTest (capacity, expiry, clock boundary); bridge field_protocol_test (restricted waypoint schema, disarmed/CH7, no AUTO/start/servo). Existing suites remain required. No runtime dependency was added.
+
+New executable device/HIL procedure (all NOT TESTED until observations recorded):
+
+1. Install the signed candidate over v1.2.0rc1 with existing data backed up. Verify plan order/CSV, tracks, endpoint, sensitivities/expo and theme survive. At narrow landscape and increased font size in light/dark themes, check Setup connection/preferences, dialogs, version/update action and Mission list/upload status remain reachable. Verify gradient line/position light at both endpoints and neutral, using both axes and multiple pointers. Release/cancel/missing-pointer/disable must output 1500 µs; channel range remains unchanged.
+2. On restrained wheels run the existing control/permission/watchdog/transmitter takeover tests below. For USB LoRa, introduce a >250 ms app receive-worker delay while multiple telemetry frames are pending, then remove radio/USB. Old pending Android batches must not renew heartbeat. Recover/reconnect: no enable/arm or stored input replay. Repeat 100 connection cycles and 30 min restrained operation; record USB/radio drop counts, resets and measured safe-state latency. Buffers still inside USB/device/FC cannot be aged by this app; record this limit.
+3. Use the new **legacy-bridge / TeleRCBridge** ESP32-S3 wired RX18/TX17 to the F405's MAVLink UART (115200, common ground) and the configured physical CH7 permission stream. Motor power isolated initially. Connect ArduRover Wi-Fi, leave disarmed, select phone permission, add three nonidentical points, choose Upload and confirm. Expected: requests sequence 0 (reserved Home), then 1–3; final accepted ACK required. Download via Mission Planner/QGC: waypoint 1 exactly matches the first planned point, all three order/coordinates match within float/integer encoding precision, and actual Home is unchanged. Observe no ARM, AUTO, MISSION_START or drive command during upload. Selection of AUTO is a separate configured transmitter operation after route verification.
+4. Before and during upload: remove heartbeat for ≥4 s, expire CH7 for ≥750 ms, select receiver, arm via transmitter, background app, change page/plan, cancel, disconnect/reconnect and unplug bridge. Expected: upload stops, no automatic restart, no reported success without final ACK, no arm/mode/clear command. Onboard contents may have changed: verify/download before execution. Packet capture must show ≤3 retries per step, 1.5 s spacing, and stop by 120 s. Repeat final/early/error/duplicate/wrong-source ACK/request faults. Old bridge must time out without false success. Mini/LoRa must offer local editing but disable upload.
+5. Restore motor power only for the existing restrained downstream failsafe checks, then controlled field validation after bench gates pass. FC failsafes, GPS/navigation quality and safe AUTO execution remain FC/transmitter responsibilities. Record exact app/bridge/FC versions, radio/USB hardware, controller settings, power arrangement, measured outputs and omitted stages. Missing measurements block stable promotion.
+
+Rollback: retain v1.2.0rc1 APK and matching intended firmware/configuration. Export local plans before an uninstall required for Android versionCode downgrade; do not erase unrelated board NVS or change signing identity. Review ARCHITECTURE.md for paired bridge compatibility and partial upload recovery.
+
+## Final local software evidence
+
+Final review source: the commit attached to the review PR / release BUILD_INFO. Java 17.0.21+9, Gradle 8.11.1, AGP 8.9.2, Kotlin 2.1.20, SDK 35 / Build Tools 35.0.0. `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:lintRelease --no-daemon` PASS on final source: 83 tests, 0 failures/errors/skips; debug APK and debug/release compilation; both lint variants 0 errors, 33 warnings. [Final Android log](evidence/2026-11-18/android-final.txt). No per-draw gradient allocation; shader and matrix are reused.
+
+`python bridge/sync_motor_core.py --check`, `bridge/tests/run.sh`, `ASAN_OPTIONS=detect_leaks=0 SANITIZE=1 bridge/tests/run.sh`, and three firmware packaging tests PASS. [Host log](evidence/2026-11-18/host-final.txt). Exact required default `SANITIZE=1 bridge/tests/run.sh` was attempted and BLOCKED locally by LeakSanitizer's ptrace restriction, not a source-test failure; default leak-enabled CI is required before candidate publication. Golden MISSION_COUNT/ITEM_INT/request/ACK frames were independently generated with pymavlink, then checked in JVM tests and the bridge classifier. This is protocol/unit/host simulation, not a running ArduRover SITL or actual phone/FC test.
+
+| Gate | Current evidence / status | Remaining requirement |
+| --- | --- | --- |
+| A — source/build | PASS — local Android build/lint + host; actual-target CI NOT TESTED | Compile affected TeleRCBridge and retained firmware targets using pinned CI; full default sanitizers |
+| B — behavior | PASS — 83 JVM / host simulated checks; device BLOCKED | Native layout, lifecycle, USB, FC upload and onboard route readback |
+| C — regression | PASS — automated source scope | Actual phone/PC/transmitter integration remains NOT TESTED |
+| D — integration | PASS — independent wire vectors and host allowlist; real chain BLOCKED | Install matched FC bridge and compare downloaded onboard mission/Home |
+| E — HIL | BLOCKED | No attached hardware; execute restrained procedures above and below |
+| F — delivery | NOT TESTED — protected signed CI / publication pending | Verify existing signer, code 1201 > 1200, assets/hashes, installation and rollback; candidates only |
+
+Historical test evidence follows; it is not verification of rc2.
+
 # TeleRC QA gates and bench procedure
 
 ## Current published software evidence — 1.2.0rc1

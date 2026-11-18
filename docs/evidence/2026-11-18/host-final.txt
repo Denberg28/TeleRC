@@ -1,0 +1,67 @@
+$ python bridge/sync_motor_core.py --check {}
+EXIT 0
+$ bridge/tests/run.sh {}
+PASS: field command bounds, CRC/target isolation and fresh physical CH7 gate
+Hybrid safety regression checks passed
+Hybrid safety regression checks passed
+Hybrid safety regression checks passed
+Hybrid safety regression checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+LoRa framing/authentication to four-driver motor integration checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+LoRa framing/authentication to four-driver motor integration checks passed
+LoRa authentication, replay, mailbox and UART regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.000s
+
+OK
+USB provisioning, restart and active-link protection checks passed
+Swappable Wi-Fi gateway lease and forwarding checks passed
+EXIT 0
+$ bridge/tests/run.sh {'SANITIZE': '1', 'ASAN_OPTIONS': 'detect_leaks=0'}
+PASS: field command bounds, CRC/target isolation and fresh physical CH7 gate
+Hybrid safety regression checks passed
+Hybrid safety regression checks passed
+Hybrid safety regression checks passed
+Hybrid safety regression checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+LoRa framing/authentication to four-driver motor integration checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+PWM capture, neutral recovery, hard-stop and resource regression checks passed
+LoRa framing/authentication to four-driver motor integration checks passed
+LoRa authentication, replay, mailbox and UART regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+Gateway forwarding regression checks passed
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.000s
+
+OK
+USB provisioning, restart and active-link protection checks passed
+Swappable Wi-Fi gateway lease and forwarding checks passed
+EXIT 0
+$ python -m unittest discover -s scripts -p test_firmware_package.py {}
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.021s
+
+OK
+EXIT 0

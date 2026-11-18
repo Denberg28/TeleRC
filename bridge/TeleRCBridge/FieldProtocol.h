@@ -6,7 +6,7 @@
 
 // Restricted, unsigned MAVLink profile. CRC is integrity, not authentication.
 namespace field {
-enum class Kind { REJECT, HEARTBEAT, READ, HOLD, DESTINATION, SERVO };
+enum class Kind { REJECT, HEARTBEAT, READ, HOLD, DESTINATION, SERVO, MISSION };
 inline uint16_t u16(const uint8_t*p){return p[0]|uint16_t(p[1])<<8;}
 inline uint32_t u32(const uint8_t*p){return u16(p)|uint32_t(u16(p+2))<<16;}
 inline float real(const uint8_t*p){float f;memcpy(&f,p,4);return f;}
@@ -14,9 +14,24 @@ inline uint16_t acc(uint16_t c,uint8_t b){uint8_t t=b^uint8_t(c);t^=t<<4;return(
 inline bool crc(const uint8_t*p,size_t n,uint8_t extra){uint16_t c=65535;for(size_t i=1;i<n-2;++i)c=acc(c,p[i]);return acc(c,extra)==u16(p+n-2);}
 inline bool zeros(const uint8_t*p,size_t n){for(size_t i=0;i<n;++i)if(p[i])return false;return true;}
 inline bool destination(const uint8_t*p,uint8_t sys,size_t at){return p[at]==sys&&p[at+1]==1;}
+// Mission — Upload allowlist. Main mission only, 1–100 waypoints plus ArduPilot's Home slot.
+// This profile cannot clear, start, change mode, set Home or upload servo commands.
+inline bool missionUpload(const uint8_t*p,size_t n,uint8_t sys){
+ const uint8_t*q=p+6;
+ if(p[5]==44&&p[1]==4&&crc(p,n,221)&&destination(q,sys,2))return u16(q)>=2&&u16(q)<=101;
+ const bool integer=p[5]==73;
+ if((!integer&&p[5]!=39)||p[1]!=37||!crc(p,n,integer?38:254)||!destination(q,sys,32))return false;
+ if(u16(q+28)>100||u16(q+30)!=16||q[34]!=(integer?6:3)||q[35]!=0||q[36]!=1||!zeros(q,16)||!zeros(q+24,4))return false;
+ if(integer){
+  int32_t lat=int32_t(u32(q+16)),lon=int32_t(u32(q+20));
+  return lat>=-900000000&&lat<=900000000&&lon>=-1800000000&&lon<=1800000000;
+ }
+ return isfinite(real(q+16))&&isfinite(real(q+20))&&fabsf(real(q+16))<=90&&fabsf(real(q+20))<=180;
+}
 inline Kind classify(const uint8_t*p,size_t n,uint8_t sys){
  if(!sys||sys==255||n<8||p[0]!=0xfe||n!=size_t(p[1])+8||p[3]!=255||p[4]!=190)return Kind::REJECT;
  const uint8_t*q=p+6;
+ if(missionUpload(p,n,sys))return Kind::MISSION;
  if(p[5]==0&&p[1]==9&&crc(p,n,50)&&q[4]==6&&q[5]==8&&q[8]==3)return Kind::HEARTBEAT;
  if(p[5]==20&&p[1]==20&&crc(p,n,214)&&u16(q)==65535&&destination(q,sys,2)){
   bool text=false,end=false;
@@ -41,16 +56,17 @@ inline Kind classify(const uint8_t*p,size_t n,uint8_t sys){
  return Kind::REJECT;
 }
 struct Authority {
- uint8_t system=0;uint32_t heartbeatAt=0,rcAt=0,boot=0;bool seen=false,rcSeen=false,allowed=false;
+ uint8_t system=0;uint32_t heartbeatAt=0,rcAt=0,boot=0;bool seen=false,rcSeen=false,allowed=false,armed=false;
  bool fresh(uint32_t now)const{return seen&&uint32_t(now-heartbeatAt)<4000;}
  bool phoneAllowed(uint32_t now)const{return fresh(now)&&rcSeen&&allowed&&uint32_t(now-rcAt)<750;}
+ bool missionAllowed(uint32_t now)const{return phoneAllowed(now)&&!armed;}
  void observe(const uint8_t*p,size_t n,uint32_t now){
   if(n<8||(p[0]!=0xfe&&p[0]!=0xfd))return;
   bool v2=p[0]==0xfd;size_t h=v2?10:6;
   if(n<h+2||n!=h+p[1]+2||(v2&&(p[2]||p[8]||p[9])))return;
   uint8_t src=p[v2?5:3],comp=p[v2?6:4],id=p[v2?7:5];const auto*q=p+h;
   if(!src||src==255||comp!=1||(system&&src!=system))return;
-  if(id==0&&p[1]==9&&crc(p,n,50)&&q[4]==10&&q[5]==3){system=src;heartbeatAt=now;seen=true;}
+  if(id==0&&p[1]==9&&crc(p,n,50)&&q[4]==10&&q[5]==3){system=src;heartbeatAt=now;seen=true;armed=(q[6]&128)!=0;}
   if(id==65&&p[1]>=41&&p[1]<=42&&crc(p,n,118)&&system==src&&q[40]>=7){
    uint32_t next=u32(q);
    if(rcSeen&&int32_t(next-boot)<=0){if(next<boot){rcSeen=false;allowed=false;}return;}

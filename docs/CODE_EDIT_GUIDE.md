@@ -6,6 +6,9 @@
 | Give joysticks/map more room | MainActivity.kt | UI — Single-rover controls | Layout weights 2:3:2; 48 dp header/footer | Verify narrow landscape, large text, both themes |
 | Change colors/spacing | MainActivity.kt, AppColors.kt | ink/pale/surface, shell, button | dp padding inside; layout margins outside | Light/dark contrast and disabled states |
 | Change control sensitivity | MainActivity.kt, JoystickView.kt | showControlResponse, ControlResponseStore, input | Per-axis 25–100%, expo 0–100%; preserves released preferences | CH1 steer/CH2 drive and neutral release; HIL before range changes |
+| Change joystick line / light | JoystickView.kt | UI — Axis scale, onDraw | Tick/marker size, gradient and stroke in dp; travel remains radius × 0.62 | Draw/touch use the same travel; both themes/device checks |
+| Change Wi-Fi upload timing | MissionTransfer.kt | Mission — Retry policy, MissionWire | 1500 ms retry, 3 retries/step, 120000 ms total | MissionTransferTest; bridge allowlist and HIL required |
+| Change LoRa local buffering | TelemetryMailbox.kt, UsbLoRaTransport.kt | Connection — Receive backlog | 16 frames / 250 ms local receive age | TelemetryMailboxTest; actual USB congestion/endurance HIL |
 | Adjust mission editor layout | MissionPlannerView.kt | UI — Planner spacing | Map:list 3:2; 48 dp action rows | List scroll, map gestures and coordinate validation |
 | Adjust plan bounds/CSV | MissionPlan.kt | Mission — Bounds and CSV schema | 100 points, 16,384 characters, decimal degrees | MissionPlanTest; retain backward import compatibility |
 | Change plan saving/import | MainActivity.kt | saveMission, onActivityResult, documentBusy | Atomic private mission.csv; bounded import/export on one worker, separate from control TX | Round trip, picker cancel/failure, upgrade and write-failure checks |
