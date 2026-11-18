@@ -139,11 +139,12 @@ class MainActivity : Activity() {
     private var endpoint: InetAddress? = null
     private var endpointPort = 0
     private val darkTheme get() = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark", false)
-    private val ink get() = if (darkTheme) Color.rgb(232, 239, 246) else Color.rgb(27, 38, 49)
-    private val muted get() = if (darkTheme) Color.rgb(164, 181, 196) else Color.rgb(96, 114, 131)
+    // UI — Theme surfaces. Change these together to preserve contrast in both modes.
+    private val ink get() = if (darkTheme) Color.rgb(231, 238, 246) else Color.rgb(31, 48, 64)
+    private val muted get() = if (darkTheme) Color.rgb(165, 185, 204) else Color.rgb(91, 109, 127)
     private val accent get() = AppColors.accent(this)
-    private val pale get() = if (darkTheme) Color.rgb(12, 20, 28) else Color.rgb(245, 248, 251)
-    private val surface get() = if (darkTheme) Color.rgb(22, 34, 45) else Color.WHITE
+    private val pale get() = if (darkTheme) Color.rgb(13, 23, 34) else Color.rgb(242, 246, 250)
+    private val surface get() = if (darkTheme) Color.rgb(26, 39, 53) else Color.WHITE
     private val softAccent get() = AppColors.softAccent(this)
 
 
@@ -156,17 +157,19 @@ class MainActivity : Activity() {
         if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
         gravity = Gravity.CENTER
     }
+    // UI — Buttons. Set interior padding and the common 48 dp touch height here.
     private fun button(value: String, filled: Boolean = true, action: () -> Unit) = Button(this).apply {
-        text = value; isAllCaps = false; textSize = 15f
-        minimumWidth = 0; minimumHeight = 0
-        setPadding(dp(8), 0, dp(8), 0)
+        text = value; isAllCaps = false; textSize = 14f
+        minimumWidth = 0; minimumHeight = dp(48)
+        setPadding(dp(14), dp(4), dp(14), dp(4))
         setTextColor(if (filled) Color.WHITE else accent)
-        background = shape(if (filled) accent else softAccent, 16)
+        background = shape(if (filled) accent else softAccent, 14)
         setOnClickListener { action() }
     }
+    // UI — Cards. The shared inset and corner radius control visual symmetry.
     private fun card(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
-        background = shape(surface); elevation = dp(2).toFloat()
+        orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14))
+        background = shape(surface, 18); elevation = dp(1).toFloat()
     }
     private fun LinearLayout.addCard(view: View) {
         addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
@@ -222,9 +225,29 @@ class MainActivity : Activity() {
         requestedOrientation = orientation
         render()
     }
+    // UI — Navigation. Three equal tabs keep Setup visible on every page; LoRa stays in Setup.
+    private fun navigation(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        val entries = listOf(Page.SETUP to "Setup", Page.CONTROLS to "Controls", Page.MISSION to "Mission")
+        entries.forEachIndexed { index, (destination, label) ->
+            val selected = page == destination || (destination == Page.SETUP && page == Page.LORA)
+            val tab = button(label, selected) { switchTo(destination) }.apply {
+                contentDescription = "$label tab"
+                textSize = 14f
+                if (!selected) setTextColor(muted)
+                background = shape(if (selected) accent else surface, 12)
+            }
+            addView(tab, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                if (index < entries.lastIndex) rightMargin = dp(8)
+            })
+        }
+    }
+    // UI — Outer padding. Account for system bars/cutouts while preserving equal side insets.
     private fun shell(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setBackgroundColor(pale)
-        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setPadding(dp(16), dp(10), dp(16), dp(10))
+        addView(navigation(), LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(10) })
         setOnApplyWindowInsetsListener { view, insets ->
             val left: Int; val top: Int; val right: Int; val bottom: Int
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -234,25 +257,9 @@ class MainActivity : Activity() {
                 left = insets.systemWindowInsetLeft; top = insets.systemWindowInsetTop
                 right = insets.systemWindowInsetRight; bottom = insets.systemWindowInsetBottom
             }
-            view.setPadding(dp(12) + left, dp(8) + top, dp(12) + right, dp(8) + bottom)
+            view.setPadding(dp(16) + left, dp(10) + top, dp(16) + right, dp(10) + bottom)
             insets
         }
-    }
-    private fun pageDropdown(label: String): Button {
-        lateinit var anchor: Button
-        anchor = button("$label ▾", true) {
-            PopupMenu(this, anchor).apply {
-                menu.add(0, 1, 0, "Setup")
-                menu.add(0, 2, 1, "Controls")
-                menu.add(0, 3, 2, "Mission")
-                menu.add(0, 4, 3, "LoRa setup")
-                setOnMenuItemClickListener { item ->
-                    switchTo(when (item.itemId) { 1 -> Page.SETUP; 2 -> Page.CONTROLS; 4 -> Page.LORA; else -> Page.MISSION })
-                    true
-                }
-            }.show()
-        }
-        return anchor
     }
     private fun render() {
         synchronized(commandLock) { missionTransfer.cancel("Screen changed; upload cancelled") }
@@ -450,7 +457,7 @@ class MainActivity : Activity() {
         enable = null; steeringStick = null; driveStick = null
         val root = shell()
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        header.addView(pageDropdown("LoRa setup"), LinearLayout.LayoutParams(dp(160), dp(48)))
+        header.addView(text("LoRa setup", 17f, ink, true), LinearLayout.LayoutParams(dp(160), dp(48)))
         status = text("DISCONNECTED", 12f, accent, true)
         header.addView(status, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
         root.addView(header, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
@@ -614,7 +621,7 @@ class MainActivity : Activity() {
         val root = shell()
         val appearance = getSharedPreferences("appearance", MODE_PRIVATE)
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(pageDropdown("Setup"), LinearLayout.LayoutParams(dp(120), dp(48)))
+        header.addView(text("Rover setup", 17f, ink, true), LinearLayout.LayoutParams(dp(150), dp(48)))
         header.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
         header.addView(button("TeleRC ${BuildConfig.VERSION_NAME}", false) { updater.check() },
             LinearLayout.LayoutParams(-2, dp(48)).apply { rightMargin = dp(8) })
@@ -624,12 +631,12 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(dp(48), dp(48)))
         root.addView(header)
         val body = LinearLayout(this)
-        fun panel(): LinearLayout = card().apply { setPadding(dp(12), dp(8), dp(12), dp(8)) }
+        fun panel(): LinearLayout = card().apply { setPadding(dp(16), dp(14), dp(16), dp(14)) }
         fun LinearLayout.row(view: View) {
-            addView(view, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+            addView(view, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
         }
         val connection = panel().apply {
-            addView(text("CONNECTION", 12f, accent, true))
+            addView(text("CONNECTION", 13f, accent, true).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL })
             row(button(if (usbMode) "LoRa USB ▾" else if (miniRoverMode) "Mini Wi-Fi ▾" else "ArduRover Wi-Fi ▾") {
                 if (wantsLink) Toast.makeText(this@MainActivity, "Disconnect before changing the connection", Toast.LENGTH_SHORT).show()
                 else AlertDialog.Builder(this@MainActivity).setTitle("Rover connection")
@@ -639,7 +646,7 @@ class MainActivity : Activity() {
                         render()
                     }.show()
             })
-            status = text("DISCONNECTED", 13f, ink, true).apply { maxLines = 2 }
+            status = text("DISCONNECTED", 13f, ink, true).apply { maxLines = 2; gravity = Gravity.START or Gravity.CENTER_VERTICAL }
             row(status!!)
             connect = button("Connect") { toggleConnection() }
             row(connect!!)
@@ -650,7 +657,7 @@ class MainActivity : Activity() {
             if (!usbMode && !miniRoverMode) row(button("Wi-Fi endpoint", false) { showWifiEndpoint() })
         }
         val preferences = panel().apply {
-            addView(text("PREFERENCES", 12f, accent, true))
+            addView(text("PREFERENCES", 13f, accent, true).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL })
             row(button("Steering / drive sensitivity", false) { showControlResponse() })
             row(button("Accent color", false) {
                 val selected = appearance.getString("accent", "Blue")
@@ -667,9 +674,9 @@ class MainActivity : Activity() {
             updateStatus = text("Tap the version above to check updates", 12f, muted)
             row(updateStatus!!)
         }
-        body.addView(ScrollView(this).apply { isFillViewport = true; addView(connection) },
-            LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        body.addView(ScrollView(this).apply { isFillViewport = true; addView(preferences) },
+        body.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(connection) },
+            LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(12) })
+        body.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(preferences) },
             LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
         setContentView(root)
@@ -756,7 +763,7 @@ class MainActivity : Activity() {
     private fun renderControls() {
         val root = shell()
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(pageDropdown("Controls"), LinearLayout.LayoutParams(dp(130), dp(48)))
+        header.addView(text("Manual control", 17f, ink, true), LinearLayout.LayoutParams(dp(154), dp(48)))
         status = text("DISCONNECTED", 12f, accent, true).apply {
             maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
         }
@@ -840,7 +847,7 @@ class MainActivity : Activity() {
         steeringStick = null; driveStick = null
         val root = shell()
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(pageDropdown("Mission"), LinearLayout.LayoutParams(dp(130), dp(48)))
+        header.addView(text("Mission plan", 17f, ink, true), LinearLayout.LayoutParams(dp(150), dp(48)))
         routeStatus = text("Plan · upload over Wi-Fi", 12f, muted)
         header.addView(routeStatus, LinearLayout.LayoutParams(0, dp(48), 1f))
         header.addView(button("Locate phone", false) { locatePhone() }, LinearLayout.LayoutParams(dp(130), dp(48)))

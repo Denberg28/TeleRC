@@ -1,3 +1,10 @@
+## 1.2.0rc3
+
+- Restore direct Setup / Controls / Mission navigation with three equally sized landscape tabs; retain dedicated LoRa pairing under Setup and the existing safe page-switch handover.
+- Harmonize the restrained navy-blue light/dark palette, shared action-button padding, card corners, page gutters and Setup panel spacing, without changing CH1/CH2 mappings, radio configuration, mission transport or safety gates.
+- Target the same application ID and signing certificate, versionCode 1202 after 1201. Rebuild and validate the same firmware/package matrix for the paired release; firmware behavior is unchanged.
+- **Prerelease/test candidate only.** Device-specific layout, font scaling, existing-install upgrade, real Wi-Fi/LoRa operation and restrained-wheel HIL remain to be tested. Keep signed v1.2.0rc2 for rollback; downgrading a higher versionCode may require uninstalling and loses private data unless backed up.
+
 ## 1.2.0rc2
 
 - Replace the large joystick knob with Go-style axis ticks, a gradient command line and position light. Visible travel and existing CH1/CH2 response/neutral mapping remain unchanged; missing touch pointers reset to neutral.

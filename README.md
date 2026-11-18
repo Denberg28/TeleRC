@@ -2,13 +2,13 @@
 
 TeleRC is the Android controller in the TeleRC ecosystem, simplified around TeleRC Go's connect-and-drive workflow while retaining native USB LoRa and waypoint planning with acknowledged ArduRover Wi-Fi upload. PC-TeleRC owns fleet operations.
 
-Signed test candidate: [TeleRC v1.2.0rc2 APK](https://github.com/Denberg28/TeleRC/releases/download/v1.2.0rc2/TeleRC-v1.2.0rc2.apk) · [matched firmware, source and checksums](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2). Device/HIL validation remains pending.
+Signed test candidate: [TeleRC v1.2.0rc3 APK](https://github.com/Denberg28/TeleRC/releases/download/v1.2.0rc3/TeleRC-v1.2.0rc3.apk) · [matched firmware, source and checksums](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc3). Device/HIL validation remains pending.
 
 ## Use
 
 - **Controls:** Connect the saved Wi-Fi or USB LoRa link, wait for a rover heartbeat, Enable Control, then ARM when required. Large spring-return sticks control CH1 steering and CH2 drive. STOP CONTROL releases to the receiver; Disconnect closes the link. The center map shows measured phone/rover positions, not simulated motion.
 - **Mission:** tap the map or Add to enter coordinates; tap a list row to edit, move earlier/later, or delete. Plans autosave locally. Import/Export uses `sequence,latitude,longitude` CSV with consecutive 1-based sequence numbers and up to 100 waypoints. Clear and Import ask before replacing data. Planned routes are orange, phone tracks blue, rover tracks green. Choose **Upload Wi-Fi** to replace the onboard mission on a disarmed ArduRover through the matching `TeleRCBridge` firmware. Fresh heartbeat and physical CH7 phone permission are required throughout. Success requires the final rover acknowledgement; cancel/loss/edit/background stops the transfer and marks the onboard plan unverified. Upload does not arm or start navigation. Use the configured transmitter for AUTO and mission execution; verify the onboard route first. Mini rover and USB LoRa keep local editing only.
-- **Setup:** select Wi-Fi UDP or native USB LoRa, choose ArduRover Wi-Fi, standalone Mini rover Wi-Fi or USB LoRa; connect, or open Wi-Fi settings / LoRa pairing. Endpoint editing is in **Wi-Fi endpoint** while disconnected; sensitivity, accent and diagnostics open compact dialogs. Tap the version to check updates.
+- **Setup:** use the always-visible Setup tab to select Wi-Fi UDP or native USB LoRa, choose ArduRover Wi-Fi, standalone Mini rover Wi-Fi or USB LoRa; connect, or open Wi-Fi settings / LoRa pairing. Endpoint editing is in **Wi-Fi endpoint** while disconnected; sensitivity, accent and diagnostics open compact dialogs. Tap the version to check updates.
 - **LoRa setup:** provision/read back one T3-S3 at a time; connect the BASE for control. Existing roles, pairing and firmware remain compatible. Follow [the integration guide](bridge/LORA_INTEGRATION.md).
 
 Map tiles require internet or existing cache. Coordinate editing, private plan storage and CSV work without tiles. Without accepted GPS the map camera uses a labeled sample area; no sample coordinate is recorded as Home or added without an explicit waypoint action. Allow precise location through Android settings when phone Home/tracking is needed.
@@ -33,7 +33,7 @@ Release signing, debug/release lint/build, actual ESP32 compilation, checksums a
 
 ## Project rules and rollback
 
-The updated [kickoff](docs/PROJECT_KICKOFF.md), [AGENTS](AGENTS.md), [constitution](Marlou_Prompt_Constitution_v3.md) and [reusable template](Project_Kickoff_Template.md) record scope and workflow. Published 1.1.0rc1/code 1100 is the retained upgrade/rollback baseline; the new candidate is 1.2.0rc2/code 1201; retain 1.2.0rc1/code 1200 for app rollback. Export the plan and preserve existing data/settings before uninstalling; normal Android downgrade to an older versionCode requires uninstall/reinstall and can erase private data. Use the retained signed APK and matching firmware/configuration for rollback. The manual updater excludes prereleases; install candidates explicitly from GitHub Releases.
+The updated [kickoff](docs/PROJECT_KICKOFF.md), [AGENTS](AGENTS.md), [constitution](Marlou_Prompt_Constitution_v3.md) and [reusable template](Project_Kickoff_Template.md) record scope and workflow. Published 1.1.0rc1/code 1100 remains the older upgrade baseline; the new candidate is 1.2.0rc3/code 1202; retain signed 1.2.0rc2/code 1201 for rollback and upgrade comparison. Export the plan and preserve existing data/settings before uninstalling; normal Android downgrade to an older versionCode requires uninstall/reinstall and can erase private data. Use the retained signed APK and matching firmware/configuration for rollback. The manual updater excludes prereleases; install candidates explicitly from GitHub Releases.
 
 ## Released control checks retained
 
