@@ -1,20 +1,15 @@
-# TeleRC 1.2.0rc2 delivery — 18 November 2026
+# TeleRC 1.2.0rc4 status — 24 November 2026
 
-Published signed prerelease: https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2
-APK: https://github.com/Denberg28/TeleRC/releases/download/v1.2.0rc2/TeleRC-v1.2.0rc2.apk
-Release source/tag: `e667d926ce4446faa808ddc40dd78a14223f3973`; code 1201; application `io.github.denberg28.telerc`.
-Successful signed workflow: https://github.com/Denberg28/TeleRC/actions/runs/44287143408
-PR #18 is merged. Standing constitution authorization covered reviewed commit/push and eligible prerelease publication. Source trees uploaded through the connector matched the local Git trees exactly.
-
-Delivered: Go-style joystick ticks, gradient line and position light; original channel mapping/travel/response preserved, missing-pointer recovery neutralizes input. Setup now has compact Connection/Preferences panels, endpoint/accent/diagnostic dialogs and a clickable update version; link settings stay usable after disconnect. Native USB LoRa telemetry is capped at 16 pending frames and 250 ms local age. Radio protocol, provisioning and independent motor watchdogs are unchanged.
-
-Mission editor retains local autosave/CSV and adds confirmed acknowledged ArduRover Wi-Fi upload of 1–100 waypoints plus the reserved Home slot. Upload requires the captured foreground Mission session, disarmed heartbeat and fresh physical CH7 permission; retries/deadlines are bounded. Edits, page/background, disconnect, permission/heartbeat loss or arming cancel without automatic resume. No app AUTO/start/clear command is added. Failed/cancelled onboard contents are unverified. **Paired upgrade required:** use this release's legacy-bridge / TeleRCBridge firmware directly on the FC Wi-Fi path. Dedicated Wi-Fi-to-motor, Mini rover and USB LoRa keep local planning. Use the configured transmitter for execution only after checking the onboard route.
-
-Verified final software/package evidence: 83 JVM tests, debug/release lint and APK builds, normal/full default sanitizer host gates, ten actual ESP32 firmware profiles, firmware roles/images/offsets/digests and retained signer/version progression (1200 → 1201) all PASS. Final PR source `8937393` passed Android run 44286317038 and firmware/host run 44286317032; the release builds merged source `e667d92`. Initial local Android log covers source `056b71a`; final cloud checks additionally cover Setup state-feedback corrections. These are build/automated protocol evidence, not phone/FC/SITL/HIL observations.
-
-Downloaded all five published assets and checked their sizes and GitHub digests, top-level SHA256SUMS, BUILD_INFO identity/source/test/signature statements, source ZIP commit, firmware manifest and all 40 binary hashes/offsets. Release tag points to the signed source. All PASS in that stated scope. Details: [release-verification.json](evidence/2026-11-18/release-verification.json); BUILD_INFO and SHA256SUMS are release assets. Signing certificate SHA-256: `5e57bd9bb3d10d97e5abdad4c51dbf5282708db73f1844fac272403952f9f5ec`.
-APK SHA-256: `1a611d0de256ecea86cf1a2e92a39ba1f1907fa03696398b23a38b05411e2710`.
-
-Next required check: install over retained signed v1.2.0rc1, validate plans/tracks/settings, gradient/Setup layout and native document/USB flows. Flash only the intended legacy FC bridge for uploads; verify/download the onboard route and Home, then run CH7/lifecycle/loss/takeover and every restrained-wheel timing/endurance procedure in TESTING.md. Record hardware/firmware/configuration and actual outputs. Phone/USB/RF/FC/PC, installed upgrade, SITL and field validation remain NOT TESTED/BLOCKED; stable promotion is blocked. The 250 ms bound covers only Android's pending USB batches, not device/FC buffers or full-stack replay.
-
-Rollback: retain v1.2.0rc1 APK and matching hardware firmware/settings; export CSV and preserve data before any uninstall needed for Android versionCode downgrade. Do not erase unrelated motor/LoRa NVS or replace signing identity. Later docs-only checkpoints do not alter the published source/tag/binaries or reuse the version.
+- **Goal & scope:** Adopt **TeleRC Go** (`Denberg28/telerc_go` `go-v1.0.12`) into `Denberg28/TeleRC` (`io.github.denberg28.telerc`) and add **only** the **Mission** planning tab over Wi-Fi via ESP32-S3 (`TeleRCBridge`); recheck firmware & schematic for **HGLRC M10** GPS installation; review features, sanitize, push, and build signed APK prerelease `v1.2.0rc4` (`versionCode 1203`).
+- **Baseline:** `main` commit `b4f7ba9508ee62d134e69b34da1711a8deb5a39e` (published signed `v1.2.0rc3`, code `1202`).
+- **Completed changes:**
+  - Adopted TeleRC Go Controls UI, dark wallpaper (`go_background.jpg` + custom image import), translucent proportional CH1/CH2 joysticks, 20 ms (50 Hz) Wi-Fi UDP `GoLink`, `GoControl`, `GoProtocol`, `GoElrs`, `GoStopPolicy`, and compact 2×2 Settings dialog.
+  - Added only the Mission planning tab (`MissionPlannerView`, `RouteMapView`, `MissionPlan`, `MissionTransfer`, `RouteSession`) wired into `GoLink` (`GoMissionGate`, `GLOBAL_POSITION_INT` rover GPS request/parsing, acknowledged disarmed CH7-gated Wi-Fi upload).
+  - Removed obsolete non-Go Android files/tests (LoRa USB UI/transport, old Setup/gates), removed junk `ardurover/params/sample`, and sanitized hardcoded personal Wi-Fi password `"alongwayhome"` + double-escaped `\n` in `bridge/TeleRCBridge/TeleRCBridge.ino`.
+  - Added verified HGLRC M10 GPS & ESP32-S3 schematic (`docs/GPS_HGLRC_M10_SCHEMATIC.md`) and ArduRover parameter overlay (`ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param`) addressing the legacy `MODE_CH=7`/`RC6_OPTION=46` and disabled external compass issues.
+- **Local verification (PASS):**
+  - OpenJDK 17 + SDK 35 + Build Tools 35.0.0 (`./scripts/check-android-env.sh`): PASS
+  - `./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon`: PASS (`66` JVM tests, `0` errors / `22` warnings in debug & release lint)
+  - `python3 bridge/sync_motor_core.py --check`, `test_firmware_package.py`, `bridge/tests/run.sh`, `SANITIZE=1 bridge/tests/run.sh`: PASS
+- **Next step:** Push review branch `feat/adopt-telerc-go-wifi-mission`, open PR, confirm GitHub Actions (`Android checks` + `ESP32-S3 bridge compile`) pass, merge to `main` to run `Signed APK release` for `v1.2.0rc4`, and verify published release assets/checksums.
+- **Rollback:** Retain signed `v1.2.0rc3` (`versionCode 1202`) APK and matching firmware; export `mission.csv` before any uninstall required for Android versionCode downgrade.

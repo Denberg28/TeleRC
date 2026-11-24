@@ -1,3 +1,15 @@
+# 1.2.0rc4 current limits — 24 November 2026
+
+Candidate adopts **TeleRC Go** (Wi-Fi-only Controls + Settings) with only the **Mission** planning tab added, sanitizes `TeleRCBridge.ino` (removed committed AP password), and documents HGLRC M10 GPS + SpeedyBee F405 V4 wiring/parameters.
+
+- **BLOCKED — device / HIL / GPS bench:** No phone, ESP32-S3, SpeedyBee F405 V4, HGLRC M10 GPS, or rover hardware is attached. Installed upgrade over `v1.2.0rc3`, translucent dial layout at large font scales, real Wi-Fi mission transfer, HGLRC M10 satellite/QMC5883L compass calibration, CH7 Switch A handover, and restrained-wheel stop latency remain pending. Prerelease only.
+- **Scope change (intentional):** Native USB LoRa setup/transport, the old Setup tab, and the offline Maze/Test game are removed from this APK in favor of TeleRC Go's Wi-Fi-only controller plus Mission planning tab. Existing `mission.csv`, `route-session.csv`, sensitivity, and legacy Wi-Fi IP/port preferences are retained.
+- **ArduRover parameter requirement:** Legacy `ardurover/params/ardurover_esp32_s3_mavlink_02oct2026.param` had `MODE_CH=7` / `RC6_OPTION=46` and `COMPASS_USE=0` / `COMPASS_EXTERNAL=0`. Apply [`ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param`](../ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param) and follow [`docs/GPS_HGLRC_M10_SCHEMATIC.md`](GPS_HGLRC_M10_SCHEMATIC.md) so CH7 Switch A (`RC7_OPTION=46`) and the HGLRC M100-5883 compass operate properly.
+- **Mission upload path:** Requires ESP32-S3 running `TeleRCBridge` (`legacy-bridge`) wired to F405 V4 UART3 (`T3`/`R3`). Standalone Go/Mini rovers and `TeleRCWiFiGateway` + `TeleRCMotorController` keep local mission planning only. Upload never arms or starts AUTO; verify onboard waypoints before transmitter AUTO.
+- **Wi-Fi security boundary:** Wi-Fi MAVLink is endpoint/CRC checked, not cryptographically authenticated or replay-protected. Use trusted isolated Wi-Fi and personalize/protect the `TeleRC-Rover` AP password.
+
+Historical 1.2.0rc2 and earlier release limits follow below.
+
 # 1.2.0rc2 current limits — 18 November 2026
 
 Published [v1.2.0rc2](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc2), source `e667d92`; signed workflow 44287143408 and independent asset/manifest digest checks PASS. Software/package gates are resolved for this candidate; physical/installed checks below remain open.

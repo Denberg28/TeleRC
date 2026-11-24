@@ -1,3 +1,13 @@
+# Current change: 1.2.0rc4
+
+Baseline `b4f7ba9` / published `v1.2.0rc3` (code `1202`), adopting **TeleRC Go** (`Denberg28/telerc_go` `go-v1.0.12`) for the Android controller while adding **only** the **Mission** planning tab over Wi-Fi via ESP32-S3 (`TeleRCBridge`).
+
+- **Single Wi-Fi transport (`GoLink`)**: Owns the bound Android Wi-Fi UDP socket (`192.168.4.1:14550`, default phone port `14550`, system ID `1`), 20 ms (50 Hz) proportional RC override cadence, `GoControl` (1500 ms heartbeat freshness, 300 ms neutral dwell, 2 s ARM transaction), ArduRover `RC_CHANNELS` CH7 > 1800 µs (750 ms freshness) and standalone Go/Mini rover `TELERC_OWN` auto-detection, live `GLOBAL_POSITION_INT` rover GPS parsing, and `MissionTransfer` under one lock and worker thread.
+- **Mission tab**: Only added screen alongside Go Controls. Switching between Controls and Mission neutralizes sticks/stops driving while keeping the Wi-Fi link connected; leaving Mission, opening Settings, pausing, disconnecting, editing the plan, arming, or losing heartbeat/CH7 cancels any active `MissionTransfer` without auto-resume. `GoMissionGate` enforces disarmed, CH7-permitted, foreground-Mission ArduRover state. No game/maze, LoRa USB tab, Setup tab, external servo UI, or AUTO/MISSION_START command exists in this app.
+- **Firmware & HGLRC M10 GPS**: `bridge/TeleRCBridge/TeleRCBridge.ino` is sanitized (committed password removed; honors local 12–63 char `PERSONAL_AP_PASSWORD` with `TR-XXXX-XXXXXXXX` fallback; fixed `Serial.printf` newlines). HGLRC M10 / M100-5883 installs on **SpeedyBee F405 V4** `UART6` (`T6`/`R6` crossed) + `4V5`/GND (+ `I2C1 SDA/SCL` straight for QMC5883L compass), never on the ESP32-S3 bridge. See [`docs/GPS_HGLRC_M10_SCHEMATIC.md`](GPS_HGLRC_M10_SCHEMATIC.md) and [`ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param`](../ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param).
+
+Historical 1.2.0rc2 and earlier architecture records follow below.
+
 # Current change: 1.2.0rc2
 
 Baseline `2375fc6` / published v1.2.0rc1. Joystick presentation now uses Go-style ticks, a gradient center-to-position line and a small position light; touch travel, response preferences and channel mapping remain authoritative in the existing input code. Setup uses two compact scrollable panels; advanced endpoint and diagnostic details open on demand.

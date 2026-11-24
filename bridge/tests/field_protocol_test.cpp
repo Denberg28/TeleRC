@@ -19,6 +19,7 @@ int main(){
  for(int ch=5;ch<=8;++ch)assert(kind(command(183,ch,1500))==field::Kind::REJECT);
  assert(kind(command(183,9,NAN))==field::Kind::REJECT);
  assert(kind(command(511,65,200000))==field::Kind::READ);
+ assert(kind(command(511,33,500000))==field::Kind::READ);
  assert(kind(command(511,65,1000))==field::Kind::REJECT);
  Bytes dest(35);real(dest,0,0.5f);real(dest,4,1);int32_t lat=136000000,lon=1232000000;
  memcpy(dest.data()+16,&lat,4);memcpy(dest.data()+20,&lon,4);dest[28]=192;dest[30]=dest[31]=1;dest[32]=6;

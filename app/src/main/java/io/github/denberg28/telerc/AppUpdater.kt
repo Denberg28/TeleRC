@@ -22,7 +22,11 @@ import kotlin.concurrent.thread
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Manual update path for public GitHub releases. No credential is stored in the APK. */
-class AppUpdater(private val activity: Activity, private val report: (String) -> Unit) {
+class AppUpdater(
+    private val activity: Activity,
+    private val report: (String) -> Unit,
+    private val onDownloadStart: () -> Unit = {}
+) {
     private val checking=AtomicBoolean(false)
     private val verifying=AtomicBoolean(false)
     @Volatile private var closed=false
@@ -109,7 +113,7 @@ class AppUpdater(private val activity: Activity, private val report: (String) ->
                         AlertDialog.Builder(activity).setTitle("TeleRC $tag available")
                             .setMessage("Download the verified APK and open Android’s installer? Control will disconnect during installation.")
                             .setNegativeButton("Later", null)
-                            .setPositiveButton("Download") { _, _ -> download(downloadUrl, hash) }
+                            .setPositiveButton("Download") { _, _ -> onDownloadStart(); download(downloadUrl, hash) }
                             .show()
                         report("Version $tag available.")
                     }
