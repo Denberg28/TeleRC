@@ -15,7 +15,8 @@ constexpr uint32_t CONTROL_TIMEOUT_MS = 500;
 constexpr uint32_t NEUTRAL_REFRESH_MS = 100;
 
 const char AP_SSID[] = "TeleRC-Rover";
-const char PERSONAL_AP_PASSWORD[] = "alongwayhome";
+// Leave empty in Git; fill locally with 12-63 printable ASCII chars for a custom AP password.
+const char PERSONAL_AP_PASSWORD[] = "";
 const char DISCOVERY[] = "TELERC_DISCOVER_V1";
 const char DISCONNECT[] = "TELERC_DISCONNECT_V1";
 
@@ -294,14 +295,28 @@ void makeBoardPassword(char *out, size_t size) {
            static_cast<unsigned long>(chipId & 0xFFFFFFFFUL));
 }
 
+void selectApPassword(char *out, size_t size) {
+  const size_t len = strlen(PERSONAL_AP_PASSWORD);
+  bool valid = len >= 12 && len <= 63 && len < size;
+  for (size_t i = 0; valid && i < len; ++i) {
+    const unsigned char ch = static_cast<unsigned char>(PERSONAL_AP_PASSWORD[i]);
+    if (ch < 32 || ch > 126) valid = false;
+  }
+  if (valid) {
+    memcpy(out, PERSONAL_AP_PASSWORD, len + 1);
+    return;
+  }
+  makeBoardPassword(out, size);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial.println();
   Serial.println("=== TeleRC ESP32-S3 bridge boot ===");
 
-  char password[32] = {};
-  makeBoardPassword(password, sizeof(password));
+  char password[64] = {};
+  selectApPassword(password, sizeof(password));
 
   fc.setRxBufferSize(4096);
   fc.begin(FC_BAUD, SERIAL_8N1, FC_RX_GPIO, FC_TX_GPIO);
@@ -318,10 +333,10 @@ void setup() {
     while (true) delay(1000);
   }
 
-  Serial.printf("TeleRC bridge ready: %s @ %s:%u\\n",
+  Serial.printf("TeleRC bridge ready: %s @ %s:%u\n",
                 AP_SSID, WiFi.softAPIP().toString().c_str(), UDP_PORT);
-  Serial.printf("Wi-Fi password: %s\\n", password);
-  Serial.printf("FC UART: RX GPIO%d / TX GPIO%d / %lu baud\\n",
+  Serial.printf("Wi-Fi password: %s\n", password);
+  Serial.printf("FC UART: RX GPIO%d / TX GPIO%d / %lu baud\n",
                 FC_RX_GPIO, FC_TX_GPIO, static_cast<unsigned long>(FC_BAUD));
 }
 

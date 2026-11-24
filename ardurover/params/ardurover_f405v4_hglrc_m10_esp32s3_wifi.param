@@ -1,0 +1,48 @@
+# ArduRover parameter overlay: SpeedyBee F405 V4 + HGLRC M10 / M100-5883 + ESP32-S3 TeleRCBridge
+# Apply over a calibrated SpeedyBee F405 V4 ArduRover baseline, then reboot and calibrate compass/RC.
+# Reference hardware mapping verified against ArduPilot speedybeef4v4/hwdef.dat.
+
+# --- ESP32-S3 Wi-Fi MAVLink bridge (UART3: F405 T3 -> ESP GPIO18 RX, F405 R3 <- ESP GPIO17 TX) ---
+SERIAL3_PROTOCOL,2
+SERIAL3_BAUD,115
+SERIAL3_OPTIONS,0
+MAV_SYSID,1
+MAV_GCS_SYSID,255
+MAV1_POSITION,2
+MAV1_RC_CHAN,2
+MAV2_POSITION,2
+MAV2_RC_CHAN,2
+
+# --- HGLRC M10 / M100-5883 GPS (UART6: GPS TX -> F405 R6, GPS RX -> F405 T6, 4V5/GND) ---
+SERIAL6_PROTOCOL,5
+SERIAL6_BAUD,115
+SERIAL6_OPTIONS,0
+GPS1_TYPE,1
+GPS_AUTO_CONFIG,1
+GPS1_RATE_MS,200
+AHRS_GPS_USE,1
+AHRS_GPS_MINSATS,6
+
+# --- Internal Bluetooth UART4 disabled (unusable on SpeedyBee F405 V4 in ArduPilot) ---
+SERIAL4_PROTOCOL,-1
+
+# --- External QMC5883L compass on I2C1 SDA/SCL (6-pin HGLRC M100 / M100-5883 / M100 Pro) ---
+# For 4-pin HGLRC M10 Mini (no compass), set COMPASS_USE,0 and COMPASS_EXTERNAL,0 instead.
+COMPASS_ENABLE,1
+COMPASS_EXTERNAL,1
+COMPASS_USE,1
+COMPASS_AUTO_ROT,2
+EK3_SRC1_YAW,1
+
+# --- RadioMaster / RC Switch A phone permission on CH7 + Mode switch moved off CH7 ---
+# Fixes the legacy MODE_CH=7 / RC6_OPTION=46 conflict in ardurover_esp32_s3_mavlink_02oct2026.param.
+# Map Switch A (SA) to CH7: HIGH (>1800 us) permits phone control & disarmed mission upload;
+# LOW (<1300 us) hands authority immediately back to the transmitter.
+RC7_OPTION,46
+RC6_OPTION,0
+MODE_CH,6
+MODE1,0
+MODE2,4
+MODE3,10
+RC_OPTIONS,0
+RC_OVERRIDE_TIME,1

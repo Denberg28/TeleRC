@@ -1,3 +1,27 @@
+# 1.2.0rc4 acceptance and verification — 24 November 2026
+
+Baseline `b4f7ba9` / published `v1.2.0rc3` (code `1202`); branch `feat/adopt-telerc-go-wifi-mission`. Target version `1.2.0rc4` / `versionCode 1203`.
+
+## Local software verification (pre-CI)
+
+- `./scripts/check-android-env.sh` (OpenJDK 17.0.21.1, Android SDK 35, Build Tools 35.0.0, verified Gradle 8.11.1): **PASS — build verified**.
+- `./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon`: **PASS — build verified / simulator tested** (`66` JVM tests passed, `0` failures/errors/skips; debug lint `0` errors / `22` warnings; release lint `0` errors / `22` warnings; debug APK built).
+- `python3 bridge/sync_motor_core.py --check`: **PASS — build verified**.
+- `python3 -m unittest discover -s scripts -p 'test_firmware_package.py'`: **PASS — simulator tested** (`3` tests OK).
+- `bridge/tests/run.sh`: **PASS — simulator tested** (all C++ host tests including updated `field_protocol_test` for `GLOBAL_POSITION_INT` stream requests and `4` Python relay tests).
+- `SANITIZE=1 bridge/tests/run.sh`: **PASS — simulator tested** (full ASan + UBSan + LSan with zero findings).
+
+| Gate | 1.2.0rc4 status | Evidence / remaining requirement |
+| --- | --- | --- |
+| A — source/build | PASS (local Android + host/sanitizer); cloud ESP32-S3 compile & signed release pending PR/release CI | Release CI builds signed APK + 10 actual ESP32-S3 targets (core 3.3.2 / RadioLib 7.2.1) |
+| B — behavior | PASS — JVM/host simulated scope; device BLOCKED | 66 JVM tests (GoControl, GoElrs, GoRadioTelemetry, GoMissionGate, GoProportionalResponse, GoStopPolicy, MissionTransfer, MissionPlan, Mavlink, RouteSession, ThemeImagePolicy); phone UI & live upload pending |
+| C — regression | PASS — automated scope | Existing tracks/missions/sensitivity/host migration preserved; actual phone upgrade from `v1.2.0rc3` NOT TESTED |
+| D — integration | PASS — golden wire/host; real chain BLOCKED | Real ESP32-S3 `TeleRCBridge` ↔ SpeedyBee F405 V4 ↔ HGLRC M10 GPS/compass & onboard route readback pending |
+| E — HIL | BLOCKED | No attached phone, ESP32-S3, F405 V4, HGLRC M10 or wheels; execute restrained-wheel + GPS/compass bench checks in [`GPS_HGLRC_M10_SCHEMATIC.md`](GPS_HGLRC_M10_SCHEMATIC.md) and below |
+| F — delivery | Pending signed release CI | Cloud workflow must pass signing continuity (`v1.0.0` + `v1.2.0rc3`), code `1202 → 1203`, checksums & prerelease publication |
+
+Historical 1.2.0rc2 and earlier test evidence follows below.
+
 # 1.2.0rc2 acceptance and verification — 18 November 2026
 
 Baseline `2375fc6` / published v1.2.0rc1; review branch `update-joystick-setup-wifi-missions`. Released source/tag `e667d926ce4446faa808ddc40dd78a14223f3973`; successful signed run [44287143408](https://github.com/Denberg28/TeleRC/actions/runs/44287143408). Final cloud and delivery evidence below supersedes pending local statuses. New behavior tests: MissionTransferTest (golden pymavlink frames, source/target/type/CRC, ordered/duplicate requests, integer/float requests, final/error ACK, retries/overall deadline, cancel/edit/reconnect, malformed input); TelemetryMailboxTest (capacity, expiry, clock boundary); bridge field_protocol_test (restricted waypoint schema, disarmed/CH7, no AUTO/start/servo). Existing suites remain required. No runtime dependency was added.

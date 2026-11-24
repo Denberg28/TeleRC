@@ -5,9 +5,11 @@ import org.junit.Test
 
 class MavlinkTest {
     @Test fun roverNeutralAndMapping() {
-        assertEquals(RcChannels(1500, 1500, 1500, 1500), RoverControls.neutral)
-        assertEquals(RcChannels(1700, 1200, 1500, 1500), RoverControls.channels(1700, 1200))
-        assertFalse(CraftProfile.ROCKET.available)
+        val neutral = GoProtocol.rc(0, 1, 1500, 1500)
+        assertEquals(26, neutral.size)
+        assertEquals(1500, (neutral[6].toInt() and 255) or ((neutral[7].toInt() and 255) shl 8))
+        assertEquals(1500, (neutral[8].toInt() and 255) or ((neutral[9].toInt() and 255) shl 8))
+        for (i in 10..21) assertEquals(255, neutral[i].toInt() and 255)
     }
     @Test fun overrideBoundsAndFrame() {
         val frame = Mavlink.override(7, 1, 1, 1500, 1500, 1000, 1500)

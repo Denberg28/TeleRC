@@ -4,23 +4,26 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.LinearGradient
-import android.graphics.Shader
-import android.graphics.Matrix
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.min
 
-/** Spring-return rover input. Axis output is neutral immediately on release. */
-class JoystickView(context: Context, private val vertical: Boolean, private val changed: (Int) -> Unit) : View(context) {
+/** Spring-return rover input adopted from TeleRC Go. Axis output is neutral immediately on release. */
+class JoystickView(
+    context: Context,
+    private val vertical: Boolean,
+    private val translucent: Boolean = true,
+    private val receiverDeadbandUs: Int = ControlResponse.GO_RECEIVER_DEADBAND_US,
+    private val proportionalResponse: Boolean = true,
+    private val changed: (Int) -> Unit
+) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val accent = AppColors.accent(context)
     private val track = AppColors.softAccent(context)
-    private val gradient = LinearGradient(0f, 0f, 1f, 0f, Color.TRANSPARENT, accent, Shader.TileMode.CLAMP)
-    private val gradientMatrix = Matrix()
     private var position = StickPosition(0f, 0f)
+    private var channel = 1500
     private var pointer = -1
-    // Settings are edited only in Setup; entering Controls creates new sticks.
+    // Settings are edited only in the Settings sheet; returning to Controls creates new sticks.
     private val response = ControlResponseStore.read(context)
 
     init {
@@ -29,50 +32,121 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
     }
     private fun dp(value: Float) = value * resources.displayMetrics.density
     private fun radius() = min(width * 0.40f, height * 0.44f).coerceAtLeast(1f)
+    /** Center to the visible line endpoint, used for drawing and touch input. */
+    private fun travel(radius: Float) = radius * 0.62f
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val cx = width / 2f; val cy = height / 2f
+        val cx = width / 2f
+        val cy = height / 2f
         val radius = radius()
+        if (!translucent) {
+            drawClassic(canvas, cx, cy, radius)
+            return
+        }
+        drawTranslucent(canvas, cx, cy, radius)
+    }
+
+    private fun drawClassic(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         paint.style = Paint.Style.FILL
         paint.color = track
         canvas.drawCircle(cx, cy, radius, paint)
-        paint.style = Paint.Style.STROKE; paint.strokeWidth = dp(2f)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(2f)
         paint.color = accent
         canvas.drawCircle(cx, cy, radius, paint)
-        // UI — Axis scale. Match Go's line/ticks and position light; travel stays at 62%.
-        val travel = radius * 0.62f
+        paint.style = Paint.Style.FILL
+        paint.color = if (isEnabled) accent else Color.rgb(116, 144, 170)
+        val knobX = cx + position.x * travel(radius)
+        val knobY = cy + position.y * travel(radius)
+        canvas.drawCircle(knobX, knobY, radius * 0.33f, paint)
+        paint.color = Color.WHITE
+        canvas.drawCircle(knobX, knobY, radius * 0.12f, paint)
+    }
+
+    // UI — Go translucent dial. Dark outlines keep ticks and cyan light readable over wallpaper.
+    private fun drawTranslucent(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        val travel = travel(radius)
+        val active = isEnabled && channel != 1500
+
+        paint.style = Paint.Style.FILL
+        paint.color = 0x30071320
+        canvas.drawCircle(cx, cy, radius, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(3f)
+        paint.color = 0xA0081420.toInt()
+        canvas.drawCircle(cx, cy, radius, paint)
+        paint.strokeWidth = dp(1f)
+        paint.color = if (isEnabled) 0xD5E4F2FF.toInt() else 0xA0CFDCE8.toInt()
+        canvas.drawCircle(cx, cy, radius, paint)
+
+        // Rotate only the scale and position marker, so up on Drive is forward.
         canvas.save()
         canvas.translate(cx, cy)
         if (vertical) canvas.rotate(-90f)
-        paint.strokeWidth = dp(2f)
-        paint.color = if (isEnabled) accent else Color.rgb(116, 144, 170)
-        canvas.drawLine(-travel, 0f, travel, 0f, paint)
-        for (tick in -2..2) {
-            val x = tick * travel / 2f
-            val half = radius * if (tick % 2 == 0) .055f else .028f
-            canvas.drawLine(x, -half, x, half, paint)
-        }
-        val offset = (if (vertical) -position.y else position.x) * travel
-        if (isEnabled && kotlin.math.abs(offset) > .5f) {
-            gradientMatrix.setScale(offset, 1f)
-            gradient.setLocalMatrix(gradientMatrix)
-            paint.shader = gradient
-            paint.strokeWidth = dp(5f)
+        paint.color = 0xB0081420.toInt()
+        paint.strokeWidth = dp(3f)
+        drawScale(canvas, travel, radius)
+        paint.color = 0xB8DEE9F4.toInt()
+        paint.strokeWidth = dp(1f)
+        drawScale(canvas, travel, radius)
+
+        // The line is the touch travel scale. Sensitivity changes the command,
+        // while the marker follows the finger from center to the line endpoint.
+        val axis = if (vertical) -position.y else position.x
+        val offset = if (isEnabled) axis * travel else 0f
+        val marker = radius * 0.075f
+        if (active) {
+            paint.color = 0xD08DEBFF.toInt()
+            paint.strokeWidth = dp(2f)
             canvas.drawLine(0f, 0f, offset, 0f, paint)
-            paint.shader = null
         }
+
         paint.style = Paint.Style.FILL
-        paint.color = if (isEnabled) accent else Color.rgb(116, 144, 170)
-        canvas.drawCircle(offset, 0f, radius * .09f, paint)
-        paint.color = Color.WHITE
-        canvas.drawCircle(offset, 0f, radius * .035f, paint)
+        paint.color = 0xE0081420.toInt()
+        canvas.drawCircle(offset, 0f, marker + dp(2f), paint)
+        when {
+            active -> {
+                paint.color = 0xFF8DEBFF.toInt()
+                canvas.drawCircle(offset, 0f, marker, paint)
+            }
+            isEnabled -> {
+                paint.color = Color.WHITE
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = dp(1.5f)
+                canvas.drawCircle(offset, 0f, marker, paint)
+            }
+            else -> {
+                paint.color = 0xFFADBCCB.toInt()
+                paint.strokeWidth = dp(2f)
+                canvas.drawLine(-marker, 0f, marker, 0f, paint)
+            }
+        }
         canvas.restore()
     }
-    private fun input(x: Float, y: Float) {
-        val radius = radius() * 0.62f
-        position = limitStick((x - width / 2f) / radius, (y - height / 2f) / radius)
-        changed(response.channel(position, vertical)); invalidate()
+
+    private fun drawScale(canvas: Canvas, travel: Float, radius: Float) {
+        val tick = radius * 0.055f
+        canvas.drawLine(-travel, 0f, travel, 0f, paint)
+        canvas.drawLine(-travel, -tick, -travel, tick, paint)
+        canvas.drawLine(-travel / 2f, -tick / 2f, -travel / 2f, tick / 2f, paint)
+        canvas.drawLine(0f, -tick, 0f, tick, paint)
+        canvas.drawLine(travel / 2f, -tick / 2f, travel / 2f, tick / 2f, paint)
+        canvas.drawLine(travel, -tick, travel, tick, paint)
     }
+
+    private fun input(x: Float, y: Float) {
+        val travel = travel(radius())
+        position = limitStick(
+            (x - width / 2f) / travel,
+            (y - height / 2f) / travel,
+            if (receiverDeadbandUs > 0) vertical else null
+        )
+        channel = if (proportionalResponse) response.proportionalChannel(position, vertical, receiverDeadbandUs)
+        else response.channel(position, vertical, receiverDeadbandUs)
+        changed(channel); invalidate()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled) return false
         when (event.actionMasked) {
@@ -89,22 +163,25 @@ class JoystickView(context: Context, private val vertical: Boolean, private val 
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
                 if (event.actionMasked == MotionEvent.ACTION_POINTER_UP && event.getPointerId(event.actionIndex) != pointer) return true
-                release(); performClick(); return true
+                reset(); performClick(); return true
             }
         }
         return true
     }
-    private fun release() {
-        pointer = -1; changed(1500)
-        position = StickPosition(0f, 0f); invalidate()
-    }
+
     fun reset() {
-        pointer = -1; position = StickPosition(0f, 0f); changed(1500); invalidate()
+        pointer = -1
+        position = StickPosition(0f, 0f)
+        channel = 1500
+        changed(channel)
+        invalidate()
     }
+
     override fun setEnabled(enabled: Boolean) {
         super.setEnabled(enabled)
         if (!enabled) reset()
         invalidate()
     }
+
     override fun performClick(): Boolean { super.performClick(); return true }
 }

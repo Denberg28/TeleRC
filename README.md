@@ -1,42 +1,41 @@
-# TeleRC — single-rover control and Wi-Fi mission planning
+# TeleRC — TeleRC Go Wi-Fi controller + Mission Planning
 
-TeleRC is the Android controller in the TeleRC ecosystem, simplified around TeleRC Go's connect-and-drive workflow while retaining native USB LoRa and waypoint planning with acknowledged ArduRover Wi-Fi upload. PC-TeleRC owns fleet operations.
+TeleRC adopts **TeleRC Go**'s clean Wi-Fi connect-and-drive controller (dark navy wallpaper UI, translucent proportional CH1/CH2 joysticks, 50 Hz RC cadence, single ARM/DISARM flow) and adds **only** the **Mission** planning tab with acknowledged ArduRover Wi-Fi waypoint upload via the ESP32-S3 `TeleRCBridge` firmware.
 
-Signed test candidate: [TeleRC v1.2.0rc3 APK](https://github.com/Denberg28/TeleRC/releases/download/v1.2.0rc3/TeleRC-v1.2.0rc3.apk) · [matched firmware, source and checksums](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc3). Device/HIL validation remains pending.
+Signed test candidate: [TeleRC v1.2.0rc4 APK](https://github.com/Denberg28/TeleRC/releases/download/v1.2.0rc4/TeleRC-v1.2.0rc4.apk) · [matched firmware, source and checksums](https://github.com/Denberg28/TeleRC/releases/tag/v1.2.0rc4). Device/HIL validation remains pending.
 
 ## Use
 
-- **Controls:** Connect the saved Wi-Fi or USB LoRa link, wait for a rover heartbeat, Enable Control, then ARM when required. Large spring-return sticks control CH1 steering and CH2 drive. STOP CONTROL releases to the receiver; Disconnect closes the link. The center map shows measured phone/rover positions, not simulated motion.
-- **Mission:** tap the map or Add to enter coordinates; tap a list row to edit, move earlier/later, or delete. Plans autosave locally. Import/Export uses `sequence,latitude,longitude` CSV with consecutive 1-based sequence numbers and up to 100 waypoints. Clear and Import ask before replacing data. Planned routes are orange, phone tracks blue, rover tracks green. Choose **Upload Wi-Fi** to replace the onboard mission on a disarmed ArduRover through the matching `TeleRCBridge` firmware. Fresh heartbeat and physical CH7 phone permission are required throughout. Success requires the final rover acknowledgement; cancel/loss/edit/background stops the transfer and marks the onboard plan unverified. Upload does not arm or start navigation. Use the configured transmitter for AUTO and mission execution; verify the onboard route first. Mini rover and USB LoRa keep local editing only.
-- **Setup:** use the always-visible Setup tab to select Wi-Fi UDP or native USB LoRa, choose ArduRover Wi-Fi, standalone Mini rover Wi-Fi or USB LoRa; connect, or open Wi-Fi settings / LoRa pairing. Endpoint editing is in **Wi-Fi endpoint** while disconnected; sensitivity, accent and diagnostics open compact dialogs. Tap the version to check updates.
-- **LoRa setup:** provision/read back one T3-S3 at a time; connect the BASE for control. Existing roles, pairing and firmware remain compatible. Follow [the integration guide](bridge/LORA_INTEGRATION.md).
+- **Controls (TeleRC Go):** Join rover Wi-Fi (`TeleRC-Rover`, default `192.168.4.1:14550`), tap **Phone connect**, wait for a verified rover heartbeat, center sticks, and tap **ARM** (for ArduRover, ensure Switch A / CH7 > 1800 µs and `MANUAL` mode). Large translucent proportional sticks drive CH1 steering and CH2 drive at 50 Hz (20 ms) with `GO_RECEIVER_DEADBAND_US = 35`. Tap **DISARM** to stop/disarm or **Disconnect** to close the link.
+- **Mission (Wi-Fi via ESP32-S3):** Tap **Mission** in the header (automatically neutralizes/stops driving while keeping the Wi-Fi link connected). Tap the map or **Add** to enter coordinates; tap any list row to edit, move earlier/later, or delete. Plans autosave locally (`mission.csv`). Import/Export uses `sequence,latitude,longitude` CSV (up to 100 waypoints). Planned routes are orange, phone tracks blue, measured rover GPS (`GLOBAL_POSITION_INT`) green. Tap **Upload Wi-Fi** to replace the onboard mission on a **disarmed** ArduRover through the matching `TeleRCBridge` ESP32-S3 firmware with fresh heartbeat and Switch A (CH7 > 1800 µs) permission. Upload never arms or starts navigation; verify the onboard route and select `AUTO` on your transmitter.
+- **Settings:** Tap **Settings** for Wi-Fi settings, Connection details (IPv4, rover port, phone port, system ID), independent Steering/Drive Sensitivity (25–100%), and custom Background wallpaper. Tap the top-left `TeleRC v...` version text to check updates.
 
-Map tiles require internet or existing cache. Coordinate editing, private plan storage and CSV work without tiles. Without accepted GPS the map camera uses a labeled sample area; no sample coordinate is recorded as Home or added without an explicit waypoint action. Allow precise location through Android settings when phone Home/tracking is needed.
+## Hardware schematic & HGLRC M10 GPS
 
-The app removes the old game/test course, music, simulated vehicle settings, inferred positions and servo-assignment buttons. Existing private tracks and supported endpoint/response preferences are retained. Unsupported saved link profiles return to Setup with automatic connection off. Dedicated LoRa/motor firmware is unchanged; USB telemetry is capped at 16 pending frames with a 250 ms local backlog lifetime. Mission upload requires the updated legacy FC Wi-Fi bridge from this release; the dedicated Wi-Fi-to-motor gateway does not implement mission transfer; the legacy FC bridge retains its released permission checks. Application ID stays `io.github.denberg28.telerc`; retain the release signer for upgrades. No new runtime dependency is introduced.
+Read [`docs/GPS_HGLRC_M10_SCHEMATIC.md`](docs/GPS_HGLRC_M10_SCHEMATIC.md) and [`ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param`](ardurover/params/ardurover_f405v4_hglrc_m10_esp32s3_wifi.param) for:
+- Exact pin-by-pin wiring of **HGLRC M10 / M100-5883 / M100 Pro** to **SpeedyBee F405 V4** (`UART6 T6/R6` crossed + `4V5`/GND + `I2C1 SDA/SCL` straight for QMC5883L compass).
+- **ESP32-S3 `TeleRCBridge`** wiring to SpeedyBee F405 V4 (`UART3 T3/R3` ↔ `GPIO18/17`, 115200 baud) and firmware selection.
+- Fixes for the legacy ArduRover `.param` snapshot (`RC7_OPTION=46` + `MODE_CH=6` and `COMPASS_EXTERNAL=1` / `COMPASS_USE=1`).
+
+## Scope & upgrade continuity
+
+This build removes the offline maze/game, LoRa USB tab, Setup tab clutter, simulated positions, and external servo buttons. Application ID remains `io.github.denberg28.telerc` with the retained signing certificate and increasing `versionCode` (`1203`). Existing `mission.csv`, `route-session.csv`, sensitivity sliders, and legacy Wi-Fi host/port preferences are preserved on upgrade. No new runtime dependency is introduced.
 
 ## Build and validation
 
-JDK 17, Android SDK 35, Build Tools 35.0.0 and the pinned Gradle 8.11.1 wrapper are required. Run:
+JDK 17, Android SDK 35, Build Tools 35.0.0 and the pinned Gradle 8.11.1 wrapper are required:
 
 ```sh
 ./scripts/check-android-env.sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
-python bridge/sync_motor_core.py --check
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon
+python3 bridge/sync_motor_core.py --check
+python3 -m unittest discover -s scripts -p 'test_firmware_package.py'
 bridge/tests/run.sh
 SANITIZE=1 bridge/tests/run.sh
 ```
 
-Release signing, debug/release lint/build, actual ESP32 compilation, checksums and packaging use the existing GitHub release workflow and existing secrets. Do not create a replacement signer. On Windows use `scripts/setup-windows.ps1`; APK output is `app/build/outputs/apk/debug/app-debug.apk`. Read [updates/signing](UPDATES.md), [QA and restrained-wheel checks](docs/TESTING.md), [architecture/compatibility](docs/ARCHITECTURE.md), [known limits](docs/KNOWN_ISSUES.md) and [manual-edit guide](docs/CODE_EDIT_GUIDE.md).
+Release signing, debug/release builds, actual ESP32-S3 compilation (10 firmware targets), checksums, and packaging run in `.github/workflows/release.yml` using existing secrets. Read [`UPDATES.md`](UPDATES.md), [`docs/TESTING.md`](docs/TESTING.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md), [`docs/GPS_HGLRC_M10_SCHEMATIC.md`](docs/GPS_HGLRC_M10_SCHEMATIC.md), and [`docs/CODE_EDIT_GUIDE.md`](docs/CODE_EDIT_GUIDE.md).
 
-**Test candidate only:** physical safe states, radio/USB reliability, installation and full vehicle behavior require measured validation. Reconnect/background/tab transitions never automatically enable or arm. CH1/CH2 remain 1500 µs neutral, 1100–1900 µs at 100%, up to 10 Hz. A fresh authenticated radio path is distinct from a validated motor stop; keep independent downstream watchdogs and a physical power cutoff. Wi-Fi MAVLink is endpoint/checksum checked, not signed/authenticated.
+## Test candidate notice & rollback
 
-## Project rules and rollback
-
-The updated [kickoff](docs/PROJECT_KICKOFF.md), [AGENTS](AGENTS.md), [constitution](Marlou_Prompt_Constitution_v3.md) and [reusable template](Project_Kickoff_Template.md) record scope and workflow. Published 1.1.0rc1/code 1100 remains the older upgrade baseline; the new candidate is 1.2.0rc3/code 1202; retain signed 1.2.0rc2/code 1201 for rollback and upgrade comparison. Export the plan and preserve existing data/settings before uninstalling; normal Android downgrade to an older versionCode requires uninstall/reinstall and can erase private data. Use the retained signed APK and matching firmware/configuration for rollback. The manual updater excludes prereleases; install candidates explicitly from GitHub Releases.
-
-## Released control checks retained
-
-ArduRover Wi-Fi requires a valid physical CH7 permission reading above 1800 µs and younger than 750 ms; stale/missing data fails closed. The app requests RC_CHANNELS from the FC and still requires neutral controls, explicit Enable and ARM. Restoring permission never re-enables driving. Use the matching FC/receiver configuration and bridge, and verify transmitter takeover on restrained wheels. Standalone Mini rover Wi-Fi uses its own sent-neutral dwell before ARM; it does not require FC radio permission. USB LoRa retains its dedicated motor/selector gates. Native ELRS Backpack, standalone ELRS handshakes and balancing profiles are unavailable in this compact build.
-
-The default branch was older than the published release. The final build carries forward the relevant v1.1.0rc1 control, parser, updater and response checks rather than replacing them with the old source baseline. The old 0.8.54 attempt was not published because its historical APK download references were unavailable.
+**Test candidate only:** physical safe states, Wi-Fi reliability, HGLRC M10 GPS/compass lock, installation/upgrade, and full vehicle behavior require restrained-wheel bench validation. Reconnect/background/tab transitions never automatically enable or arm. Wi-Fi MAVLink is endpoint/CRC checked, not cryptographically signed. Retain signed `v1.2.0rc3` (`versionCode 1202`) and export `mission.csv` before any downgrade.

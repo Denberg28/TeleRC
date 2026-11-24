@@ -3,25 +3,52 @@ package io.github.denberg28.telerc
 import android.content.Context
 import android.graphics.Color
 
+// UI — Theme surfaces and accent palette. Adopted from TeleRC Go (dark navy default).
+// Edit surface/ink/accent values together to preserve contrast in Controls and Mission.
 internal object AppColors {
-    // UI — Accent palette. Use subdued, high-contrast tones across light/dark themes.
-    val names = listOf("Blue", "Teal", "Violet", "Slate")
-    fun accent(context: Context): Int {
+    fun theme(context: Context): BackgroundTheme {
         val prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
-        val dark = prefs.getBoolean("dark", false)
-        return when (prefs.getString("accent", "Blue")) {
-            "Teal" -> if (dark) Color.rgb(70, 201, 181) else Color.rgb(0, 115, 105)
-            "Violet" -> if (dark) Color.rgb(177, 155, 239) else Color.rgb(103, 76, 165)
-            "Slate" -> if (dark) Color.rgb(164, 185, 210) else Color.rgb(69, 97, 125)
-            else -> if (dark) Color.rgb(92, 171, 245) else Color.rgb(31, 96, 170)
-        }
+        return BackgroundTheme.resolve(prefs.getString("background", "DARK"), prefs.getBoolean("dark", true))
     }
-    fun softAccent(context: Context): Int {
-        val dark = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getBoolean("dark", false)
-        val base = if (dark) Color.rgb(26, 39, 53) else Color.WHITE
-        val color = accent(context)
-        val mix = if (dark) .24f else .10f
-        fun channel(a: Int, b: Int) = (a * (1 - mix) + b * mix).toInt()
-        return Color.rgb(channel(Color.red(base), Color.red(color)), channel(Color.green(base), Color.green(color)), channel(Color.blue(base), Color.blue(color)))
+    fun background(context: Context): Int = when (theme(context)) {
+        BackgroundTheme.LIGHT -> Color.rgb(234, 238, 242)
+        BackgroundTheme.SEPIA -> Color.rgb(231, 222, 204)
+        BackgroundTheme.DARK -> Color.rgb(11, 19, 27)
     }
+    fun surface(context: Context): Int = when (theme(context)) {
+        BackgroundTheme.LIGHT -> Color.rgb(247, 248, 250)
+        BackgroundTheme.SEPIA -> Color.rgb(242, 234, 220)
+        BackgroundTheme.DARK -> Color.rgb(21, 32, 43)
+    }
+    fun ink(context: Context): Int = when (theme(context)) {
+        BackgroundTheme.LIGHT -> Color.rgb(27, 38, 49)
+        BackgroundTheme.SEPIA -> Color.rgb(58, 46, 31)
+        BackgroundTheme.DARK -> Color.rgb(232, 239, 246)
+    }
+    fun muted(context: Context): Int = when (theme(context)) {
+        BackgroundTheme.LIGHT -> Color.rgb(84, 102, 119)
+        BackgroundTheme.SEPIA -> Color.rgb(102, 83, 58)
+        BackgroundTheme.DARK -> Color.rgb(164, 181, 196)
+    }
+    val names = listOf("Blue", "Teal", "Violet", "Slate")
+    private fun accentFor(context: Context, dark: Boolean): Int = when (
+        context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("accent", "Blue")) {
+        "Teal" -> if (dark) Color.rgb(45, 192, 177) else Color.rgb(0, 105, 96)
+        "Violet" -> if (dark) Color.rgb(170, 142, 245) else Color.rgb(101, 72, 159)
+        "Slate" -> if (dark) Color.rgb(153, 177, 200) else Color.rgb(67, 90, 113)
+        else -> if (dark) Color.rgb(151, 175, 209) else Color.rgb(23, 47, 83)
+    }
+    fun accent(context: Context): Int = accentFor(context, theme(context) == BackgroundTheme.DARK)
+    private fun mix(base: Int, tint: Int, amount: Float): Int {
+        fun channel(a: Int, b: Int) = (a * (1 - amount) + b * amount).toInt()
+        return Color.rgb(
+            channel(Color.red(base), Color.red(tint)),
+            channel(Color.green(base), Color.green(tint)),
+            channel(Color.blue(base), Color.blue(tint))
+        )
+    }
+    // Strong action fill + white label; dark-mode fills also keep readable white text.
+    fun buttonFill(context: Context): Int = accentFor(context, false)
+    fun softAccent(context: Context): Int = mix(surface(context), accent(context), .12f)
+    fun outline(context: Context): Int = mix(surface(context), muted(context), .16f)
 }
