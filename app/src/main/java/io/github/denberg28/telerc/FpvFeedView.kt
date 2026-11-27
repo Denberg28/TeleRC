@@ -2,7 +2,10 @@ package io.github.denberg28.telerc
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -16,6 +19,8 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.usb.UsbManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -62,6 +67,18 @@ class FpvFeedView(
     private var cameraPreviewSize = Size(640, 480)
     private var pendingCameraId: String? = null
     private var availabilityRegistered = false
+    private var usbReceiverRegistered = false
+    var detectedRtl8812bu: String? = null; private set
+
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) {
+            if (!active) return
+            val action = intent.action ?: return
+            if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED || action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
+                ui.post { if (active) reopenActiveSource() }
+            }
+        }
+    }
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -186,6 +203,7 @@ class FpvFeedView(
         if (active) return
         active = true
         registerCameraAvailability()
+        registerUsbReceiver()
         reopenActiveSource()
         ui.removeCallbacks(watchdog)
         ui.postDelayed(watchdog, 500L)
@@ -196,6 +214,7 @@ class FpvFeedView(
         active = false
         ui.removeCallbacks(watchdog)
         unregisterCameraAvailability()
+        unregisterUsbReceiver()
         stopTransports()
         supervisor.stop()
         mjpegCanvas.clearFrame()
@@ -228,6 +247,29 @@ class FpvFeedView(
         availabilityRegistered = false
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private fun registerUsbReceiver() {
+        if (usbReceiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(usbReceiver, filter)
+            }
+            usbReceiverRegistered = true
+        } catch (_: Exception) {}
+    }
+
+    private fun unregisterUsbReceiver() {
+        if (!usbReceiverRegistered) return
+        try { context.unregisterReceiver(usbReceiver) } catch (_: Exception) {}
+        usbReceiverRegistered = false
+    }
+
     private fun stopTransports() {
         pendingCameraId = null
         mjpegClient?.close()
@@ -239,23 +281,34 @@ class FpvFeedView(
         stopTransports()
         if (!active) return
 
+        detectedRtl8812bu = Rtl8812buDetector.findConnectedAdapter(context)
         val externalId = findCameraId(externalOnly = true)
         when (config.mode) {
             FpvSourceMode.AUTO -> {
-                if (externalId != null) {
-                    startCameraSource(externalId, "USB Cam")
-                } else {
-                    startWifiMjpegSource()
+                when {
+                    externalId != null -> startCameraSource(externalId, "USB Cam")
+                    detectedRtl8812bu != null -> {
+                        supervisor.markNoSource("$detectedRtl8812bu detected · Tap Cam → Open fpvDROID")
+                        updatePlaceholderVisibility()
+                        emitStatus()
+                    }
+                    else -> startWifiMjpegSource()
                 }
             }
             FpvSourceMode.WIFI_MJPEG -> startWifiMjpegSource()
             FpvSourceMode.USB_EXTERNAL -> {
-                if (externalId != null) {
-                    startCameraSource(externalId, "USB Cam")
-                } else {
-                    supervisor.markNoSource("Plug in USB UVC camera")
-                    updatePlaceholderVisibility()
-                    emitStatus()
+                when {
+                    externalId != null -> startCameraSource(externalId, "USB Cam")
+                    detectedRtl8812bu != null -> {
+                        supervisor.markNoSource("$detectedRtl8812bu uses fpvDROID (raw 5.8G SDR) · Tap Cam")
+                        updatePlaceholderVisibility()
+                        emitStatus()
+                    }
+                    else -> {
+                        supervisor.markNoSource("Plug in USB UVC camera")
+                        updatePlaceholderVisibility()
+                        emitStatus()
+                    }
                 }
             }
             FpvSourceMode.PHONE_REAR -> {

@@ -3,6 +3,7 @@ package io.github.denberg28.telerc
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.hardware.usb.UsbManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -14,6 +15,33 @@ import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
+
+// FPV — Recognizes RTL8812BU USB 3 adapters used with Auburn/fpvDROID for 5.8 GHz analog FPV (e.g., Ratel 2 + Eachine VTX).
+object Rtl8812buDetector {
+    private const val VID_REALTEK = 0x0BDA
+    private const val PID_RTL8812BU = 0xB812
+    private const val VID_TPLINK = 0x2357
+    private const val PID_T4U_V3 = 0x0115
+    private const val PID_T3U = 0x012D
+    private const val PID_T3U_PLUS = 0x0138
+
+    fun isRtl8812bu(vendorId: Int, productId: Int): Boolean = adapterName(vendorId, productId) != null
+
+    fun adapterName(vendorId: Int, productId: Int): String? = when {
+        vendorId == VID_REALTEK && productId == PID_RTL8812BU -> "Realtek RTL8812BU"
+        vendorId == VID_TPLINK && productId == PID_T4U_V3 -> "TP-Link Archer T4U v3 (RTL8812BU)"
+        vendorId == VID_TPLINK && productId == PID_T3U -> "TP-Link Archer T3U (RTL8812BU)"
+        vendorId == VID_TPLINK && productId == PID_T3U_PLUS -> "TP-Link Archer T3U Plus (RTL8812BU)"
+        else -> null
+    }
+
+    fun findConnectedAdapter(context: Context): String? = try {
+        val usb = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return null
+        usb.deviceList.values.firstNotNullOfOrNull { d -> adapterName(d.vendorId, d.productId) }
+    } catch (_: Exception) {
+        null
+    }
+}
 
 // FPV — Source selection and view preferences persisted across Mission sessions.
 enum class FpvSourceMode(val label: String) {

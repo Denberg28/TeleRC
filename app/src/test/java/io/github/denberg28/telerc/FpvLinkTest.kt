@@ -119,4 +119,13 @@ class FpvLinkTest {
         sup.onFrame(g5, nowMs = 30_100L)
         assertEquals(0, sup.consecutiveFailures)
     }
+
+    @Test fun rtl8812buDetectorRecognizesSupportedDongles() {
+        assertTrue(Rtl8812buDetector.isRtl8812bu(0x0BDA, 0xB812))
+        assertTrue(Rtl8812buDetector.isRtl8812bu(0x2357, 0x0115))
+        assertTrue(Rtl8812buDetector.isRtl8812bu(0x2357, 0x012D))
+        assertTrue(Rtl8812buDetector.isRtl8812bu(0x2357, 0x0138))
+        assertEquals("Realtek RTL8812BU", Rtl8812buDetector.adapterName(0x0BDA, 0xB812))
+        assertFalse(Rtl8812buDetector.isRtl8812bu(0x1234, 0x5678))
+    }
 }

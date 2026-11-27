@@ -874,14 +874,27 @@ class MainActivity : Activity() {
         viewRow.addView(crossBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
         body.addView(viewRow, LinearLayout.LayoutParams(-1, -2))
 
-        val fpvDroidIntent = packageManager.getLaunchIntentForPackage("com.fpvdroid.app")
+        val rtlAdapter = fpvView?.detectedRtl8812bu
+        val fpvDroidIntent = packageManager.getLaunchIntentForPackage("com.fpvdroid.app")?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (isInMultiWindowMode) addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
+        }
         if (fpvDroidIntent != null) {
-            body.addView(button("Open fpvDROID (RTL8812BU 5.8G)", false) {
+            val label = if (rtlAdapter != null) "Open fpvDROID · $rtlAdapter" else "Open fpvDROID (RTL8812BU 5.8G)"
+            body.addView(button(label, rtlAdapter != null) {
                 link.stop(true)
                 link.stopStepPlan("Switched to fpvDROID · stopped")
                 dismissSheet()
                 startActivity(fpvDroidIntent)
-            }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(8) })
+            }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
+        } else if (rtlAdapter != null) {
+            body.addView(text(
+                "$rtlAdapter detected: install Auburn/fpvDROID for raw 5.8G analog (Split-Screen), or use a USB UVC receiver (ROTG01/02) for in-app PiP.",
+                11f
+            ).apply {
+                setTextColor(AppColors.accent(this@MainActivity))
+                setPadding(0, dp(8), 0, 0)
+            })
         }
 
         dialog("FPV camera", body, "Save" to {
