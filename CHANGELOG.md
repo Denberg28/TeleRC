@@ -1,3 +1,11 @@
+## 1.2.0rc5
+
+- **No-rover-GPS Mission Planning (Calibration-First):** Mission tab now works strictly from the phone's initial GPS location and display-rotation-aware compass orientation (`PhoneHeading`), with no onboard rover GPS module or ArduRover AUTO upload required.
+- **Required 1-Meter Calibration Gate:** Operators calibrate 1 meter first via the guided **`Calibrate 1 meter`** modal (`Test Pulse`, `Test 90°`, live `ARM`/`STOP`, pulse duration `300–5000 ms`, measured distance `0.10–5.0 m`, automatic `1.0 m = … ms` calculation, clamped drive/steer `25–70%` and speed `0.15–2.0 m/s`) before unlocking waypoint setup.
+- **Minimal Clear-Map Layout:** Widens the map to ~72% (`2.6:1`) with a compact right control strip showing **`Set Start (GPS + Dir)`**, a 4-way 1 m D-pad (**`↑ 1m`**, **`← 1m`**, **`→ 1m`**, **`↓ 1m`**), compact **`Undo` / `Clear` / `⋯`** (`Re-calibrate 1m`, `Fit route on map`, `Import CSV`, `Export CSV`), and joystick-free open-loop **`ARM` / `Run` / `STOP`** execution under `GoStepGate` (armed, verified, fresh heartbeat, CH7/phone permission, Mission foreground, mandatory neutral dwell before/after pulses and steps).
+- Preserve application ID `io.github.denberg28.telerc`, retained release signing certificate, increasing `versionCode 1204` after `1203`, existing TeleRC Go Controls tab, saved `mission.csv`, `route-session.csv`, sensitivity, and Wi-Fi preferences.
+- **Prerelease/test candidate only.** Open-loop 1 m timing has no rover GPS/encoder feedback; always run `Test Pulse`, `Test 90°`, and `Run` first on raised wheels with clear space and transmitter Switch A (CH7) ready. Device UI, upgrade from `v1.2.0rc4`, and restrained-wheel HIL remain pending. Retain signed `v1.2.0rc4` and export plans before any downgrade.
+
 ## 1.2.0rc4
 
 - Adopt **TeleRC Go** (v1.0.12) as the TeleRC Android controller: dark navy wallpaper UI, large translucent proportional CH1/CH2 joysticks (`GO_RECEIVER_DEADBAND_US = 35`), 20 ms (50 Hz) live Wi-Fi UDP RC cadence, single `ARM`/`DISARM`/`Cancel arming` workflow, Switch A (CH7) ArduRover arbitration, standalone Go/Mini rover auto-detection, and Go's compact 2×2 Settings modal (Wi-Fi settings, Connection details, independent Steering/Drive Sensitivity, custom Background).

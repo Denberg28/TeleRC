@@ -53,7 +53,7 @@ class MissionPlannerView(
         }
     }
     private val moreBtn = action("⋯", false, onMoreMenu).apply {
-        contentDescription = "More mission options: recalibrate, fit map, import, export, Wi-Fi upload"
+        contentDescription = "More mission options: recalibrate 1m, fit map, import, export"
     }
     private val armBtn = action("ARM", false, onArmToggle)
     private val runBtn = action("Run", true, onRunPlan)

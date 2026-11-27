@@ -766,24 +766,12 @@ class MainActivity : Activity() {
     }
 
     private fun showMissionMoreMenu() {
-        val snap = link.snapshot()
-        val items = mutableListOf(
+        val items = listOf(
             "Re-calibrate 1m" to { showStepCalibration() },
             "Fit route on map" to { routeMap?.fitPlan(); Unit },
             "Import CSV" to { missionDocument(IMPORT_MISSION_REQUEST, false) },
-            "Export CSV" to { missionDocument(EXPORT_MISSION_REQUEST, true) },
-            "Upload Wi-Fi (disarmed ArduRover)" to {
-                val s = link.snapshot()
-                when {
-                    mission.waypoints.isEmpty() -> Toast.makeText(this, "Add waypoints first", Toast.LENGTH_SHORT).show()
-                    s.missionReady && !s.missionActive -> confirmMissionUpload()
-                    else -> Toast.makeText(this, s.missionStatus, Toast.LENGTH_LONG).show()
-                }
-            }
+            "Export CSV" to { missionDocument(EXPORT_MISSION_REQUEST, true) }
         )
-        if (snap.missionActive) {
-            items.add("Cancel Wi-Fi upload" to { link.cancelMissionUpload("Upload cancelled"); refresh() })
-        }
         AlertDialog.Builder(this)
             .setTitle("Mission options")
             .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
@@ -855,28 +843,6 @@ class MainActivity : Activity() {
         if (right?.isEnabled != canDrive) right?.isEnabled = canDrive
     }
 
-    // Mission — Explicit confirmation before Wi-Fi upload. Never emits ARM, AUTO or MISSION_START.
-    private fun confirmMissionUpload() {
-        val snap = link.snapshot()
-        val snapshot = mission.waypoints
-        if (snapshot.isEmpty() || !snap.missionReady || snap.missionActive) return
-        AlertDialog.Builder(this)
-            .setTitle("Upload ${snapshot.size} waypoints to rover ${snap.targetSystem}?")
-            .setMessage(
-                "Replaces the onboard mission through the ESP32-S3 ArduRover Wi-Fi bridge (TeleRCBridge). " +
-                    "Keep the rover disarmed and Switch A (CH7) permitted. Upload does not arm or start navigation; " +
-                    "verify the onboard route and select AUTO separately on your transmitter. " +
-                    "A failed or cancelled transfer leaves the onboard plan unverified."
-            )
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Upload") { _, _ ->
-                if (mission.waypoints == snapshot) {
-                    link.beginMissionUpload(snapshot)
-                }
-                refresh()
-            }.show()
-    }
-
     private fun saveMission() {
         link.missionEdited()
         val file = AtomicFile(getFileStreamPath("mission.csv"))
@@ -916,14 +882,11 @@ class MainActivity : Activity() {
             gpsBadge?.text = "Step 1: Calibrate 1m first"
             return
         }
-        val gps = route.rover.lastOrNull()
-        val seconds = gps?.let { ((System.currentTimeMillis() - it.timeMs).coerceAtLeast(0L) / 1000L) }
-        val locationLabel = when {
-            seconds != null -> "1m = ${cal.oneMeterMs} ms · Rover GPS (${seconds}s)"
-            route.home != null -> "1m = ${cal.oneMeterMs} ms · Phone GPS"
-            else -> "1m = ${cal.oneMeterMs} ms · Sample map"
+        gpsBadge?.text = if (route.home != null) {
+            "1m = ${cal.oneMeterMs} ms · Phone origin"
+        } else {
+            "1m = ${cal.oneMeterMs} ms · Sample map"
         }
-        gpsBadge?.text = locationLabel
     }
 
     private fun locatePhone() {
