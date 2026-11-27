@@ -26,24 +26,56 @@ data class PlanOrigin(
     val normalizedHeading: Double get() = ((headingDegrees % 360.0) + 360.0) % 360.0
 }
 
-// Control — Open-loop step calibration. Defaults are conservative for raised-wheel bench testing.
+// Control — Open-loop 1-meter calibration. Waypoint planning unlocks after calibrated == true.
 // All limits are clamped before generating CH1/CH2 commands; never rely on open-loop timing as a safety stop.
 data class StepCalibration(
     val metersPerSecond: Double = 0.65,
     val drivePercent: Int = 35,
     val steerPercent: Int = 45,
     val turn90Ms: Long = 800L,
-    val pauseMs: Long = 300L
+    val pauseMs: Long = 300L,
+    val calibrated: Boolean = false
 ) {
-    val safeSpeedMps: Double get() = if (metersPerSecond.isFinite()) metersPerSecond.coerceIn(0.2, 2.0) else 0.65
+    companion object {
+        const val MIN_SPEED_MPS = 0.15
+        const val MAX_SPEED_MPS = 2.0
+        const val MIN_PULSE_MS = 300L
+        const val MAX_PULSE_MS = 5000L
+
+        /** Derive calibrated 1m timing from a measured open-loop straight test pulse. */
+        fun fromMeasuredPulse(
+            testDurationMs: Long,
+            measuredMeters: Double,
+            drivePercent: Int = 35,
+            steerPercent: Int = 45,
+            turn90Ms: Long = 800L,
+            pauseMs: Long = 300L
+        ): StepCalibration? {
+            if (testDurationMs !in MIN_PULSE_MS..MAX_PULSE_MS) return null
+            if (!measuredMeters.isFinite() || measuredMeters !in 0.10..5.0) return null
+            val speed = measuredMeters / (testDurationMs / 1000.0)
+            if (!speed.isFinite()) return null
+            return StepCalibration(
+                metersPerSecond = speed.coerceIn(MIN_SPEED_MPS, MAX_SPEED_MPS),
+                drivePercent = drivePercent.coerceIn(25, 70),
+                steerPercent = steerPercent.coerceIn(25, 70),
+                turn90Ms = turn90Ms.coerceIn(200L, 3000L),
+                pauseMs = pauseMs.coerceIn(200L, 1500L),
+                calibrated = true
+            )
+        }
+    }
+
+    val safeSpeedMps: Double get() = if (metersPerSecond.isFinite()) metersPerSecond.coerceIn(MIN_SPEED_MPS, MAX_SPEED_MPS) else 0.65
     val safeDrivePercent: Int get() = drivePercent.coerceIn(25, 70)
     val safeSteerPercent: Int get() = steerPercent.coerceIn(25, 70)
     val safeTurn90Ms: Long get() = turn90Ms.coerceIn(200L, 3000L)
     val safePauseMs: Long get() = pauseMs.coerceIn(200L, 1500L)
+    val oneMeterMs: Long get() = driveDurationMs(1.0)
 
     fun driveDurationMs(meters: Double): Long {
         if (!meters.isFinite() || meters <= 0.0) return 0L
-        return ((meters / safeSpeedMps) * 1000.0).roundToLong().coerceIn(200L, 5000L)
+        return ((meters / safeSpeedMps) * 1000.0).roundToLong().coerceIn(200L, 6700L)
     }
 
     fun driveCommandUs(reverse: Boolean): Int {
@@ -112,7 +144,7 @@ object StepGeometry {
     }
 }
 
-// Control — Safety gate for open-loop step execution without joystick input.
+// Control — Safety gate for open-loop step execution and calibration pulses without joystick input.
 // Mutually exclusive with Wi-Fi mission upload; never auto-arms or runs while disarmed.
 internal object GoStepGate {
     fun ready(
@@ -129,12 +161,13 @@ internal object GoStepGate {
 }
 
 // Control — Bounded open-loop step runner owned by GoLink under its single lock.
-// Every step passes through neutral before/after movement and between turn and drive phases.
+// Every step or calibration pulse passes through neutral before and after movement.
 internal class StepRunner {
     data class Output(val steer: Int, val drive: Int)
 
     private data class Segment(
         val stepNumber: Int,
+        val totalSteps: Int,
         val label: String,
         val steer: Int,
         val drive: Int,
@@ -165,6 +198,26 @@ internal class StepRunner {
         status = "Step 1/${steps.size} · ${built.first().label}"
     }
 
+    /** Run one bounded straight-drive or 90°-turn calibration pulse with neutral dwell on both ends. */
+    fun beginCalibrationPulse(turnOnly: Boolean, durationMs: Long, calibration: StepCalibration, now: Long) {
+        require(!active)
+        val safeMs = durationMs.coerceIn(StepCalibration.MIN_PULSE_MS, StepCalibration.MAX_PULSE_MS)
+        val pause = calibration.safePauseMs
+        val steer = if (turnOnly) calibration.steerCommandUs(turnRight = true) else 1500
+        val drive = if (turnOnly) 1500 else calibration.driveCommandUs(reverse = false)
+        val label = if (turnOnly) "90° turn pulse (${safeMs}ms)" else "1m forward pulse (${safeMs}ms)"
+        segments = listOf(
+            Segment(1, 1, "neutral check", 1500, 1500, pause),
+            Segment(1, 1, label, steer, drive, safeMs),
+            Segment(1, 1, "neutral settle", 1500, 1500, pause)
+        )
+        cursor = 0
+        startedAt = now
+        segmentStartedAt = now
+        active = true
+        status = "Calibrating · $label"
+    }
+
     fun cancel(reason: String) {
         if (active) {
             active = false
@@ -183,8 +236,7 @@ internal class StepRunner {
         while (cursor < segments.size) {
             val current = segments[cursor]
             if (now - segmentStartedAt < current.durationMs) {
-                val totalSteps = segments.last().stepNumber
-                status = "Running ${current.stepNumber}/$totalSteps · ${current.label} (open-loop)"
+                status = "Running ${current.stepNumber}/${current.totalSteps} · ${current.label}"
                 return Output(current.steer, current.drive)
             }
             segmentStartedAt += current.durationMs
@@ -193,19 +245,16 @@ internal class StepRunner {
         active = false
         segments = emptyList()
         cursor = 0
-        status = "Step plan complete · neutral"
+        status = "Done · neutral"
         return Output(1500, 1500)
     }
 
     /**
      * Compile phone-frame steps (FWD/BACK/LEFT/RIGHT) into minimal-turn neutral-delimited RC segments.
-     * Tracks rover heading relative to the phone's initial orientation (starting at 0°):
-     * - Same facing: drive forward directly.
-     * - Opposite facing (180°): drive reverse directly without spinning in place.
-     * - 90° left/right: pivot 90°, pause at neutral, then drive forward 1 m.
      */
     private fun buildSegments(steps: List<StepCommand>, cal: StepCalibration): List<Segment> {
         val list = mutableListOf<Segment>()
+        val total = steps.size
         val pause = cal.safePauseMs
         val turnMs = cal.safeTurn90Ms
         val fwdUs = cal.driveCommandUs(reverse = false)
@@ -213,10 +262,9 @@ internal class StepRunner {
         val rightUs = cal.steerCommandUs(turnRight = true)
         val leftUs = cal.steerCommandUs(turnRight = false)
 
-        // Initial neutral dwell before any actuator output.
-        list.add(Segment(1, "neutral check", 1500, 1500, pause))
+        list.add(Segment(1, total, "neutral check", 1500, 1500, pause))
 
-        var facingDeg = 0 // 0=FWD, 90=RIGHT, 180=BACK, 270=LEFT in phone origin frame
+        var facingDeg = 0
         steps.forEachIndexed { idx, step ->
             val stepNum = idx + 1
             val targetDeg = step.direction.relativeBearingDeg.roundToInt() % 360
@@ -224,29 +272,22 @@ internal class StepRunner {
             val driveMs = cal.driveDurationMs(step.meters)
 
             when (diff) {
-                0 -> {
-                    list.add(Segment(stepNum, "${step.direction.shortLabel} ${step.meters}m", 1500, fwdUs, driveMs))
-                }
-                180 -> {
-                    // Drive in reverse directly rather than spinning 180° in place.
-                    list.add(Segment(stepNum, "${step.direction.shortLabel} ${step.meters}m (rev)", 1500, revUs, driveMs))
-                }
+                0 -> list.add(Segment(stepNum, total, "${step.direction.shortLabel} ${step.meters}m", 1500, fwdUs, driveMs))
+                180 -> list.add(Segment(stepNum, total, "${step.direction.shortLabel} ${step.meters}m (rev)", 1500, revUs, driveMs))
                 90 -> {
-                    list.add(Segment(stepNum, "turn RIGHT 90°", rightUs, 1500, turnMs))
-                    list.add(Segment(stepNum, "neutral pause", 1500, 1500, pause))
-                    list.add(Segment(stepNum, "${step.direction.shortLabel} ${step.meters}m", 1500, fwdUs, driveMs))
+                    list.add(Segment(stepNum, total, "turn RIGHT 90°", rightUs, 1500, turnMs))
+                    list.add(Segment(stepNum, total, "neutral pause", 1500, 1500, pause))
+                    list.add(Segment(stepNum, total, "${step.direction.shortLabel} ${step.meters}m", 1500, fwdUs, driveMs))
                     facingDeg = targetDeg
                 }
                 else -> {
-                    // 270° == 90° left
-                    list.add(Segment(stepNum, "turn LEFT 90°", leftUs, 1500, turnMs))
-                    list.add(Segment(stepNum, "neutral pause", 1500, 1500, pause))
-                    list.add(Segment(stepNum, "${step.direction.shortLabel} ${step.meters}m", 1500, fwdUs, driveMs))
+                    list.add(Segment(stepNum, total, "turn LEFT 90°", leftUs, 1500, turnMs))
+                    list.add(Segment(stepNum, total, "neutral pause", 1500, 1500, pause))
+                    list.add(Segment(stepNum, total, "${step.direction.shortLabel} ${step.meters}m", 1500, fwdUs, driveMs))
                     facingDeg = targetDeg
                 }
             }
-            // Mandatory neutral dwell after every step.
-            list.add(Segment(stepNum, "neutral settle", 1500, 1500, pause))
+            list.add(Segment(stepNum, total, "neutral settle", 1500, 1500, pause))
         }
         return list
     }

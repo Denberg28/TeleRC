@@ -120,4 +120,75 @@ class StepPlanTest {
         assertEquals("0° N", StepGeometry.compassLabel(359.8))
         assertTrue(abs(PlanOrigin(0.0, 0.0, -90.0, false).normalizedHeading - 270.0) < 1e-9)
     }
+
+    @Test fun fromMeasuredPulseDerivesOneMeterTimingAndMarksCalibrated() {
+        assertFalse(StepCalibration().calibrated)
+
+        val cal = StepCalibration.fromMeasuredPulse(
+            testDurationMs = 1500L,
+            measuredMeters = 0.75,
+            drivePercent = 40,
+            steerPercent = 45,
+            turn90Ms = 750L,
+            pauseMs = 300L
+        )
+        assertNotNull(cal)
+        assertTrue(cal!!.calibrated)
+        assertEquals(0.5, cal.safeSpeedMps, 1e-9)
+        assertEquals(2000L, cal.oneMeterMs)
+        assertEquals(40, cal.safeDrivePercent)
+        assertEquals(750L, cal.safeTurn90Ms)
+
+        // Clamps extreme derived speeds within safe limits.
+        val fast = StepCalibration.fromMeasuredPulse(500L, 4.0)!!
+        assertEquals(StepCalibration.MAX_SPEED_MPS, fast.safeSpeedMps, 1e-9)
+        assertEquals(500L, fast.oneMeterMs)
+
+        val slow = StepCalibration.fromMeasuredPulse(5000L, 0.25)!!
+        assertEquals(StepCalibration.MIN_SPEED_MPS, slow.safeSpeedMps, 1e-9)
+        assertEquals(6667L, slow.oneMeterMs)
+
+        // Rejects invalid pulse durations or measured distances.
+        assertNull(StepCalibration.fromMeasuredPulse(100L, 1.0))
+        assertNull(StepCalibration.fromMeasuredPulse(6000L, 1.0))
+        assertNull(StepCalibration.fromMeasuredPulse(1500L, 0.05))
+        assertNull(StepCalibration.fromMeasuredPulse(1500L, 6.0))
+        assertNull(StepCalibration.fromMeasuredPulse(1500L, Double.NaN))
+        assertNull(StepCalibration.fromMeasuredPulse(1500L, Double.POSITIVE_INFINITY))
+    }
+
+    @Test fun beginCalibrationPulseRunsNeutralBoundedForwardAndTurnPulses() {
+        val cal = StepCalibration(drivePercent = 40, steerPercent = 50, turn90Ms = 600L, pauseMs = 300L)
+        val runner = StepRunner()
+
+        // Forward straight calibration pulse: 300ms neutral -> 1200ms forward -> 300ms neutral.
+        runner.beginCalibrationPulse(turnOnly = false, durationMs = 1200L, calibration = cal, now = 0L)
+        assertTrue(runner.active)
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(100L))
+        val driveOut = runner.poll(350L)
+        assertEquals(1500, driveOut.steer)
+        assertTrue(driveOut.drive > 1500)
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(1550L))
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(1800L))
+        assertFalse(runner.active)
+
+        // 90° turn calibration pulse: 300ms neutral -> 600ms right steer -> 300ms neutral.
+        runner.beginCalibrationPulse(turnOnly = true, durationMs = 600L, calibration = cal, now = 2000L)
+        assertTrue(runner.active)
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(2299L))
+        val turnOut = runner.poll(2300L)
+        assertTrue(turnOut.steer > 1500)
+        assertEquals(1500, turnOut.drive)
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(2950L))
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(3200L))
+        assertFalse(runner.active)
+
+        // Clamps oversized pulse duration to MAX_PULSE_MS (5000ms) and cancels cleanly.
+        runner.beginCalibrationPulse(turnOnly = false, durationMs = 99_999L, calibration = cal, now = 10_000L)
+        assertTrue(runner.poll(15_299L).drive > 1500)
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(15_300L))
+        runner.cancel("Calibration stopped")
+        assertFalse(runner.active)
+        assertEquals(StepRunner.Output(1500, 1500), runner.poll(15_350L))
+    }
 }

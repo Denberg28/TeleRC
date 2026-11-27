@@ -22,8 +22,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
+import android.text.TextWatcher
 import android.util.AtomicFile
 import android.util.TypedValue
 import android.view.Gravity
@@ -73,15 +75,21 @@ class MainActivity : Activity() {
     private var wallpaper: ImageView? = null
     private var themeBitmap: Bitmap? = null
 
-    // Settings / Update modal state
+    // Settings / Update / Calibration modal state
     private var showing: Dialog? = null
     private var updateDialog: Dialog? = null
     private var updateMessage: TextView? = null
+    private var calDialog: Dialog? = null
+    private var calStatus: TextView? = null
+    private var calArmBtn: Button? = null
+    private var calPulseBtn: Button? = null
+    private var calTurnBtn: Button? = null
+    private var calStopBtn: Button? = null
     private var responseDirty = false
     private var imageWork = false
     private var pendingImageUri: android.net.Uri? = null
 
-    // Mission screen state (phone initial origin + orientation, 1m step planner, Wi-Fi upload)
+    // Mission screen state (1m calibration gate, phone initial origin + orientation, 1m step planner)
     private val route = RouteSession()
     private var mission = MissionPlan()
     private val plannedSteps = mutableListOf<StepCommand>()
@@ -255,9 +263,19 @@ class MainActivity : Activity() {
         left?.reset(); right?.reset(); steer = 1500; drive = 1500; refreshLabels()
     }
 
+    private fun clearCalibrationRefs() {
+        calDialog = null; calStatus = null
+        calArmBtn = null; calPulseBtn = null; calTurnBtn = null; calStopBtn = null
+    }
+
     private fun dismissSheet() {
+        val wasCal = showing === calDialog && calDialog != null
         showing?.setOnDismissListener(null); showing?.dismiss(); showing = null
         updateDialog = null; updateMessage = null
+        clearCalibrationRefs()
+        if (wasCal && ::link.isInitialized) {
+            link.stopStepPlan("Calibration closed · stopped")
+        }
     }
 
     // UI — Root shell. Controls keeps Go's wallpaper + translucent dials; Mission adds the map/plan tab.
@@ -374,14 +392,14 @@ class MainActivity : Activity() {
         root.addView(controls, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(12) })
     }
 
-    // UI — Mission Planning tab (phone initial location/orientation + 1m step planning/test + Wi-Fi upload).
+    // UI — Minimal Mission Planning tab: clear map + 1m calibration gate + phone-origin 1m step pad.
     private fun renderMission(root: LinearLayout) {
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; isBaselineAligned = false }
         val titleColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        titleColumn.addView(text("Mission plan", 16f).apply {
+        titleColumn.addView(text("Mission", 16f).apply {
             setTypeface(typeface, android.graphics.Typeface.BOLD); maxLines = 1
         })
-        gpsBadge = text("PHONE ORIGIN · NO ROVER GPS", 11f).apply {
+        gpsBadge = text("Step 1: Calibrate 1m", 11f).apply {
             setTextColor(AppColors.muted(this@MainActivity)); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
         titleColumn.addView(gpsBadge)
@@ -393,11 +411,8 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(dp(92), row()).apply { rightMargin = dp(6) })
 
         connect = button("Phone connect", true) { phoneConnect() }
-        header.addView(connect, LinearLayout.LayoutParams(dp(124), row()).apply { rightMargin = dp(6) })
-        header.addView(button("Lock Origin", false) { lockPhoneOrigin(silent = false) }.apply {
-            contentDescription = "Lock phone initial GPS location and compass orientation as step origin"
-        }, LinearLayout.LayoutParams(dp(106), row()).apply { rightMargin = dp(6) })
-        header.addView(button("Settings") { settings() }, LinearLayout.LayoutParams(dp(82), row()))
+        header.addView(connect, LinearLayout.LayoutParams(dp(128), row()).apply { rightMargin = dp(6) })
+        header.addView(button("Settings") { settings() }, LinearLayout.LayoutParams(dp(84), row()))
         root.addView(header, LinearLayout.LayoutParams(-1, -2))
 
         val map = RouteMapView(this, route)
@@ -407,19 +422,16 @@ class MainActivity : Activity() {
             plan = mission,
             map = map,
             steps = plannedSteps,
+            onCalibrate = ::showStepCalibration,
+            onLockOrigin = { lockPhoneOrigin(silent = false) },
             onStepTapped = ::handleStepTap,
             onUndoStep = ::undoLastStep,
             onClearAll = ::clearStepPlan,
             onArmToggle = { link.toggleArm(); refresh() },
             onRunPlan = ::confirmRunStepPlan,
-            onStopRun = { link.stopStepPlan("Stopped by operator"); planner?.resetInstantMode(); refresh() },
-            onCalibrate = ::showStepCalibration,
-            save = ::saveMission,
-            exportPlan = { missionDocument(EXPORT_MISSION_REQUEST, true) },
-            importPlan = { missionDocument(IMPORT_MISSION_REQUEST, false) },
-            uploadPlan = ::confirmMissionUpload,
-            cancelUpload = { link.cancelMissionUpload("Upload cancelled") }
-        )
+            onStopRun = { link.stopStepPlan("Stopped by operator"); refresh() },
+            onMoreMenu = ::showMissionMoreMenu
+        ).also { it.setCalibrated(readStepCalibration().calibrated) }
         root.addView(planner, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
         if (started) map.onStart()
         if (resumed) map.onResume()
@@ -447,16 +459,22 @@ class MainActivity : Activity() {
         drivePercent = stepPrefs.getInt("drive_pct", 35),
         steerPercent = stepPrefs.getInt("steer_pct", 45),
         turn90Ms = stepPrefs.getLong("turn90_ms", 800L),
-        pauseMs = stepPrefs.getLong("pause_ms", 300L)
+        pauseMs = stepPrefs.getLong("pause_ms", 300L),
+        calibrated = stepPrefs.getBoolean("calibrated", false)
     )
 
-    private fun saveStepCalibration(cal: StepCalibration) {
+    private fun readCalibrationPulseMs(): Long =
+        stepPrefs.getLong("test_pulse_ms", 1500L).coerceIn(StepCalibration.MIN_PULSE_MS, StepCalibration.MAX_PULSE_MS)
+
+    private fun saveStepCalibration(cal: StepCalibration, testPulseMs: Long = readCalibrationPulseMs()) {
         stepPrefs.edit()
             .putFloat("speed_mps", cal.safeSpeedMps.toFloat())
             .putInt("drive_pct", cal.safeDrivePercent)
             .putInt("steer_pct", cal.safeSteerPercent)
             .putLong("turn90_ms", cal.safeTurn90Ms)
             .putLong("pause_ms", cal.safePauseMs)
+            .putBoolean("calibrated", cal.calibrated)
+            .putLong("test_pulse_ms", testPulseMs.coerceIn(StepCalibration.MIN_PULSE_MS, StepCalibration.MAX_PULSE_MS))
             .apply()
     }
 
@@ -474,8 +492,8 @@ class MainActivity : Activity() {
         }
         refreshOriginBanner()
         if (!silent) {
-            val src = if (locked.fromPhoneGps) "Phone GPS" else "Sample origin (indoors)"
-            Toast.makeText(this, "Origin locked · $src · ${StepGeometry.compassLabel(locked.normalizedHeading)}", Toast.LENGTH_SHORT).show()
+            val src = if (locked.fromPhoneGps) "Phone GPS" else "Sample start (indoors)"
+            Toast.makeText(this, "Start locked · $src · ${StepGeometry.compassLabel(locked.normalizedHeading)}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -494,13 +512,9 @@ class MainActivity : Activity() {
         planner?.refresh(fit = false)
     }
 
-    private fun handleStepTap(direction: StepDirection, instant: Boolean) {
-        if (instant) {
-            val started = link.beginStepPlan(listOf(StepCommand(direction, 1.0)), readStepCalibration())
-            if (!started) {
-                Toast.makeText(this, "ARM rover in MANUAL mode with CH7 permission to run 1m step", Toast.LENGTH_SHORT).show()
-            }
-            refresh()
+    private fun handleStepTap(direction: StepDirection) {
+        if (!readStepCalibration().calibrated) {
+            showStepCalibration()
             return
         }
         if (plannedSteps.size >= StepRunner.MAX_STEPS || mission.waypoints.size >= MissionPlan.MAX_WAYPOINTS) {
@@ -543,16 +557,21 @@ class MainActivity : Activity() {
     }
 
     private fun confirmRunStepPlan() {
+        val cal = readStepCalibration()
+        if (!cal.calibrated) {
+            showStepCalibration()
+            return
+        }
         val snap = link.snapshot()
         val stepSnapshot = plannedSteps.toList()
         if (stepSnapshot.isEmpty() || !snap.stepReady || snap.stepActive) return
-        val cal = readStepCalibration()
         AlertDialog.Builder(this)
             .setTitle("Run ${stepSnapshot.size} open-loop 1m steps?")
             .setMessage(
                 "Commands CH1/CH2 over Wi-Fi without joystick input (no rover GPS feedback): " +
-                    "Drive ${cal.safeDrivePercent}%, Steer ${cal.safeSteerPercent}%, Speed ${String.format(java.util.Locale.US, "%.2f", cal.safeSpeedMps)} m/s, " +
-                    "Turn 90° ${cal.safeTurn90Ms} ms. Keep clear space or raised wheels and be ready to tap STOP or flip Switch A."
+                    "1m = ${cal.oneMeterMs} ms (${String.format(java.util.Locale.US, "%.2f", cal.safeSpeedMps)} m/s), " +
+                    "Drive ${cal.safeDrivePercent}%, Steer ${cal.safeSteerPercent}%, 90° Turn ${cal.safeTurn90Ms} ms. " +
+                    "Keep clear space or raised wheels and be ready to tap STOP or flip Switch A."
             )
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Run Plan") { _, _ ->
@@ -563,67 +582,228 @@ class MainActivity : Activity() {
             }.show()
     }
 
+    // Control — Guided 1-meter calibration modal. Supports live ARM + forward/90° test pulses before saving.
     private fun showStepCalibration() {
         val cal = readStepCalibration()
+        val initialPulseMs = readCalibrationPulseMs()
+        val initialMeasured = if (cal.calibrated) cal.safeSpeedMps * (initialPulseMs / 1000.0) else 1.0
+        val initialHeading = ((planOrigin?.normalizedHeading ?: liveHeadingDeg ?: 0.0).toInt() % 360)
+
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val statusView = text("Connect Wi-Fi & ARM for live test pulse, or enter measured 1m values.", 12f).apply {
+            setTextColor(AppColors.muted(this@MainActivity))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        body.addView(statusView, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+
+        val pulseRow = LinearLayout(this).apply { isBaselineAligned = false }
+        val armBtn = button("ARM", false) { link.toggleArm(); refresh() }
+        var pulseInput: EditText? = null
+        var distInput: EditText? = null
+        var driveInput: EditText? = null
+        var turnInput: EditText? = null
+        var headingInput: EditText? = null
+
+        fun currentDraftCal(): StepCalibration = StepCalibration(
+            metersPerSecond = cal.safeSpeedMps,
+            drivePercent = driveInput?.text?.toString()?.toIntOrNull() ?: cal.safeDrivePercent,
+            steerPercent = cal.safeSteerPercent,
+            turn90Ms = turnInput?.text?.toString()?.toLongOrNull() ?: cal.safeTurn90Ms,
+            pauseMs = cal.safePauseMs,
+            calibrated = cal.calibrated
+        )
+
+        val testPulseBtn = button("Test Pulse", true) {
+            val ms = pulseInput?.text?.toString()?.toLongOrNull() ?: initialPulseMs
+            if (ms !in StepCalibration.MIN_PULSE_MS..StepCalibration.MAX_PULSE_MS) {
+                pulseInput?.error = "300–5000 ms"
+                return@button
+            }
+            if (!link.beginCalibrationPulse(false, ms, currentDraftCal())) {
+                Toast.makeText(this, "ARM rover with Switch A permitted to run calibration pulse", Toast.LENGTH_SHORT).show()
+            }
+            refresh()
+        }
+        val testTurnBtn = button("Test 90°", false) {
+            val ms = turnInput?.text?.toString()?.toLongOrNull() ?: cal.safeTurn90Ms
+            if (ms !in 200L..3000L) {
+                turnInput?.error = "200–3000 ms"
+                return@button
+            }
+            if (!link.beginCalibrationPulse(true, ms, currentDraftCal())) {
+                Toast.makeText(this, "ARM rover with Switch A permitted to test 90° turn", Toast.LENGTH_SHORT).show()
+            }
+            refresh()
+        }
+        val stopBtn = button("STOP", true) {
+            link.stopStepPlan("Calibration pulse stopped")
+            refresh()
+        }.apply {
+            background = shape(Color.rgb(168, 42, 42), 10)
+            setTextColor(Color.WHITE)
+        }
+        pulseRow.addView(armBtn, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) })
+        pulseRow.addView(testPulseBtn, LinearLayout.LayoutParams(0, dp(42), 1.15f).apply { rightMargin = dp(4) })
+        pulseRow.addView(testTurnBtn, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) })
+        pulseRow.addView(stopBtn, LinearLayout.LayoutParams(0, dp(42), 0.9f))
+        body.addView(pulseRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+
         fun field(parent: LinearLayout, label: String, content: String, decimal: Boolean = false) = LinearLayout(this).run {
             orientation = LinearLayout.VERTICAL
-            addView(text(label, 12f), LinearLayout.LayoutParams(-1, dp(22)))
+            addView(text(label, 11f), LinearLayout.LayoutParams(-1, dp(18)))
             val edit = EditText(this@MainActivity).apply {
-                contentDescription = label; setText(content); setSingleLine(); textSize = 15f
+                contentDescription = label; setText(content); setSingleLine(); textSize = 14f
                 setTextColor(Color.rgb(236, 242, 250)); setPadding(dp(8), 0, dp(8), 0); minWidth = 0; minimumWidth = 0
                 inputType = InputType.TYPE_CLASS_NUMBER or if (decimal) InputType.TYPE_NUMBER_FLAG_DECIMAL else 0
                 imeOptions = EditorInfo.IME_ACTION_NEXT or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             }
-            addView(edit, LinearLayout.LayoutParams(-1, row()))
-            parent.addView(this, LinearLayout.LayoutParams(0, -2, 1f).apply { if (parent.childCount > 0) leftMargin = dp(10) })
+            addView(edit, LinearLayout.LayoutParams(-1, dp(42)))
+            parent.addView(this, LinearLayout.LayoutParams(0, -2, 1f).apply { if (parent.childCount > 0) leftMargin = dp(8) })
             edit
         }
-        val r1 = LinearLayout(this).apply { isBaselineAligned = false }; body.addView(r1)
-        val speed = field(r1, "Speed (m/s · 0.2–2.0)", String.format(java.util.Locale.US, "%.2f", cal.safeSpeedMps), decimal = true)
-        val turn = field(r1, "90° Turn (ms · 200–3000)", cal.safeTurn90Ms.toString())
+
+        val r1 = LinearLayout(this).apply { isBaselineAligned = false }
+        body.addView(r1)
+        pulseInput = field(r1, "Test pulse (ms)", initialPulseMs.toString())
+        distInput = field(r1, "Measured dist (m)", String.format(java.util.Locale.US, "%.2f", initialMeasured), decimal = true)
+
         val r2 = LinearLayout(this).apply { isBaselineAligned = false }
-        body.addView(r2, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-        val drv = field(r2, "Drive % (25–70)", cal.safeDrivePercent.toString())
-        val str = field(r2, "Steer % (25–70)", cal.safeSteerPercent.toString())
-        val r3 = LinearLayout(this).apply { isBaselineAligned = false }
-        body.addView(r3, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-        val hdg = field(
-            r3,
-            "Origin heading (deg · 0–359)",
-            ((planOrigin?.normalizedHeading ?: liveHeadingDeg ?: 0.0).toInt() % 360).toString()
-        )
-        dialog("1m Step calibration", body, "Save" to {
-            val next = StepCalibration(
-                metersPerSecond = speed.text.toString().toDoubleOrNull() ?: cal.safeSpeedMps,
-                drivePercent = drv.text.toString().toIntOrNull() ?: cal.safeDrivePercent,
-                steerPercent = str.text.toString().toIntOrNull() ?: cal.safeSteerPercent,
-                turn90Ms = turn.text.toString().toLongOrNull() ?: cal.safeTurn90Ms,
-                pauseMs = cal.safePauseMs
-            )
-            saveStepCalibration(next)
-            hdg.text.toString().toDoubleOrNull()?.takeIf { it.isFinite() }?.let { manualDeg ->
-                val base = ensurePlanOrigin()
-                val updated = base.copy(headingDegrees = ((manualDeg % 360.0) + 360.0) % 360.0)
-                planOrigin = updated
-                routeMap?.showOrigin(updated, center = false)
-                if (plannedSteps.isNotEmpty()) rebuildPlanFromSteps(updated)
+        body.addView(r2, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        driveInput = field(r2, "Drive % (25–70)", cal.safeDrivePercent.toString())
+        turnInput = field(r2, "90° Turn (ms)", cal.safeTurn90Ms.toString())
+        headingInput = field(r2, "Heading (deg)", initialHeading.toString())
+
+        val preview = text("", 12f).apply {
+            setTextColor(AppColors.accent(this@MainActivity))
+            setPadding(0, dp(6), 0, 0)
+        }
+        body.addView(preview)
+
+        fun updatePreview() {
+            val ms = pulseInput.text.toString().toLongOrNull()
+            val dist = distInput.text.toString().toDoubleOrNull()
+            val drv = driveInput.text.toString().toIntOrNull() ?: cal.safeDrivePercent
+            val trn = turnInput.text.toString().toLongOrNull() ?: cal.safeTurn90Ms
+            val computed = if (ms != null && dist != null) {
+                StepCalibration.fromMeasuredPulse(ms, dist, drv, cal.safeSteerPercent, trn, cal.safePauseMs)
+            } else null
+            preview.text = if (computed != null) {
+                String.format(
+                    java.util.Locale.US,
+                    "1.0 m = %d ms (%.2f m/s · Drive %d%% · 90° %d ms)",
+                    computed.oneMeterMs, computed.safeSpeedMps, computed.safeDrivePercent, computed.safeTurn90Ms
+                )
+            } else {
+                "Enter pulse 300–5000 ms and measured distance 0.10–5.0 m"
             }
+        }
+        val watcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { updatePreview() }
+        }
+        pulseInput.addTextChangedListener(watcher)
+        distInput.addTextChangedListener(watcher)
+        driveInput.addTextChangedListener(watcher)
+        turnInput.addTextChangedListener(watcher)
+        updatePreview()
+
+        val d = dialog("Calibrate 1 meter", body, "Save 1m" to {
+            val ms = pulseInput.text.toString().toLongOrNull()
+            val dist = distInput.text.toString().toDoubleOrNull()
+            val drv = driveInput.text.toString().toIntOrNull() ?: cal.safeDrivePercent
+            val trn = turnInput.text.toString().toLongOrNull() ?: cal.safeTurn90Ms
+            val next = if (ms != null && dist != null) {
+                StepCalibration.fromMeasuredPulse(ms, dist, drv, cal.safeSteerPercent, trn, cal.safePauseMs)
+            } else null
+            if (next == null) {
+                if (ms == null || ms !in StepCalibration.MIN_PULSE_MS..StepCalibration.MAX_PULSE_MS) {
+                    pulseInput.error = "300–5000 ms"
+                } else {
+                    distInput.error = "0.10–5.0 m"
+                }
+                return@to
+            }
+            saveStepCalibration(next, ms!!)
+            headingInput.text.toString().toDoubleOrNull()?.takeIf { it.isFinite() }?.let { manualDeg ->
+                val norm = ((manualDeg % 360.0) + 360.0) % 360.0
+                if (planOrigin != null || manualDeg.toInt() % 360 != initialHeading) {
+                    val base = ensurePlanOrigin()
+                    val updated = base.copy(headingDegrees = norm)
+                    planOrigin = updated
+                    routeMap?.showOrigin(updated, center = false)
+                    if (plannedSteps.isNotEmpty()) rebuildPlanFromSteps(updated)
+                }
+            }
+            planner?.setCalibrated(true)
             dismissSheet()
             refreshOriginBanner()
+            refreshGpsLabel()
             refresh()
+            Toast.makeText(
+                this,
+                String.format(java.util.Locale.US, "1m calibrated · %d ms (%.2f m/s)", next.oneMeterMs, next.safeSpeedMps),
+                Toast.LENGTH_SHORT
+            ).show()
         })
+        calDialog = d
+        calStatus = statusView
+        calArmBtn = armBtn
+        calPulseBtn = testPulseBtn
+        calTurnBtn = testTurnBtn
+        calStopBtn = stopBtn
+        d.setOnDismissListener {
+            if (showing === d) {
+                showing = null; updateDialog = null; updateMessage = null
+                clearCalibrationRefs()
+                if (::link.isInitialized) {
+                    link.stopStepPlan("Calibration closed · stopped")
+                }
+            }
+        }
+        refresh()
+    }
+
+    private fun showMissionMoreMenu() {
+        val snap = link.snapshot()
+        val items = mutableListOf(
+            "Re-calibrate 1m" to { showStepCalibration() },
+            "Fit route on map" to { routeMap?.fitPlan(); Unit },
+            "Import CSV" to { missionDocument(IMPORT_MISSION_REQUEST, false) },
+            "Export CSV" to { missionDocument(EXPORT_MISSION_REQUEST, true) },
+            "Upload Wi-Fi (disarmed ArduRover)" to {
+                val s = link.snapshot()
+                when {
+                    mission.waypoints.isEmpty() -> Toast.makeText(this, "Add waypoints first", Toast.LENGTH_SHORT).show()
+                    s.missionReady && !s.missionActive -> confirmMissionUpload()
+                    else -> Toast.makeText(this, s.missionStatus, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+        if (snap.missionActive) {
+            items.add("Cancel Wi-Fi upload" to { link.cancelMissionUpload("Upload cancelled"); refresh() })
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Mission options")
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
+            .show()
     }
 
     private fun refreshOriginBanner() {
+        val cal = readStepCalibration()
+        if (!cal.calibrated) {
+            planner?.updateOriginBanner("1. Calibrate 1m first")
+            return
+        }
         val origin = planOrigin
         val live = liveHeadingDeg?.let { StepGeometry.compassLabel(it) }
-            ?: if (phoneHeading?.available == false) "no compass (use Cal)" else "reading compass…"
+            ?: if (phoneHeading?.available == false) "manual dir" else "compass…"
         val banner = if (origin != null) {
             val src = if (origin.fromPhoneGps) "Phone GPS" else "Sample start"
-            "Origin ${StepGeometry.compassLabel(origin.normalizedHeading)} ($src) · live $live"
+            "Start ${StepGeometry.compassLabel(origin.normalizedHeading)} ($src) · 1m = ${cal.oneMeterMs} ms"
         } else {
-            "Phone heading $live · tap Lock Origin or ↑/←/→/↓ 1m"
+            "Heading $live · tap Set Start or ↑←→↓"
         }
         planner?.updateOriginBanner(banner)
     }
@@ -633,11 +813,28 @@ class MainActivity : Activity() {
         driveLabel?.text = "DRIVE · $drive"
     }
 
+    private fun refreshCalibrationModal(s: GoLink.Snapshot) {
+        if (calStatus == null || showing !== calDialog) return
+        calStatus?.text = s.stepStatus
+        calArmBtn?.text = when {
+            s.handset -> "Radio"
+            s.pending -> "Cancel"
+            s.armed -> "DISARM"
+            else -> "ARM"
+        }
+        calArmBtn?.isEnabled = !s.handset && !s.missionActive &&
+            (s.pending || s.fresh && s.verified && !s.stopped)
+        calPulseBtn?.isEnabled = s.stepReady && !s.stepActive
+        calTurnBtn?.isEnabled = s.stepReady && !s.stepActive
+        calStopBtn?.isEnabled = s.stepActive || s.armed || s.enabled || s.pending
+    }
+
     private fun refresh() {
         if (!::link.isInitialized) return
         val s = link.snapshot()
         connect?.isEnabled = true
         connect?.text = if (s.connected) "Disconnect" else "Phone connect"
+        refreshCalibrationModal(s)
         if (page == Page.MISSION) {
             planner?.updateLinkState(s)
             refreshGpsLabel()
@@ -714,12 +911,17 @@ class MainActivity : Activity() {
     }
 
     private fun refreshGpsLabel() {
+        val cal = readStepCalibration()
+        if (!cal.calibrated) {
+            gpsBadge?.text = "Step 1: Calibrate 1m first"
+            return
+        }
         val gps = route.rover.lastOrNull()
         val seconds = gps?.let { ((System.currentTimeMillis() - it.timeMs).coerceAtLeast(0L) / 1000L) }
         val locationLabel = when {
-            seconds != null -> "ROVER GPS · ${seconds}s ago"
-            route.home != null -> "PHONE MAP · NO ROVER GPS"
-            else -> "NO GPS · SAMPLE AREA"
+            seconds != null -> "1m = ${cal.oneMeterMs} ms · Rover GPS (${seconds}s)"
+            route.home != null -> "1m = ${cal.oneMeterMs} ms · Phone GPS"
+            else -> "1m = ${cal.oneMeterMs} ms · Sample map"
         }
         gpsBadge?.text = locationLabel
     }
@@ -790,12 +992,11 @@ class MainActivity : Activity() {
         planner = null
     }
 
-    // UI — Go modal sheets. Fixed intrinsic heights keep fields above the soft keyboard.
+    // UI — Go modal sheets. Fixed intrinsic heights keep fields above the soft keyboard and scroll on short screens.
     private fun dialog(title: String, content: View, positive: Pair<String, () -> Unit>? = null): Dialog {
         link.stop(true)
         link.stopStepPlan("Settings opened · stopped")
         link.cancelMissionUpload("Settings opened; upload cancelled")
-        planner?.resetInstantMode()
         resetSticks()
         dismissSheet()
         val d = Dialog(this); d.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -809,27 +1010,36 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; maxLines = 1
             setAutoSizeTextTypeUniformWithConfiguration(14, 18, 1, TypedValue.COMPLEX_UNIT_SP)
         }, LinearLayout.LayoutParams(-1, dp(28)))
-        panel.addView(content, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        val scroll = ScrollView(this).apply { addView(content) }
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         val footer = LinearLayout(this).apply { isBaselineAligned = false; gravity = Gravity.CENTER_VERTICAL }
         footer.addView(button(if (positive == null) "Done" else "Cancel") { d.dismiss() }, LinearLayout.LayoutParams(0, row(), 1f))
         positive?.let { (label, action) ->
             footer.addView(button(label, true) { action() }, LinearLayout.LayoutParams(0, row(), 1f).apply { leftMargin = dp(8) })
         }
-        panel.addView(footer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        panel.addView(footer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         d.setContentView(panel)
         val visible = Rect().also { window.decorView.getWindowVisibleDisplayFrame(it) }
         val availableWidth = if (visible.width() > 0) visible.width() else resources.displayMetrics.widthPixels
-        val width = minOf(dp(420), availableWidth - dp(32)).coerceAtLeast(1)
+        val availableHeight = if (visible.height() > 0) visible.height() else resources.displayMetrics.heightPixels
+        val width = minOf(dp(440), availableWidth - dp(32)).coerceAtLeast(1)
+        val maxHeight = (availableHeight - dp(24)).coerceAtLeast(1)
         panel.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
+        val height = if (panel.measuredHeight > maxHeight) {
+            scroll.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(10) }
+            maxHeight
+        } else {
+            panel.measuredHeight
+        }
         d.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND); setDimAmount(.48f)
             setGravity(Gravity.CENTER); attributes = attributes.apply { x = 0; y = 0; windowAnimations = 0 }
             setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-            setLayout(width, panel.measuredHeight)
+            setLayout(width, height)
         }
         showing = d
         d.setOnDismissListener { if (showing === d) { showing = null; updateDialog = null; updateMessage = null } }
@@ -1121,7 +1331,6 @@ class MainActivity : Activity() {
         resumed = false
         stopPhoneLocation()
         stopPhoneHeading()
-        planner?.resetInstantMode()
         routeMap?.onPause()
         if (::link.isInitialized) link.foreground(false)
         dismissSheet(); resetSticks()

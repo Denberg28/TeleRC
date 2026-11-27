@@ -236,6 +236,18 @@ internal class GoLink(
         return started
     }
 
+    fun beginCalibrationPulse(turnOnly: Boolean, durationMs: Long, calibration: StepCalibration): Boolean {
+        val started = synchronized(lock) {
+            val n = now()
+            if (!stepReadyLocked(n) || stepRunner.active) return@synchronized false
+            steer = 1500; drive = 1500
+            stepRunner.beginCalibrationPulse(turnOnly, durationMs, calibration, n)
+            true
+        }
+        update()
+        return started
+    }
+
     fun stopStepPlan(reason: String = "Stopped by operator") {
         synchronized(lock) {
             val wasActive = stepRunner.active
