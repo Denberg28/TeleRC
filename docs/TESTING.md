@@ -1,3 +1,34 @@
+# 1.2.0rc5 acceptance and verification — 26 November 2026
+
+Baseline `ecefbbd` / published `v1.2.0rc4` (code `1203`); branch `feat/phone-origin-step-planner`. Target version `1.2.0rc5` / `versionCode 1204`.
+
+Scope: **no-rover-GPS** Mission tab with required **1-meter calibration gate**, phone initial GPS location + compass orientation (`PhoneHeading`), minimal clear-map (`2.6:1`) 1 m D-pad (`↑ / ← / → / ↓`), and joystick-free open-loop `ARM` / `Run` / `STOP` execution under `GoStepGate`.
+
+## Local software verification (pre-CI)
+
+- `./scripts/check-android-env.sh` (OpenJDK 17, Android SDK 35, Build Tools 35.0.0, verified Gradle 8.11.1): **PASS — build verified**.
+- `./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon`: **PASS — build verified / simulator tested** (`75` JVM tests passed, `0` failures/errors/skips, including `9` tests in `StepPlanTest`; debug & release lint `0` errors; debug APK built).
+- `python3 -m unittest discover -s scripts -p 'test_firmware_package.py'`, `python3 bridge/sync_motor_core.py --check`, `bridge/tests/run.sh`, `SANITIZE=1 bridge/tests/run.sh`: **PASS — simulator tested** (ASan + UBSan + LSan zero findings).
+
+## Executable bench / device verification procedure (pending hardware)
+
+1. Install signed `v1.2.0rc5` over `v1.2.0rc4`; confirm Controls tab, Wi-Fi settings, sensitivity, and saved `mission.csv` survive.
+2. Open **Mission** tab: verify map occupies ~72% width and control strip shows **`1. Calibrate 1m`** gate before calibration.
+3. On **raised wheels**, open **`Calibrate 1m`**, connect Wi-Fi, verify Switch A (CH7) permission, tap `ARM`, run `Test Pulse` and `Test 90°`, and verify neutral dwell before/after movement plus immediate `STOP` and modal-dismiss neutral stop.
+4. On flat ground, run a measured straight `Test Pulse`, enter the measured distance, verify live `1.0 m = … ms` preview, and tap `Save 1m` to unlock `Set Start (GPS + Dir)` and the 1 m D-pad.
+5. Lock phone start (`Set Start`), plot 1 m steps (`↑ / ← / → / ↓`), confirm map polyline + heading vector, and test `Run` + `STOP` + Switch A handover on raised wheels before ground testing.
+
+| Gate | 1.2.0rc5 status | Evidence / remaining requirement |
+| --- | --- | --- |
+| A — source/build | PASS (local Android + host/sanitizer); cloud CI & signed release pending | Release CI builds signed APK + 10 ESP32-S3 firmware targets |
+| B — behavior | PASS — JVM/host simulated scope; device BLOCKED | 75 JVM tests (`StepPlanTest` calibration/pulse/gate/geometry + Go safety suites); phone layout/compass/touch pending |
+| C — regression | PASS — automated scope | Existing Controls tab, bridge protocol, and preferences preserved; phone upgrade from `v1.2.0rc4` NOT TESTED |
+| D — integration | PASS — host/protocol; real chain BLOCKED | Real phone Wi-Fi ↔ ESP32-S3 ↔ rover calibration pulse & step run pending |
+| E — HIL | BLOCKED | No attached phone or rover; execute raised-wheel calibration and step checks above |
+| F — delivery | Pending signed release CI | Cloud workflow must pass signing continuity (`v1.0.0` + `v1.2.0rc4`), code `1203 → 1204`, checksums & prerelease publication |
+
+Historical 1.2.0rc4 and earlier test evidence follows below.
+
 # 1.2.0rc4 acceptance and verification — 24 November 2026
 
 Baseline `b4f7ba9` / published `v1.2.0rc3` (code `1202`); branch `feat/adopt-telerc-go-wifi-mission`. Target version `1.2.0rc4` / `versionCode 1203`.

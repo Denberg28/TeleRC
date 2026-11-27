@@ -1,3 +1,13 @@
+# 1.2.0rc5 current limits — 26 November 2026
+
+Candidate focuses the Mission tab strictly on **no-rover-GPS 1-meter calibration and phone-origin step planning** with a wide clear map (`2.6:1`) and minimal controls.
+
+- **Open-loop execution limit (no rover GPS / wheel encoders):** Calibrated 1 m steps and 90° turns are timed open-loop CH1/CH2 commands without closed-loop position or heading feedback. Surface friction, battery voltage, and slope affect actual travel distance and turn angle; always bench-test on raised wheels first and keep clear space with `STOP` and transmitter Switch A (CH7) ready.
+- **BLOCKED — device / HIL:** No physical Android phone or rover hardware is attached in the build environment. Installed upgrade over `v1.2.0rc4`, phone compass accuracy (`PhoneHeading`), landscape modal scrolling on small screens, and restrained-wheel `Test Pulse` / `Test 90°` / `Run` / `STOP` verification remain pending. Prerelease only.
+- **No onboard ArduRover mission upload in Mission UI:** This no-rover-GPS candidate intentionally omits ArduRover GPS waypoint upload and rover GPS status badges from the Mission UI; plans remain local (`mission.csv` + CSV import/export) and execute via timed open-loop Wi-Fi steps.
+
+Historical 1.2.0rc4 and earlier release limits follow below.
+
 # 1.2.0rc4 current limits — 24 November 2026
 
 Candidate adopts **TeleRC Go** (Wi-Fi-only Controls + Settings) with only the **Mission** planning tab added, sanitizes `TeleRCBridge.ino` (removed committed AP password), and documents HGLRC M10 GPS + SpeedyBee F405 V4 wiring/parameters.
