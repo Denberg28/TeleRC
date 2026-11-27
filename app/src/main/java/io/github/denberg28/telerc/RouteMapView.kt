@@ -10,6 +10,7 @@ import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 
 /** Measured tracks and local waypoints. No inferred position or command transmission. */
@@ -27,7 +28,9 @@ class RouteMapView(context: Context, private val session: RouteSession) {
 
     init {
         MapLibre.getInstance(context)
-        view = MapView(context)
+        // TextureView mode lets MapView swap smoothly between full screen and rounded PiP over FPV without SurfaceView Z-order glitches.
+        val options = MapLibreMapOptions.createFromAttributes(context).textureMode(true)
+        view = MapView(context, options)
         view.onCreate(null)
         view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (pendingFit && view.width > 0 && view.height > 0 && map?.style?.isFullyLoaded == true) fitPlan()

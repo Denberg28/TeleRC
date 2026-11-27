@@ -3,18 +3,21 @@ package io.github.denberg28.telerc
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.*
 import java.util.Locale
 
-// UI — Minimal mission planner with wide clear map (~72%) and compact right control strip (~28%).
-// Enforces 1-meter calibration first before unlocking phone-origin waypoint steps.
+// UI — Minimal mission planner with wide clear viewport (~72%) and compact right control strip (~28%).
+// Supports DJI Fly / fpvDROID-style single-tap PiP swap between Map and live FPV camera without reloading either view.
 class MissionPlannerView(
     context: Context,
     private val plan: MissionPlan,
     private val map: RouteMapView,
+    private val fpv: FpvFeedView,
     private val steps: MutableList<StepCommand>,
     private val onCalibrate: () -> Unit,
     private val onLockOrigin: () -> Unit,
@@ -24,6 +27,7 @@ class MissionPlannerView(
     private val onArmToggle: () -> Unit,
     private val onRunPlan: () -> Unit,
     private val onStopRun: () -> Unit,
+    private val onFpvSettings: () -> Unit,
     private val onMoreMenu: () -> Unit
 ) : LinearLayout(context) {
     private val ink = AppColors.ink(context)
@@ -31,6 +35,48 @@ class MissionPlannerView(
     private val surface = AppColors.surface(context)
 
     private val originBanner = label("Calibrate 1m first", ink, 12f)
+    private val camChip = TextView(context).apply {
+        text = "● FPV Cam"
+        textSize = 11.5f
+        setTextColor(ink)
+        setPadding(dp(10), dp(6), dp(10), dp(6))
+        background = shape(0xCC15202B.toInt(), 8)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "Configure FPV camera source and scaling"
+        setOnClickListener { onFpvSettings() }
+    }
+
+    // UI — Swap viewport slots (both stay attached so Map & FPV swap with zero reload or stream interruption).
+    private val mapCard = FrameLayout(context)
+    private val fpvCard = FrameLayout(context)
+    private val mapPipShield = View(context).apply {
+        isClickable = true
+        contentDescription = "Swap mini map to full screen"
+        setOnClickListener { swapFeeds() }
+    }
+    private val fpvPipShield = View(context).apply {
+        isClickable = true
+        contentDescription = "Swap mini FPV camera to full screen"
+        setOnClickListener { swapFeeds() }
+    }
+    private val mapPipBadge = pipBadge("MAP ⇄")
+    private val fpvPipBadge = pipBadge("● FPV ⇄")
+    private val mapPipHide = pipHideButton { setPipCollapsed(true) }
+    private val fpvPipHide = pipHideButton { setPipCollapsed(true) }
+    private val pipRestorePill = TextView(context).apply {
+        text = "● FPV ↗"
+        textSize = 11.5f
+        setTextColor(ink)
+        setPadding(dp(10), dp(7), dp(10), dp(7))
+        background = shape(0xD815202B.toInt(), 10)
+        isClickable = true
+        isFocusable = true
+        visibility = View.GONE
+        contentDescription = "Show Picture-in-Picture feed preview"
+        setOnClickListener { setPipCollapsed(false) }
+    }
+
     private val gatePanel = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER }
     private val controlPanel = LinearLayout(context).apply { orientation = VERTICAL }
 
@@ -53,7 +99,7 @@ class MissionPlannerView(
         }
     }
     private val moreBtn = action("⋯", false, onMoreMenu).apply {
-        contentDescription = "More mission options: recalibrate 1m, fit map, import, export"
+        contentDescription = "More mission options: recalibrate 1m, FPV camera, fit map, import, export"
     }
     private val armBtn = action("ARM", false, onArmToggle)
     private val runBtn = action("Run", true, onRunPlan)
@@ -63,6 +109,10 @@ class MissionPlannerView(
     }
 
     private var calibrated = false
+    private var fpvPrimary = false
+    private var pipCollapsed = false
+    private var fpvLive = false
+    private var fpvStatusLabel = "FPV standby"
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density + .5f).toInt()
     private fun shape(color: Int, radius: Int = 12) = GradientDrawable().apply {
@@ -73,19 +123,63 @@ class MissionPlannerView(
     }
     private fun action(value: String, filled: Boolean = false, clicked: () -> Unit) =
         AppUi.button(context, value, filled, clicked).apply { textSize = 12f; maxLines = 1 }
+    private fun pipBadge(value: String) = TextView(context).apply {
+        text = value
+        textSize = 10f
+        setTextColor(Color.WHITE)
+        setPadding(dp(6), dp(2), dp(6), dp(2))
+        background = shape(0xB80E1621.toInt(), 6)
+    }
+    private fun pipHideButton(onClick: () -> Unit) = TextView(context).apply {
+        text = "−"
+        textSize = 13f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        background = shape(0xB80E1621.toInt(), 6)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "Hide Picture-in-Picture preview"
+        setOnClickListener { onClick() }
+    }
 
-    // UI — Clear map view (weight 2.6) + minimal right control strip (weight 1.0).
+    // UI — Clear swap viewport (weight 2.6) + minimal right control strip (weight 1.0).
     init {
         orientation = HORIZONTAL
-        val mapPanel = FrameLayout(context)
-        mapPanel.addView(map.view, FrameLayout.LayoutParams(-1, -1))
-        mapPanel.addView(originBanner.apply {
+        val viewport = FrameLayout(context)
+
+        mapCard.addView(map.view, FrameLayout.LayoutParams(-1, -1))
+        mapCard.addView(mapPipShield, FrameLayout.LayoutParams(-1, -1))
+        mapCard.addView(mapPipBadge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            leftMargin = dp(5); topMargin = dp(5)
+        })
+        mapCard.addView(mapPipHide, FrameLayout.LayoutParams(dp(24), dp(22), Gravity.TOP or Gravity.END).apply {
+            rightMargin = dp(5); topMargin = dp(5)
+        })
+
+        fpvCard.addView(fpv, FrameLayout.LayoutParams(-1, -1))
+        fpvCard.addView(fpvPipShield, FrameLayout.LayoutParams(-1, -1))
+        fpvCard.addView(fpvPipBadge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            leftMargin = dp(5); topMargin = dp(5)
+        })
+        fpvCard.addView(fpvPipHide, FrameLayout.LayoutParams(dp(24), dp(22), Gravity.TOP or Gravity.END).apply {
+            rightMargin = dp(5); topMargin = dp(5)
+        })
+
+        viewport.addView(mapCard, FrameLayout.LayoutParams(-1, -1))
+        viewport.addView(fpvCard, FrameLayout.LayoutParams(-1, -1))
+        viewport.addView(originBanner.apply {
             background = shape(0xCC15202B.toInt(), 8)
             setPadding(dp(10), dp(6), dp(10), dp(6))
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
             leftMargin = dp(8); topMargin = dp(8)
         })
-        addView(mapPanel, LayoutParams(0, -1, 2.6f))
+        viewport.addView(camChip, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+            rightMargin = dp(8); topMargin = dp(8)
+        })
+        viewport.addView(pipRestorePill, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
+            leftMargin = dp(10); bottomMargin = dp(10)
+        })
+        addView(viewport, LayoutParams(0, -1, 2.6f))
 
         // Gate panel shown until 1m calibration is completed.
         gatePanel.setPadding(dp(10), dp(12), dp(10), dp(12))
@@ -146,7 +240,94 @@ class MissionPlannerView(
         map.onAddWaypoint = null
         map.onEditWaypoint = null
         setCalibrated(false)
+        applyFeedLayout()
         refresh(fit = true)
+    }
+
+    fun swapFeeds() {
+        fpvPrimary = !fpvPrimary
+        pipCollapsed = false
+        applyFeedLayout()
+    }
+
+    fun setPipCollapsed(collapsed: Boolean) {
+        pipCollapsed = collapsed
+        applyFeedLayout()
+    }
+
+    fun updateFpvStatus(live: Boolean, label: String) {
+        fpvLive = live
+        fpvStatusLabel = label
+        val dot = if (live) "●" else "○"
+        val dotColor = if (live) Color.rgb(66, 214, 128) else Color.rgb(245, 190, 72)
+        fpvPipBadge.text = "$dot FPV ⇄"
+        fpvPipBadge.setTextColor(if (live) Color.rgb(185, 250, 205) else Color.WHITE)
+        camChip.text = if (fpvPrimary) "$dot $label" else "$dot FPV Cam"
+        camChip.setTextColor(if (live) dotColor else ink)
+        pipRestorePill.text = if (fpvPrimary) "MAP ↗" else "$dot FPV ↗"
+    }
+
+    private fun applyFeedLayout() {
+        val pipW = dp(152)
+        val pipH = dp(92)
+        fun style(card: FrameLayout, isPip: Boolean) {
+            if (isPip) {
+                card.layoutParams = FrameLayout.LayoutParams(pipW, pipH, Gravity.BOTTOM or Gravity.START).apply {
+                    leftMargin = dp(10); bottomMargin = dp(10)
+                }
+                card.outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
+                    }
+                }
+                card.clipToOutline = true
+                card.elevation = dp(8).toFloat()
+                card.foreground = GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(2), Color.argb(215, 226, 238, 250))
+                }
+            } else {
+                card.layoutParams = FrameLayout.LayoutParams(-1, -1)
+                card.outlineProvider = ViewOutlineProvider.BACKGROUND
+                card.clipToOutline = false
+                card.elevation = 0f
+                card.foreground = null
+            }
+        }
+
+        val mapIsPip = fpvPrimary
+        val fpvIsPip = !fpvPrimary
+
+        style(mapCard, mapIsPip)
+        style(fpvCard, fpvIsPip)
+
+        mapPipShield.visibility = if (mapIsPip) View.VISIBLE else View.GONE
+        mapPipBadge.visibility = if (mapIsPip) View.VISIBLE else View.GONE
+        mapPipHide.visibility = if (mapIsPip) View.VISIBLE else View.GONE
+
+        fpvPipShield.visibility = if (fpvIsPip) View.VISIBLE else View.GONE
+        fpvPipBadge.visibility = if (fpvIsPip) View.VISIBLE else View.GONE
+        fpvPipHide.visibility = if (fpvIsPip) View.VISIBLE else View.GONE
+
+        mapCard.visibility = if (mapIsPip && pipCollapsed) View.GONE else View.VISIBLE
+        fpvCard.visibility = if (fpvIsPip && pipCollapsed) View.GONE else View.VISIBLE
+        pipRestorePill.visibility = if (pipCollapsed) View.VISIBLE else View.GONE
+
+        // Keep secondary PiP above primary feed, and keep compact HUD pills above both.
+        if (fpvPrimary) {
+            fpvCard.bringToFront()
+            if (!pipCollapsed) mapCard.bringToFront()
+        } else {
+            mapCard.bringToFront()
+            if (!pipCollapsed) fpvCard.bringToFront()
+        }
+        originBanner.bringToFront()
+        camChip.bringToFront()
+        if (pipCollapsed) pipRestorePill.bringToFront()
+
+        fpv.setCompact(fpvIsPip)
+        updateFpvStatus(fpvLive, fpvStatusLabel)
     }
 
     fun setCalibrated(done: Boolean) {
