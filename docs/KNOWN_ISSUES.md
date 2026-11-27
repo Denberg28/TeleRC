@@ -1,3 +1,13 @@
+# 1.2.0rc6 current limits — 27 November 2026
+
+Candidate adds the DJI Fly-style **Map ↔ FPV PiP swap** in the Mission tab, a self-healing multi-source FPV engine (USB External Camera2 / Wi-Fi LAN MJPEG / Phone Test), and **RTL8812BU USB detection + Android Split-Screen support** for companion `Auburn/fpvDROID`.
+
+- **RTL8812BU decoding uses companion `Auburn/fpvDROID` (Split-Screen):** `Auburn/fpvDROID` and its upstream `kepyur` / `wifi-sdr` repos currently publish no open-source license file and require Nix + a `mipsel` cross-assembler + NDK + `minSdk 29`. TeleRC does not vendor that native stack; instead it detects RTL8812BU adapters and supports Android Split-Screen (`resizeableActivity="true"`) with 1-tap `Open fpvDROID`.
+- **USB UVC Camera2 variability:** In-app `USB` mode uses Android's standard `Camera2` `LENS_FACING_EXTERNAL` API. Devices that do not expose USB UVC dongles (e.g., ROTG01/02) to `Camera2` will require either Wi-Fi MJPEG or a future open-source USB UVC reader.
+- **BLOCKED — device / HIL:** No physical Android phone, RTL8812BU adapter, Caddx Ratel 2 / Eachine VTX, USB UVC camera, ESP32-CAM, or rover is attached in the build environment. Installed upgrade over `v1.2.0rc5`, PiP swap rendering, Split-Screen coexistence with `fpvDROID`, and restrained-wheel checks remain pending. Prerelease only.
+
+Historical 1.2.0rc5 and earlier release limits follow below.
+
 # 1.2.0rc5 current limits — 26 November 2026
 
 Candidate focuses the Mission tab strictly on **no-rover-GPS 1-meter calibration and phone-origin step planning** with a wide clear map (`2.6:1`) and minimal controls.

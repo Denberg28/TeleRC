@@ -1,3 +1,33 @@
+# 1.2.0rc6 acceptance and verification — 27 November 2026
+
+Baseline `3252151` / published `v1.2.0rc5` (code `1204`); branch `feat/mission-fpv-swap`. Target version `1.2.0rc6` / `versionCode 1205`.
+
+Scope: DJI Fly-style **Map ↔ FPV PiP swap** in Mission tab (`RouteMapView` `textureMode(true)` + `MissionPlannerView` dual-slot swap + collapsible PiP pill), self-healing multi-source FPV engine (`FpvLink`, `FpvFeedView`: Auto USB Camera2 / Wi-Fi LAN MJPEG / Phone Test, 4 s stall watchdog, 4 s dimmed hold, 1.5/3/6 s backoff), and **RTL8812BU USB detection + Android Split-Screen (`resizeableActivity="true"`) companion support** for `Auburn/fpvDROID` (Caddx Ratel 2 + Eachine 5.8 GHz VTX).
+
+## Local software verification (pre-CI)
+
+- `./scripts/check-android-env.sh` (OpenJDK 17, Android SDK 35, Build Tools 35.0.0, verified Gradle 8.11.1): **PASS — build verified**.
+- `./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon`: **PASS — build verified / simulator tested** (`79` JVM tests passed, `0` failures/errors/skips, including `4` in `FpvLinkTest` and `9` in `StepPlanTest`; debug & release lint `0` errors; debug APK built).
+- `python3 -m unittest discover -s scripts -p 'test_firmware_package.py'`, `python3 bridge/sync_motor_core.py --check`, `bridge/tests/run.sh`, `SANITIZE=1 bridge/tests/run.sh`: **PASS — simulator tested** (ASan + UBSan + LSan zero findings).
+
+## Executable bench / device verification procedure (pending hardware)
+
+1. Install signed `v1.2.0rc6` over `v1.2.0rc5`; confirm Controls tab, 1 m calibration, Wi-Fi settings, sensitivity, and `mission.csv` survive.
+2. Open **Mission** tab: tap bottom-left PiP thumbnail to verify glitch-free Map ↔ FPV swap without reloading the map, and tap `−` / restore pill (`● FPV ↗` / `MAP ↗`). Test with **Phone Cam (Test)** in `● FPV Cam` settings to verify live Camera2 scaling (`Fit`/`Fill`), crosshair, and clean pause on tab switch to **Controls** or app backgrounding.
+3. **RTL8812BU + Ratel 2 + Eachine VTX:** Plug in RTL8812BU via USB 3 OTG; verify TeleRC Mission FPV card displays `<Adapter> detected · Tap Cam → Open fpvDROID`. Launch `fpvDROID` in Android Split-Screen alongside TeleRC; verify TeleRC resizes smoothly without recreating `MainActivity` or dropping planned steps, and verify 5.8 GHz video + 2.4 GHz Wi-Fi control run without RF interference (raised wheels first).
+4. **USB UVC / Wi-Fi MJPEG (if used):** Test unplug/replug recovery and 4 s stall/hold-clear behavior while verifying `GoLink` 50 Hz RC and `STOP` / Switch A (CH7) handover remain unaffected.
+
+| Gate | 1.2.0rc6 status | Evidence / remaining requirement |
+| --- | --- | --- |
+| A — source/build | PASS (local Android + host/sanitizer); cloud CI & signed release pending | Release CI builds signed APK + 10 ESP32-S3 firmware targets |
+| B — behavior | PASS — JVM/host simulated scope; device BLOCKED | 79 JVM tests (`FpvLinkTest` URL/MJPEG/supervisor/RTL8812BU + `StepPlanTest` + Go safety); phone PiP/Split-Screen/Camera2 pending |
+| C — regression | PASS — automated scope | Existing Controls, 1 m calibration gate, and bridge protocols preserved; phone upgrade from `v1.2.0rc5` NOT TESTED |
+| D — integration | PASS — host/protocol; real chain BLOCKED | Real RTL8812BU + `fpvDROID` Split-Screen and USB UVC / Wi-Fi MJPEG + Wi-Fi RC coexistence pending |
+| E — HIL | BLOCKED | No attached phone, RTL8812BU, Ratel 2/VTX, or rover; execute bench checks above |
+| F — delivery | Pending signed release CI | Cloud workflow must pass signing continuity (`v1.0.0` + `v1.2.0rc5`), code `1204 → 1205`, checksums & prerelease publication |
+
+Historical 1.2.0rc5 and earlier test evidence follows below.
+
 # 1.2.0rc5 acceptance and verification — 26 November 2026
 
 Baseline `ecefbbd` / published `v1.2.0rc4` (code `1203`); branch `feat/phone-origin-step-planner`. Target version `1.2.0rc5` / `versionCode 1204`.
