@@ -48,6 +48,7 @@ class MainActivity : Activity() {
     companion object {
         private const val IMAGE_REQUEST = 41
         private const val LOCATION_REQUEST = 42
+        private const val CAMERA_REQUEST = 43
         private const val EXPORT_MISSION_REQUEST = 44
         private const val IMPORT_MISSION_REQUEST = 45
         // Serialize private wallpaper file access across activity recreations.
@@ -89,7 +90,7 @@ class MainActivity : Activity() {
     private var imageWork = false
     private var pendingImageUri: android.net.Uri? = null
 
-    // Mission screen state (1m calibration gate, phone initial origin + orientation, 1m step planner)
+    // Mission screen state (1m calibration gate, phone initial origin + orientation, 1m step planner, FPV swap)
     private val route = RouteSession()
     private var mission = MissionPlan()
     private val plannedSteps = mutableListOf<StepCommand>()
@@ -97,8 +98,10 @@ class MainActivity : Activity() {
     private var liveHeadingDeg: Double? = null
     private var phoneHeading: PhoneHeading? = null
     private val stepPrefs by lazy { getSharedPreferences("step_cal", MODE_PRIVATE) }
+    private val fpvPrefs by lazy { getSharedPreferences("fpv", MODE_PRIVATE) }
     private var planner: MissionPlannerView? = null
     private var routeMap: RouteMapView? = null
+    private var fpvView: FpvFeedView? = null
     private var gpsBadge: TextView? = null
     private var mapActive = false
     private var started = false
@@ -416,11 +419,15 @@ class MainActivity : Activity() {
         root.addView(header, LinearLayout.LayoutParams(-1, -2))
 
         val map = RouteMapView(this, route)
-        routeMap = map; mapActive = true
+        val fpv = FpvFeedView(this, readFpvConfig()) { live, label ->
+            planner?.updateFpvStatus(live, label)
+        }
+        routeMap = map; fpvView = fpv; mapActive = true
         planner = MissionPlannerView(
             context = this,
             plan = mission,
             map = map,
+            fpv = fpv,
             steps = plannedSteps,
             onCalibrate = ::showStepCalibration,
             onLockOrigin = { lockPhoneOrigin(silent = false) },
@@ -430,16 +437,36 @@ class MainActivity : Activity() {
             onArmToggle = { link.toggleArm(); refresh() },
             onRunPlan = ::confirmRunStepPlan,
             onStopRun = { link.stopStepPlan("Stopped by operator"); refresh() },
+            onFpvSettings = ::showFpvSettings,
             onMoreMenu = ::showMissionMoreMenu
         ).also { it.setCalibrated(readStepCalibration().calibrated) }
         root.addView(planner, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
         if (started) map.onStart()
-        if (resumed) map.onResume()
+        if (resumed) {
+            map.onResume()
+            fpv.start()
+        }
         startPhoneHeading()
         startPhoneLocation()
         planOrigin?.let { map.showOrigin(it, center = false) }
         refreshOriginBanner()
         updateRoute()
+    }
+
+    private fun readFpvConfig(): FpvConfig = FpvConfig(
+        mode = FpvSourceMode.fromName(fpvPrefs.getString("mode", null)),
+        url = fpvPrefs.getString("url", FpvConfig.DEFAULT_WIFI_URL) ?: FpvConfig.DEFAULT_WIFI_URL,
+        scale = FpvScaleMode.fromName(fpvPrefs.getString("scale", null)),
+        crosshair = fpvPrefs.getBoolean("crosshair", true)
+    )
+
+    private fun saveFpvConfig(config: FpvConfig) {
+        fpvPrefs.edit()
+            .putString("mode", config.mode.name)
+            .putString("url", config.url)
+            .putString("scale", config.scale.name)
+            .putBoolean("crosshair", config.crosshair)
+            .apply()
     }
 
     private fun startPhoneHeading() {
@@ -765,9 +792,141 @@ class MainActivity : Activity() {
         refresh()
     }
 
+    // FPV — Compact camera source, private LAN MJPEG URL, scaling, and optional fpvDROID launcher.
+    private fun showFpvSettings() {
+        val current = readFpvConfig()
+        var chosenMode = current.mode
+        var chosenScale = current.scale
+        var chosenCrosshair = current.crosshair
+
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(text(fpvView?.statusText() ?: "FPV standby", 12f).apply {
+            setTextColor(AppColors.muted(this@MainActivity))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+
+        body.addView(text("Source (Auto prefers USB Cam over Wi-Fi)", 11f), LinearLayout.LayoutParams(-1, dp(18)))
+        val modeRow = LinearLayout(this).apply { isBaselineAligned = false }
+        val modeButtons = mutableMapOf<FpvSourceMode, Button>()
+        fun styleModeButtons() {
+            modeButtons.forEach { (mode, btn) ->
+                val active = mode == chosenMode
+                btn.background = shape(if (active) AppColors.accent(this) else Color.rgb(32, 46, 64), 10)
+                btn.setTextColor(Color.WHITE)
+            }
+        }
+        val modeLabels = listOf(
+            FpvSourceMode.AUTO to "Auto",
+            FpvSourceMode.WIFI_MJPEG to "Wi-Fi",
+            FpvSourceMode.USB_EXTERNAL to "USB",
+            FpvSourceMode.PHONE_REAR to "Phone"
+        )
+        modeLabels.forEachIndexed { idx, (mode, label) ->
+            val btn = button(label, false) {
+                chosenMode = mode
+                styleModeButtons()
+            }
+            modeButtons[mode] = btn
+            modeRow.addView(btn, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                if (idx > 0) leftMargin = dp(4)
+            })
+        }
+        styleModeButtons()
+        body.addView(modeRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+
+        body.addView(text("Wi-Fi LAN MJPEG URL (ESP32-CAM / IP Cam)", 11f), LinearLayout.LayoutParams(-1, dp(18)))
+        val urlEdit = EditText(this).apply {
+            contentDescription = "Wi-Fi LAN MJPEG URL"
+            setText(current.url)
+            setSingleLine()
+            textSize = 13.5f
+            setTextColor(Color.rgb(236, 242, 250))
+            setPadding(dp(8), 0, dp(8), 0)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        }
+        body.addView(urlEdit, LinearLayout.LayoutParams(-1, dp(42)))
+
+        val presetRow = LinearLayout(this).apply { isBaselineAligned = false }
+        presetRow.addView(button("ESP32-CAM (.4.2:81)", false) {
+            urlEdit.setText(FpvConfig.DEFAULT_WIFI_URL)
+            urlEdit.error = null
+        }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(6) })
+        presetRow.addView(button("Rover AP (.4.1:81)", false) {
+            urlEdit.setText(FpvConfig.AP_HOST_WIFI_URL)
+            urlEdit.error = null
+        }, LinearLayout.LayoutParams(0, dp(36), 1f))
+        body.addView(presetRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(8) })
+
+        val viewRow = LinearLayout(this).apply { isBaselineAligned = false }
+        lateinit var scaleBtn: Button
+        scaleBtn = button("Scale: ${chosenScale.label}", false) {
+            chosenScale = if (chosenScale == FpvScaleMode.FILL) FpvScaleMode.FIT else FpvScaleMode.FILL
+            scaleBtn.text = "Scale: ${chosenScale.label}"
+        }
+        lateinit var crossBtn: Button
+        crossBtn = button("Crosshair: ${if (chosenCrosshair) "On" else "Off"}", false) {
+            chosenCrosshair = !chosenCrosshair
+            crossBtn.text = "Crosshair: ${if (chosenCrosshair) "On" else "Off"}"
+        }
+        viewRow.addView(scaleBtn, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
+        viewRow.addView(crossBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
+        body.addView(viewRow, LinearLayout.LayoutParams(-1, -2))
+
+        val rtlAdapter = fpvView?.detectedRtl8812bu
+        val fpvDroidIntent = packageManager.getLaunchIntentForPackage("com.fpvdroid.app")?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (isInMultiWindowMode) addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
+        }
+        if (fpvDroidIntent != null) {
+            val label = if (rtlAdapter != null) "Open fpvDROID · $rtlAdapter" else "Open fpvDROID (RTL8812BU 5.8G)"
+            body.addView(button(label, rtlAdapter != null) {
+                link.stop(true)
+                link.stopStepPlan("Switched to fpvDROID · stopped")
+                dismissSheet()
+                startActivity(fpvDroidIntent)
+            }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(8) })
+        } else if (rtlAdapter != null) {
+            body.addView(text(
+                "$rtlAdapter detected: install Auburn/fpvDROID for raw 5.8G analog (Split-Screen), or use a USB UVC receiver (ROTG01/02) for in-app PiP.",
+                11f
+            ).apply {
+                setTextColor(AppColors.accent(this@MainActivity))
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
+
+        dialog("FPV camera", body, "Save" to {
+            val rawUrl = urlEdit.text.toString().trim()
+            val needsUrl = chosenMode == FpvSourceMode.WIFI_MJPEG || (chosenMode == FpvSourceMode.AUTO && rawUrl.isNotEmpty())
+            val parsed = if (needsUrl) FpvUrlValidator.parse(rawUrl) else FpvUrlValidator.parse(current.url)
+            if (needsUrl && parsed == null) {
+                urlEdit.error = "Use private LAN http://192.168.x.x:81/stream"
+                return@to
+            }
+            val next = FpvConfig(
+                mode = chosenMode,
+                url = parsed?.toUrlString() ?: current.url,
+                scale = chosenScale,
+                crosshair = chosenCrosshair
+            )
+            saveFpvConfig(next)
+            fpvView?.updateConfig(next)
+            dismissSheet()
+            val needsCamPerm = chosenMode == FpvSourceMode.USB_EXTERNAL ||
+                chosenMode == FpvSourceMode.PHONE_REAR ||
+                (fpvView?.needsCameraPermission() == true)
+            if (needsCamPerm && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_REQUEST)
+            }
+        })
+    }
+
     private fun showMissionMoreMenu() {
         val items = listOf(
             "Re-calibrate 1m" to { showStepCalibration() },
+            "FPV camera" to { showFpvSettings() },
             "Fit route on map" to { routeMap?.fitPlan(); Unit },
             "Import CSV" to { missionDocument(IMPORT_MISSION_REQUEST, false) },
             "Export CSV" to { missionDocument(EXPORT_MISSION_REQUEST, true) }
@@ -946,6 +1105,8 @@ class MainActivity : Activity() {
         stopPhoneLocation()
         stopPhoneHeading()
         mapActive = false
+        fpvView?.destroy()
+        fpvView = null
         routeMap?.let {
             if (resumed) it.onPause()
             if (started) it.onStop()
@@ -1187,6 +1348,13 @@ class MainActivity : Activity() {
             pendingPhoneLocate = false
             gpsBadge?.text = "Location permission required for phone GPS"
             Toast.makeText(this, "Precise location permission is required", Toast.LENGTH_LONG).show()
+        } else if (requestCode == CAMERA_REQUEST) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                fpvView?.updateConfig(readFpvConfig())
+                if (resumed && mapActive) fpvView?.start()
+            } else {
+                Toast.makeText(this, "Camera permission denied (Wi-Fi MJPEG still works)", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -1282,6 +1450,7 @@ class MainActivity : Activity() {
         if (mapActive) {
             startPhoneHeading()
             startPhoneLocation()
+            fpvView?.start()
         }
     }
 
@@ -1294,6 +1463,7 @@ class MainActivity : Activity() {
         resumed = false
         stopPhoneLocation()
         stopPhoneHeading()
+        fpvView?.pause()
         routeMap?.onPause()
         if (::link.isInitialized) link.foreground(false)
         dismissSheet(); resetSticks()
