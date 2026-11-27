@@ -17,6 +17,7 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     val view: MapView
     private var map: MapLibreMap? = null
     private var plan: List<Waypoint> = emptyList()
+    private var origin: PlanOrigin? = null
     private val waypointMarkers = mutableMapOf<Long, Int>()
     private var centered = false
     private var requestedLocate: LatLng? = null
@@ -51,6 +52,11 @@ class RouteMapView(context: Context, private val session: RouteSession) {
     }
 
     // Map — Only these stored coordinates become planned waypoints; Home remains phone GPS.
+    fun showOrigin(value: PlanOrigin?, center: Boolean = false) {
+        origin = value
+        draw()
+        if (center && value != null) locatePhoneFix(value.latitude, value.longitude)
+    }
     fun showPlan(points: List<Waypoint>, fit: Boolean = false) {
         plan = points.toList(); draw()
         if (fit) fitPlan()
@@ -63,6 +69,19 @@ class RouteMapView(context: Context, private val session: RouteSession) {
         session.home?.let { m.addMarker(MarkerOptions().position(coords(it)).title("Phone Home")) }
         session.phone.lastOrNull()?.let { m.addMarker(MarkerOptions().position(coords(it)).title("Phone GPS")) }
         session.rover.lastOrNull()?.let { m.addMarker(MarkerOptions().position(coords(it)).title("Last measured rover GPS")) }
+        origin?.let { o ->
+            val start = LatLng(o.latitude, o.longitude)
+            val tag = if (o.fromPhoneGps) "Phone origin" else "Sample origin"
+            m.addMarker(MarkerOptions().position(start).title("$tag · ${StepGeometry.compassLabel(o.normalizedHeading)}"))
+            // Draw a 1.5 m heading reference vector from the locked phone origin.
+            val tip = StepGeometry.offsetMeters(o.latitude, o.longitude, o.normalizedHeading, 1.5)
+            m.addPolyline(
+                PolylineOptions()
+                    .add(start, LatLng(tip.latitude, tip.longitude))
+                    .color(Color.rgb(90, 210, 255))
+                    .width(4f)
+            )
+        }
         if (session.phone.size > 1) m.addPolyline(PolylineOptions().addAll(session.phone.map(::coords))
             .color(Color.rgb(49, 113, 203)).width(3f))
         if (session.rover.size > 1) m.addPolyline(PolylineOptions().addAll(session.rover.map(::coords))
@@ -71,8 +90,12 @@ class RouteMapView(context: Context, private val session: RouteSession) {
             val marker = m.addMarker(MarkerOptions().position(LatLng(p.latitude, p.longitude)).title("Waypoint ${index + 1}"))
             waypointMarkers[marker.id] = index
         }
-        if (plan.size > 1) m.addPolyline(PolylineOptions()
-            .addAll(plan.map { LatLng(it.latitude, it.longitude) }).color(Color.rgb(210, 120, 20)).width(5f))
+        val routeCoords = buildList {
+            origin?.let { add(LatLng(it.latitude, it.longitude)) }
+            plan.forEach { add(LatLng(it.latitude, it.longitude)) }
+        }
+        if (routeCoords.size > 1) m.addPolyline(PolylineOptions()
+            .addAll(routeCoords).color(Color.rgb(210, 120, 20)).width(5f))
         if (!centered) {
             centered = true
             if (plan.isNotEmpty()) fitPlan() else locateRecovery()

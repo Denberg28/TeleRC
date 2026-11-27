@@ -58,13 +58,17 @@ internal class GoLink(
         val targetSystem: Int = 1,
         val missionReady: Boolean = false,
         val missionActive: Boolean = false,
-        val missionStatus: String = "Plan saved on phone"
+        val missionStatus: String = "Plan saved on phone",
+        val stepReady: Boolean = false,
+        val stepActive: Boolean = false,
+        val stepStatus: String = "Step test idle"
     )
 
     private val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val gate = GoControl()
     private val armRequest = GoArmRequest()
     private val missionTransfer = MissionTransfer()
+    private val stepRunner = StepRunner()
     private val lock = Any()
     @Volatile private var desired: GoEndpoint? = null
     @Volatile private var active = false
@@ -99,7 +103,7 @@ internal class GoLink(
     private fun switchFresh(n: Long) = switchAt > 0 && n >= switchAt && n - switchAt < 750
     private fun mayUsePhone(n: Long) = !radioBlocked && (!fc || switchFresh(n)) && (!ownersSeen || ownerFresh(n) && owner == 1)
 
-    private fun missionReadyLocked(n: Long): Boolean = GoMissionGate.ready(
+    private fun missionReadyLocked(n: Long): Boolean = !stepRunner.active && GoMissionGate.ready(
         connected = connected,
         peerVerified = peerVerified,
         fc = fc,
@@ -111,6 +115,31 @@ internal class GoLink(
         switchFresh = switchFresh(n),
         radioBlocked = radioBlocked
     )
+
+    private fun stepReadyLocked(n: Long): Boolean = GoStepGate.ready(
+        connected = connected,
+        peerVerified = peerVerified,
+        missionForeground = missionForeground,
+        heartbeatFresh = gate.fresh(n),
+        armed = gate.armed,
+        stopped = gate.stopped,
+        mayUsePhone = mayUsePhone(n),
+        missionTransferActive = missionTransfer.active
+    )
+
+    private fun stepStatusLocked(n: Long): String {
+        if (stepRunner.active) return stepRunner.status
+        return when {
+            !connected || !peerVerified -> "Connect Wi-Fi to test 1m steps"
+            !gate.fresh(n) -> "Waiting for fresh rover heartbeat"
+            radioBlocked || (ownersSeen && owner == 2) -> "Transmitter control active"
+            gate.stopped -> if (fc) "Select MANUAL mode for step test" else "Rover stop/fault active"
+            armRequest.active() || awaitingArmUntil > n -> "Arming · checking neutral…"
+            !gate.armed -> "Disarmed · tap ARM to test 1m steps"
+            !mayUsePhone(n) -> "Waiting for phone permission (CH7 / ownership)"
+            else -> if (stepRunner.status == "Step test idle") "ARMED · ready for 1m open-loop step test" else stepRunner.status
+        }
+    }
 
     private fun missionStatusLocked(n: Long): String {
         if (missionTransfer.active) return missionTransfer.status
@@ -130,6 +159,7 @@ internal class GoLink(
     fun snapshot(): Snapshot = synchronized(lock) {
         val n = now()
         val mReady = missionReadyLocked(n)
+        val sReady = stepReadyLocked(n)
         Snapshot(
             connected = connected,
             verified = verified && (if (fc) switchFresh(n) else capable && ownersSeen && ownerFresh(n)),
@@ -151,7 +181,10 @@ internal class GoLink(
             targetSystem = desired?.system ?: 1,
             missionReady = mReady,
             missionActive = missionTransfer.active,
-            missionStatus = missionStatusLocked(n)
+            missionStatus = missionStatusLocked(n),
+            stepReady = sReady,
+            stepActive = stepRunner.active,
+            stepStatus = stepStatusLocked(n)
         )
     }
 
@@ -169,7 +202,10 @@ internal class GoLink(
     fun foreground(value: Boolean) {
         active = value
         if (!value) {
-            synchronized(lock) { missionTransfer.cancel("App backgrounded; upload cancelled") }
+            synchronized(lock) {
+                missionTransfer.cancel("App backgrounded; upload cancelled")
+                stepRunner.cancel("App backgrounded · stopped")
+            }
             stop(true)
         }
     }
@@ -177,9 +213,39 @@ internal class GoLink(
     fun setMissionForeground(value: Boolean) {
         synchronized(lock) {
             missionForeground = value
-            if (!value) missionTransfer.cancel("Screen changed; upload cancelled")
+            if (!value) {
+                missionTransfer.cancel("Screen changed; upload cancelled")
+                stepRunner.cancel("Screen changed · stopped")
+            }
         }
         if (value) stop(true)
+        update()
+    }
+
+    fun beginStepPlan(steps: List<StepCommand>, calibration: StepCalibration): Boolean {
+        val started = synchronized(lock) {
+            val n = now()
+            if (!stepReadyLocked(n) || stepRunner.active || steps.size !in 1..StepRunner.MAX_STEPS) {
+                return@synchronized false
+            }
+            steer = 1500; drive = 1500
+            stepRunner.begin(steps, calibration, n)
+            true
+        }
+        update()
+        return started
+    }
+
+    fun stopStepPlan(reason: String = "Stopped by operator") {
+        synchronized(lock) {
+            val wasActive = stepRunner.active
+            stepRunner.cancel(reason)
+            if (wasActive || gate.enabled) {
+                steer = 1500; drive = 1500
+                stopPending = true
+            }
+        }
+        stop(true)
         update()
     }
 
@@ -213,6 +279,7 @@ internal class GoLink(
     }
 
     private fun revoke(text: String, sendStop: Boolean) {
+        stepRunner.cancel("$text · stopped")
         gate.stop(); armRequest.cancel(); awaitingArmUntil = 0; takeRequested = false; steer = 1500; drive = 1500
         if (sendStop) stopPending = true
         message = text
@@ -220,14 +287,14 @@ internal class GoLink(
 
     fun toggleArm() = synchronized(lock) {
         val n = now()
-        if (missionForeground || missionTransfer.active) return@synchronized
+        if (missionTransfer.active) return@synchronized
         if (radioBlocked || ownersSeen && owner == 2) return@synchronized
         if (balancing && gate.armed && !gate.enabled && active && connected && verified && mayUsePhone(n)) {
             steer = 1500; drive = 1500
             if (gate.resumeBalancing(n)) message = "Resuming · checking neutral"
             return@synchronized
         }
-        if (gate.armed || gate.enabled || armRequest.active() || awaitingArmUntil != 0L) {
+        if (stepRunner.active || gate.armed || gate.enabled || armRequest.active() || awaitingArmUntil != 0L) {
             explicitDisarm = true; revoke("Disarming…", true); return@synchronized
         }
         if (!active || !connected || !verified || !gate.fresh(n) || gate.stopped) return@synchronized
@@ -240,7 +307,7 @@ internal class GoLink(
     }
 
     fun stop(controlOnly: Boolean = false) = synchronized(lock) {
-        val controlled = gate.enabled || armRequest.active() || awaitingArmUntil != 0L
+        val controlled = stepRunner.active || gate.enabled || armRequest.active() || awaitingArmUntil != 0L
         revoke(
             if (balancing && gate.armed) "Travel paused · local balance active" else "Control stopped",
             controlled || !controlOnly && gate.armed && !radioBlocked
@@ -251,6 +318,7 @@ internal class GoLink(
         stop(true)
         synchronized(lock) {
             missionTransfer.disconnected()
+            stepRunner.cancel("Disconnected · stopped")
             desired = null
             gate.disconnect()
             connected = false
@@ -334,7 +402,7 @@ internal class GoLink(
                             stopPending = true
                             revoke("Telemetry lost · control paused", true)
                         }
-                        if ((gate.enabled || armRequest.active()) && ((ownersSeen && !ownerFresh(n)) || (fc && !switchFresh(n)) || radioBlocked)) {
+                        if ((stepRunner.active || gate.enabled || armRequest.active()) && ((ownersSeen && !ownerFresh(n)) || (fc && !switchFresh(n)) || radioBlocked)) {
                             revoke(if (radioBlocked) "Transmitter control" else "Control telemetry lost", false)
                             stopPending = false
                         }
@@ -350,7 +418,7 @@ internal class GoLink(
                         if (takeRequested && armRequest.valid(gate.epoch, n) && !radioBlocked) {
                             send(GoElrs.take(sequence++, config.system)); takeRequested = false
                         }
-                        if (fc && (gate.enabled || missionTransfer.active) && gate.fresh(n) && n - gcsAt >= 1000) {
+                        if (fc && (gate.enabled || missionTransfer.active || stepRunner.active) && gate.fresh(n) && n - gcsAt >= 1000) {
                             send(GoProtocol.heartbeat(sequence++)); gcsAt = n
                         }
                         if (missionTransfer.active) {
@@ -360,9 +428,22 @@ internal class GoLink(
                                 missionTransfer.poll(n, sequence++)?.let(::send)
                             }
                         }
-                        if (gate.enabled && gate.fresh(n) && mayUsePhone(n) && n - sent >= 20) {
-                            val s = if (gate.mayDrive(n)) steer else 1500
-                            val d = if (gate.mayDrive(n)) drive else 1500
+                        if (stepRunner.active) {
+                            if (!stepReadyLocked(n)) {
+                                stepRunner.cancel("Link or permission changed · stopped")
+                                stopPending = true
+                            } else if (n - sent >= 20) {
+                                val out = stepRunner.poll(n)
+                                send(GoProtocol.rc(sequence++, config.system, out.steer, out.drive))
+                                sent = n
+                                if (!stepRunner.active) {
+                                    // Guarantee neutral frames arrive cleanly at end of step sequence.
+                                    repeat(2) { send(GoProtocol.rc(sequence++, config.system, 1500, 1500)) }
+                                }
+                            }
+                        } else if (gate.enabled && gate.fresh(n) && mayUsePhone(n) && n - sent >= 20) {
+                            val s = if (!missionForeground && gate.mayDrive(n)) steer else 1500
+                            val d = if (!missionForeground && gate.mayDrive(n)) drive else 1500
                             send(GoProtocol.rc(sequence++, config.system, s, d))
                             gate.sent(s, d, n); sent = n
                         }
@@ -411,6 +492,7 @@ internal class GoLink(
                                     val wasArmed = gate.armed
                                     gate.heartbeat(hb.armed, now())
                                     if (hb.armed) missionTransfer.cancel("Rover armed; upload cancelled")
+                                    if (!hb.armed && stepRunner.active) stepRunner.cancel("Rover disarmed · stopped")
                                     if (hb.armed && gate.enabled) {
                                         awaitingArmUntil = 0; message = "ARMED"
                                     } else if (wasArmed && !hb.armed && gate.enabled) {
@@ -474,7 +556,8 @@ internal class GoLink(
                 }
                 synchronized(lock) {
                     val releasing = desired == null
-                    if (releasing || stopPending || gate.enabled || armRequest.active() || awaitingArmUntil != 0L) {
+                    if (releasing || stopPending || stepRunner.active || gate.enabled || armRequest.active() || awaitingArmUntil != 0L) {
+                        stepRunner.cancel("Link stopped · neutral")
                         stopFrames(releasing)
                     }
                 }
@@ -496,6 +579,7 @@ internal class GoLink(
                 udp?.close()
                 synchronized(lock) {
                     missionTransfer.cancel("Link closed; upload cancelled")
+                    stepRunner.cancel("Link closed · stopped")
                     connected = false; verified = false; peerVerified = false
                     gate.disconnect(); armRequest.cancel(); awaitingArmUntil = 0; stopPending = false
                 }
